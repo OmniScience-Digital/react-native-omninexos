@@ -2,7 +2,7 @@ import { ThemedText } from "@/components/ui/screen";
 import { useAuth } from "@/src/contexts/auth-context";
 import { useTheme } from "@/src/contexts/theme-context";
 import { signIn } from "aws-amplify/auth";
-import { useRouter } from "expo-router";
+import { Redirect, useRouter } from "expo-router";
 import { useState } from "react";
 import { Pressable, TextInput, View } from "react-native";
 import { AuthFormLayout } from "../../components/auth/AuthFormLayout";
@@ -10,8 +10,18 @@ import { AuthFormLayout } from "../../components/auth/AuthFormLayout";
 const SignIn = () => {
   const router = useRouter();
   const { theme } = useTheme();
-  const { checkAuth } = useAuth();
 
+  const {
+    isAuthenticated,
+    isLoading: contextLoad,
+    checkAuth,
+    logout,
+  } = useAuth();
+
+  const handleSignOut = async () => {
+    await logout();
+    router.replace("/(auth)/sign-in");
+  };
   const [emailAddress, setEmailAddress] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -24,6 +34,14 @@ const SignIn = () => {
   const passwordValid = password.length > 0;
   const formValid =
     emailAddress.length > 0 && password.length > 0 && emailValid;
+
+  // Wait for auth to load
+  if (contextLoad) return null;
+
+  // Redirect if already authenticated
+  if (isAuthenticated) {
+    return <Redirect href="/(tabs)" />;
+  }
 
   const handleSubmit = async () => {
     if (!formValid) return;
@@ -55,7 +73,7 @@ const SignIn = () => {
   return (
     <AuthFormLayout
       title="Welcome back"
-      subtitle="Sign in to continue managing your account"
+      subtitle="Sign in and manage your account"
       buttonText="Sign In"
       isLoading={isLoading}
       onSubmit={handleSubmit}
@@ -130,7 +148,6 @@ const SignIn = () => {
       </View>
       <View>
         {passwordTouched && !passwordValid}
-
         {/* Forgot password link */}
         <Pressable onPress={() => router.push("/(auth)/forgot-password")}>
           <ThemedText
@@ -144,6 +161,10 @@ const SignIn = () => {
             Forgot password?
           </ThemedText>
         </Pressable>
+        {/* <Pressable onPress={handleSignOut}>
+          <ThemedText>Sign Out</ThemedText>
+        </Pressable> */}
+        );
       </View>
     </AuthFormLayout>
   );

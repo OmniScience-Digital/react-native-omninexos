@@ -1,8 +1,8 @@
 // src/context/auth-context.tsx
 import {
-    fetchAuthSession,
-    fetchUserAttributes,
-    signOut,
+  fetchAuthSession,
+  fetchUserAttributes,
+  signOut,
 } from "aws-amplify/auth";
 import type { ReactNode } from "react";
 import { createContext, useContext, useEffect, useState } from "react";
@@ -22,14 +22,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    checkAuth();
-  }, []);
-
   const checkAuth = async () => {
     try {
       const session = await fetchAuthSession();
-
       if (session.tokens) {
         const attributes = await fetchUserAttributes();
         setUser(attributes);
@@ -45,6 +40,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setIsLoading(false);
     }
   };
+
+  useEffect(() => {
+    let mounted = true;
+
+    const safeCheckAuth = async () => {
+      try {
+        const session = await fetchAuthSession();
+        if (!mounted) return;
+        if (session.tokens) {
+          const attributes = await fetchUserAttributes();
+          if (!mounted) return;
+          setUser(attributes);
+          setIsAuthenticated(true);
+        } else {
+          setUser(null);
+          setIsAuthenticated(false);
+        }
+      } catch {
+        if (!mounted) return;
+        setUser(null);
+        setIsAuthenticated(false);
+      } finally {
+        if (mounted) setIsLoading(false);
+      }
+    };
+
+    safeCheckAuth();
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   const logout = async () => {
     try {

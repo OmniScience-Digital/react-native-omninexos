@@ -1,5 +1,5 @@
 // components/auth/AuthFormLayout.tsx
-import logo from "@/assets/images/logo_dark.png";
+import logo from "@/assets/images/icon.png";
 import { Screen, ThemedText } from "@/components/ui/screen";
 import { CustomScrollView } from "@/components/ui/scrollView";
 import { useTheme } from "@/src/contexts/theme-context";
@@ -45,20 +45,24 @@ export const AuthFormLayout = ({
             <View className="items-center">
               <View
                 className="flex-row items-center gap-3 mb-7"
-                style={{ backgroundColor: theme.colors.accent, padding: 10 }}
+                style={{
+                  backgroundColor: theme.colors.accent,
+                  paddingVertical: 5,
+                  borderRadius: 18,
+                  paddingHorizontal: 15,
+                }}
               >
                 <View
                   style={{
-                    width: 100,
-                    height: 90,
-                    borderRadius: 18,
+                    width: 120,
+                    height: 100,
                     alignItems: "center",
                     justifyContent: "center",
                   }}
                 >
                   <Image
                     source={logo}
-                    style={{ width: 92, height: 72 }}
+                    style={{ width: 120, height: 100 }}
                     resizeMode="contain"
                   />
                 </View>
@@ -66,8 +70,8 @@ export const AuthFormLayout = ({
                   <ThemedText
                     weight="600"
                     style={{
-                      fontSize: 24,
-                      color: theme.colors.text,
+                      fontSize: 18,
+                      color: theme.colors.tabIconActive,
                       textAlign: "center",
                     }}
                   >
@@ -83,8 +87,8 @@ export const AuthFormLayout = ({
                 </View>
               </View>
               <ThemedText
-                weight="700"
-                style={{ fontSize: 30, color: theme.colors.text }}
+                weight="600"
+                style={{ fontSize: 25, color: theme.colors.text }}
               >
                 {title}
               </ThemedText>

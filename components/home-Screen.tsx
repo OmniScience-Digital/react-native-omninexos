@@ -6,14 +6,14 @@ import { useTheme } from "@/src/contexts/theme-context";
 import { format } from "date-fns";
 import { router } from "expo-router";
 import {
-    Bell,
-    Calendar,
-    ClipboardCheck,
-    ClipboardList,
-    FileText,
-    Package,
-    Settings,
-    Truck,
+  Bell,
+  Calendar,
+  ClipboardCheck,
+  ClipboardList,
+  FileText,
+  Package,
+  Settings,
+  Truck,
 } from "lucide-react-native";
 import React from "react";
 import { Pressable, View } from "react-native";
@@ -158,8 +158,8 @@ export default function HomeScreen() {
             onPress={handleStockPress}
           />
           <ModuleCard
-            title="Vehicle Inspection"
-            description="Digital checklists & reports"
+            title="Fleet Management"
+            description="Vehicle inspections & management"
             icon={ClipboardList}
             onPress={handleInspectionPress}
           />

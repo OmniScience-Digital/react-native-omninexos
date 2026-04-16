@@ -3,6 +3,7 @@ import "@/global.css";
 import { AuthProvider } from "@/src/contexts/auth-context";
 
 import { ThemeProvider, useTheme } from "@/src/contexts/theme-context";
+import { store } from "@/src/store";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Amplify } from "aws-amplify";
 import { cognitoUserPoolsTokenProvider } from "aws-amplify/auth/cognito";
@@ -13,6 +14,7 @@ import { StatusBar } from "expo-status-bar";
 import React, { useEffect } from "react";
 import { Animated, Easing, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import { Provider } from "react-redux";
 
 Amplify.configure(outputs);
 cognitoUserPoolsTokenProvider.setKeyValueStorage(AsyncStorage);
@@ -43,14 +45,15 @@ function LayoutInner() {
     if (oldBg !== newBg) {
       setOverlayBg(oldBg);
       overlayOpacity.setValue(1);
-      Animated.timing(overlayOpacity, {
+      const anim = Animated.timing(overlayOpacity, {
         toValue: 0,
         duration: 380,
         easing: Easing.out(Easing.ease),
         useNativeDriver: true,
-      }).start();
-
+      });
+      anim.start();
       prevBgRef.current = newBg;
+      return () => anim.stop(); //  cleanup
     }
   }, [theme.colors.background, overlayOpacity]);
 
@@ -92,12 +95,14 @@ function LayoutInner() {
 
 export default function Rootlayout() {
   return (
-    <ThemeProvider>
-      <SafeAreaProvider>
-        <AuthProvider>
-          <LayoutInner />
-        </AuthProvider>
-      </SafeAreaProvider>
-    </ThemeProvider>
+    <Provider store={store}>
+      <ThemeProvider>
+        <SafeAreaProvider>
+          <AuthProvider>
+            <LayoutInner />
+          </AuthProvider>
+        </SafeAreaProvider>
+      </ThemeProvider>
+    </Provider>
   );
 }

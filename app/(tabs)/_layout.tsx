@@ -61,7 +61,7 @@ export default function TabLayout() {
   const { theme } = useTheme();
   const tabBar = theme.components.tabBar;
 
-  console.log("Auth status:", { isAuthenticated, isLoading });
+  console.log("Auth status in TAbs Layout:", { isAuthenticated, isLoading });
   // Redirect to sign-in if user is not authenticated
   if (!isAuthenticated) {
     return <Redirect href="/(auth)/sign-in" />;
