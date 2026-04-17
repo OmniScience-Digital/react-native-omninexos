@@ -86,7 +86,7 @@ export const ModuleCard = ({
         <Icon size={24} color={theme.colors.accent} />
       </View>
       <View className="flex-1">
-        <ThemedText weight="700" style={{ marginBottom: 2 }}>
+        <ThemedText weight="400" style={{ marginBottom: 2 }}>
           {title}
         </ThemedText>
         <ThemedText muted variant="small">

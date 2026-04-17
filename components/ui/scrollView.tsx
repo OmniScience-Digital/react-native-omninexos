@@ -3,6 +3,7 @@ import { ScrollView, ScrollViewProps } from "react-native";
 
 export const CustomScrollView = ({
   children,
+  keyboardDismissMode = "on-drag",
   showsVerticalScrollIndicator = false,
   contentContainerClassName = "pb-30",
   ...props

@@ -39,23 +39,16 @@ export default function HomeScreen() {
       <CustomScrollView>
         {/* Header with vibrant gradient-like background */}
         <View className="mb-4">
-          <View className="flex-row justify-end  mb-5">
-            <Pressable onPress={() => console.log("Open settings")}>
-              <View
-                className="w-10 h-10 rounded-full items-center justify-center"
-                style={{ backgroundColor: theme.colors.glass }}
-              >
-                <Pressable
-                  className="w-10 h-10 rounded-full items-center justify-center"
-                  style={({ pressed }) => [
-                    { backgroundColor: theme.colors.glass },
-                    pressed && { opacity: 0.7, transform: [{ scale: 0.96 }] },
-                  ]}
-                  onPress={handleSettingsPress}
-                >
-                  <Settings size={20} color={theme.colors.text} />
-                </Pressable>
-              </View>
+          <View className="flex-row justify-end">
+            <Pressable
+              onPress={handleSettingsPress}
+              className="w-10 h-10 rounded-full items-center justify-center"
+              style={({ pressed }) => [
+                { backgroundColor: theme.colors.glass },
+                pressed && { opacity: 0.7, transform: [{ scale: 0.96 }] },
+              ]}
+            >
+              <Settings size={20} color={theme.colors.text} />
             </Pressable>
           </View>
 

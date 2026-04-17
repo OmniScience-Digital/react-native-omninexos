@@ -147,7 +147,6 @@ const SignIn = () => {
         )}
       </View>
       <View>
-        {passwordTouched && !passwordValid}
         {/* Forgot password link */}
         <Pressable onPress={() => router.push("/(auth)/forgot-password")}>
           <ThemedText
@@ -161,10 +160,10 @@ const SignIn = () => {
             Forgot password?
           </ThemedText>
         </Pressable>
+
         {/* <Pressable onPress={handleSignOut}>
-          <ThemedText>Sign Out</ThemedText>
-        </Pressable> */}
-        );
+    <ThemedText>Sign Out</ThemedText>
+  </Pressable> */}
       </View>
     </AuthFormLayout>
   );

@@ -11,6 +11,7 @@ import {
   showConfirmationAlert,
 } from "@/components/page-Reusables";
 
+import { CustomHeader } from "@/components/ui/customHeader";
 import { CustomScrollView } from "@/components/ui/scrollView";
 import { getCopyright } from "@/lib/utils";
 import { useAuth } from "@/src/contexts/auth-context";
@@ -74,15 +75,11 @@ export default function Settings() {
   return (
     <Screen>
       <CustomScrollView>
-        {/* Header – smaller title */}
-        <View className="mb-6">
-          <ThemedText variant="h2" weight="700">
-            Settings
-          </ThemedText>
-          <ThemedText muted variant="body">
-            Customize your app experience
-          </ThemedText>
-        </View>
+        {/* Custom Header without back button */}
+        <CustomHeader
+          title="Settings"
+          subtitle="Customize your app experience"
+        />
 
         {/* Profile Section – custom card */}
         <View className="mb-6">

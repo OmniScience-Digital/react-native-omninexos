@@ -1,5 +1,6 @@
+import { CustomHeader } from "@/components/ui/customHeader";
 import { ModuleCard } from "@/components/ui/DashboardCards";
-import { Screen, ThemedText } from "@/components/ui/screen";
+import { Screen } from "@/components/ui/screen";
 import { TabOperations } from "@/src/dashboardLists";
 import { View } from "react-native";
 
@@ -11,12 +12,12 @@ export default function Operations() {
     <Screen>
       {/* Modules */}
       <View className="mb-1">
-        <ThemedText variant="h2" weight="600" style={{ marginBottom: "5" }}>
-          Operations
-        </ThemedText>
+        {/* Custom Header without back button */}
+        <CustomHeader title="Operations" subtitle="Manage your operations" />
 
         {TabOperations.map((op) => (
           <ModuleCard
+            key={op.name}
             title={op.name}
             description={op.title}
             icon={op.icon}

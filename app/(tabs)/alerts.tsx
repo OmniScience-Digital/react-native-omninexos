@@ -1,34 +1,29 @@
-// import { Screen, ThemedText } from "@/components/ui/screen";
-
-// export default function Alerts() {
-//   return (
-//     <Screen>
-//       <ThemedText variant="small">Alerts</ThemedText>
-//     </Screen>
-//   );
-// }
-
+import { CustomHeader } from "@/components/ui/customHeader";
 import { Screen, ThemedText } from "@/components/ui/screen";
 import { CustomScrollView } from "@/components/ui/scrollView";
 import { useListCategoriesQuery } from "@/src/store/categoriesApi";
-import { ActivityIndicator, Text, View } from "react-native";
+import { ActivityIndicator, View } from "react-native";
 
 export default function Alerts() {
   const { data: categories, isLoading, isError } = useListCategoriesQuery();
 
-  if (isLoading) return <ActivityIndicator />;
-  if (isError) return <Text>Something went wrong.</Text>;
-  console.log(categories);
-
   return (
     <Screen>
-      <CustomScrollView>
-        {categories?.map((item) => (
-          <View key={item.id}>
-            <ThemedText>{item.categoryName}</ThemedText>
-          </View>
-        ))}
-      </CustomScrollView>
+      <CustomHeader
+        title="Alerts"
+        subtitle="Stay updated with your latest alerts"
+      />
+      {isLoading && <ActivityIndicator />}
+      {isError && <ThemedText>Something went wrong.</ThemedText>}
+      {!isLoading && !isError && (
+        <CustomScrollView>
+          {categories?.map((item) => (
+            <View key={item.id}>
+              <ThemedText>{item.categoryName}</ThemedText>
+            </View>
+          ))}
+        </CustomScrollView>
+      )}
     </Screen>
   );
 }

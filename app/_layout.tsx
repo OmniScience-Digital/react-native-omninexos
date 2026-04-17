@@ -1,7 +1,6 @@
 import outputs from "@/amplify_outputs.json";
 import "@/global.css";
-import { AuthProvider } from "@/src/contexts/auth-context";
-
+import { AuthProvider, useAuth } from "@/src/contexts/auth-context";
 import { ThemeProvider, useTheme } from "@/src/contexts/theme-context";
 import { store } from "@/src/store";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -23,12 +22,8 @@ cognitoUserPoolsTokenProvider.setKeyValueStorage(AsyncStorage);
 SplashScreen.preventAutoHideAsync();
 
 function LayoutInner() {
-  const { theme, isReady } = useTheme();
-
-  const prevBgRef = React.useRef(theme.colors.background);
-  const [overlayBg, setOverlayBg] = React.useState(theme.colors.background);
-  const overlayOpacity = React.useRef(new Animated.Value(0)).current;
-
+  const { theme, isReady: themeReady } = useTheme();
+  const { isLoading: authLoading } = useAuth();
   const [fontsLoaded] = useFonts({
     "sans-regular": require("../assets/fonts/PlusJakartaSans-Regular.ttf"),
     "sans-bold": require("../assets/fonts/PlusJakartaSans-Bold.ttf"),
@@ -38,10 +33,15 @@ function LayoutInner() {
     "sans-light": require("../assets/fonts/PlusJakartaSans-Light.ttf"),
   });
 
+  // --- All hooks must be called unconditionally ---
+  const prevBgRef = React.useRef(theme.colors.background);
+  const [overlayBg, setOverlayBg] = React.useState(theme.colors.background);
+  const overlayOpacity = React.useRef(new Animated.Value(0)).current;
+
+  // Background transition effect
   useEffect(() => {
     const newBg = theme.colors.background;
     const oldBg = prevBgRef.current;
-
     if (oldBg !== newBg) {
       setOverlayBg(oldBg);
       overlayOpacity.setValue(1);
@@ -53,20 +53,26 @@ function LayoutInner() {
       });
       anim.start();
       prevBgRef.current = newBg;
-      return () => anim.stop(); //  cleanup
+      return () => anim.stop();
     }
   }, [theme.colors.background, overlayOpacity]);
 
+  // --- Readiness condition ---
+  const isReady = fontsLoaded && themeReady && !authLoading;
+
+  // Hide splash only when everything is ready
   useEffect(() => {
-    // Only hide splash once theme is rehydrated from AsyncStorage
-    if (isReady && fontsLoaded) {
+    if (isReady) {
       SplashScreen.hideAsync();
     }
-  }, [isReady, fontsLoaded]);
+  }, [isReady]);
 
-  // Don't render app until both are ready
-  if (!fontsLoaded || !isReady) return null;
+  // --- Early return (after all hooks) while not ready ---
+  if (!isReady) {
+    return null; // Native splash remains visible, no React content
+  }
 
+  // --- Full app UI (only when ready) ---
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
       <StatusBar
@@ -79,7 +85,6 @@ function LayoutInner() {
           contentStyle: { backgroundColor: theme.colors.background },
         }}
       />
-
       <Animated.View
         pointerEvents="none"
         style={{
