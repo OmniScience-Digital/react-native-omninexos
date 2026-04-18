@@ -2,47 +2,99 @@ import { NonTabScreen } from "@/components/ui/non-tab-screen";
 import { ThemedText } from "@/components/ui/screen";
 import { CustomScrollView } from "@/components/ui/scrollView";
 import ImageUploadLoader from "@/components/viFComponents/ImageUploadLoader";
-import { PhotoState } from "@/components/viFComponents/PhotoUpload";
 import ResponseModal from "@/components/viFComponents/ResponseModal";
-import VifForm, {
-  booleanQuestions as initialQuestions,
-} from "@/components/viFComponents/VifForm";
-import { useTheme } from "@/src/contexts/theme-context";
-import { useState } from "react";
+import VifForm from "@/components/viFComponents/VifForm";
+import { calculateCustomFields, getJhbTimestamp } from "@/lib/utils";
 import {
-  ActivityIndicator,
-  StyleSheet,
-  TouchableOpacity,
-  View,
-} from "react-native";
-
-// ─── Mock data for UI preview ────────────────────────────────────────────────
-const MOCK_VEHICLES = [
-  { id: "1", vehicleReg: "ABC 123 GP", vehicleVin: "VIN001" },
-  { id: "2", vehicleReg: "DEF 456 GP", vehicleVin: "VIN002" },
-  { id: "3", vehicleReg: "GHI 789 GP", vehicleVin: "VIN003" },
-];
+  Vif_clickUpService,
+  uploadPhoto,
+} from "@/services/vif.clickUp.service";
+import { useAuth } from "@/src/contexts/auth-context";
+import { useTheme } from "@/src/contexts/theme-context";
+import {
+  hideResponseModal,
+  incrementUploadProgress,
+  resetUploadProgress,
+  resetVifForm,
+  setBooleanAnswer,
+  setOdometer,
+  setUploadProgress,
+  showResponseModal,
+} from "@/src/state";
+import {
+  useCreateInspectionMutation,
+  useGetInspectionsByFleetQuery,
+  useListFleetsQuery,
+  useUpdateFleetKmMutation,
+} from "@/src/state/api";
+import { useAppDispatch, useAppSelector } from "@/src/state/redux";
+import { useEffect } from "react";
+import { ActivityIndicator, TouchableOpacity, View } from "react-native";
 
 export default function VehicleInspectionForm() {
   const { theme } = useTheme();
-  const [loadingBtn, setLoadingBtn] = useState(false);
-  const [showResponse, setShowResponse] = useState(false);
-  const [successful, setSuccessful] = useState(false);
-  const [message, setMessage] = useState("");
-  const [uploadProgress, setUploadProgress] = useState({
-    isUploading: false,
-    currentImage: 0,
-    totalImages: 0,
-  });
+  const { user } = useAuth();
+  const dispatch = useAppDispatch();
 
-  const [formState, setFormState] = useState({
-    selectedVehicleId: "",
-    selectedVehicleReg: "",
-    selectedVehicleVin: "",
-    odometerValue: "",
-    booleanQuestions: initialQuestions,
-    photos: [] as PhotoState[],
-  });
+  // ─── RTK Queries ─────────────────────────────────────────
+  const { data: vehicles = [], isLoading: vehiclesLoading } =
+    useListFleetsQuery();
+  const [createInspection, { isLoading: submitting }] =
+    useCreateInspectionMutation();
+  const [updateFleetKm] = useUpdateFleetKmMutation();
+
+  // ─── Redux State ─────────────────────────────────────────
+  const formState = useAppSelector((state) => state.global.vifForm);
+  const uploadProgress = useAppSelector((state) => state.global.uploadProgress);
+  const responseModal = useAppSelector((state) => state.global.responseModal);
+
+  // Fetch last inspection for the selected vehicle
+  const { data: recentInspections } = useGetInspectionsByFleetQuery(
+    { fleetId: formState.selectedVehicleId, sortDirection: "DESC", limit: 1 },
+    { skip: !formState.selectedVehicleId },
+  );
+  const recentInspection = recentInspections?.[0];
+
+  // Auto-fill odometer & boolean answers from last inspection
+  useEffect(() => {
+    if (recentInspection && recentInspection.odometerStart) {
+      dispatch(setOdometer(recentInspection.odometerStart.toString()));
+      const fieldNames = [
+        "oilAndCoolant",
+        "fuelLevel",
+        "seatbeltDoorsMirrors",
+        "handbrake",
+        "tyreCondition",
+        "spareTyre",
+        "numberPlate",
+        "licenseDisc",
+        "leaks",
+        "lights",
+        "defrosterAircon",
+        "emergencyKit",
+        "clean",
+        "warnings",
+        "windscreenWipers",
+        "serviceBook",
+        "siteKit",
+      ];
+      fieldNames.forEach((field, idx) => {
+        const value = (recentInspection as any)[field];
+        if (value !== undefined && value !== null) {
+          dispatch(setBooleanAnswer({ index: idx, value }));
+        }
+      });
+    }
+  }, [recentInspection, dispatch]);
+
+  // Transform fleet data to match Vehicle type expected by VifForm
+  const vehiclesForForm = vehicles
+    .filter((v) => v.vehicleReg !== null && v.vehicleVin !== null)
+    .map((v) => ({
+      id: v.id,
+      vehicleReg: v.vehicleReg as string,
+      vehicleVin: v.vehicleVin as string,
+    }));
 
   const canSubmit =
     !!formState.selectedVehicleId &&
@@ -51,166 +103,261 @@ export default function VehicleInspectionForm() {
     formState.photos.every((p) => p.status === "success") &&
     !formState.booleanQuestions.some((q) => q.value === null);
 
-  const handleVehicleChange = (id: string, reg: string, vin: string) => {
-    setFormState((prev) => ({
-      ...prev,
-      selectedVehicleId: id,
-      selectedVehicleReg: reg,
-      selectedVehicleVin: vin,
-      photos: [],
-    }));
-  };
-
-  const handleBooleanChange = (index: number, value: boolean) => {
-    const updated = [...formState.booleanQuestions];
-    updated[index] = { ...updated[index], value };
-    setFormState((prev) => ({ ...prev, booleanQuestions: updated }));
-  };
-
-  // UI-only submit handler
-  const handleSubmit = () => {
-    setLoadingBtn(true);
-    // Simulate submission
-    setTimeout(() => {
-      setLoadingBtn(false);
-      setSuccessful(true);
-      setMessage(
-        "Inspection submitted successfully and vehicle odometer updated",
+  const handleSubmit = async () => {
+    try {
+      // Quick validation
+      const hasUnuploadedPhotos = formState.photos.some(
+        (photo) => photo.status !== "success",
       );
-      setShowResponse(true);
-    }, 1500);
+      if (hasUnuploadedPhotos) {
+        dispatch(
+          showResponseModal({
+            successful: false,
+            message: "Please wait for all photos to finish uploading to S3",
+          }),
+        );
+        return;
+      }
+
+      if (
+        !formState.odometerValue ||
+        formState.booleanQuestions.some((q) => q.value === null)
+      ) {
+        dispatch(
+          showResponseModal({
+            successful: false,
+            message: "Please complete all required fields",
+          }),
+        );
+        return;
+      }
+
+      const timestamp = getJhbTimestamp(); // import from utils
+
+      // Extract S3 keys from successfully uploaded photos
+      const s3PhotoKeys = formState.photos
+        .filter((photo) => photo.status === "success")
+        .map((photo) => photo.s3Key);
+
+      // Prepare inspection results
+      const inspectionResults = formState.booleanQuestions.map((q) => ({
+        question: q.question,
+        answer: String(q.value),
+      }));
+
+      const inspectionNo = (recentInspection?.inspectionNo ?? 0) + 1;
+
+      // Save to Amplify Data
+      const historyEntry = `VIF Dashboard: ${user?.preferred_username} @ ${new Date().toISOString().split("T")[0]} ${new Date().toTimeString().split(" ")[0]}: Inspection #${inspectionNo} for vehicle ${formState.selectedVehicleReg}\n`;
+
+      const inspectionData = {
+        fleetid: formState.selectedVehicleId,
+        inspectionNo: inspectionNo,
+        vehicleVin: formState.selectedVehicleVin,
+        inspectionDate: new Date().toISOString().split("T")[0],
+        inspectionTime: new Date().toTimeString().split(" ")[0],
+        odometerStart: parseFloat(formState.odometerValue),
+        vehicleReg: formState.selectedVehicleReg,
+        inspectorOrDriver: user?.preferred_username || "",
+        oilAndCoolant: formState.booleanQuestions[0].value,
+        fuelLevel: formState.booleanQuestions[1].value,
+        seatbeltDoorsMirrors: formState.booleanQuestions[2].value,
+        handbrake: formState.booleanQuestions[3].value,
+        tyreCondition: formState.booleanQuestions[4].value,
+        spareTyre: formState.booleanQuestions[5].value,
+        numberPlate: formState.booleanQuestions[6].value,
+        licenseDisc: formState.booleanQuestions[7].value,
+        leaks: formState.booleanQuestions[8].value,
+        lights: formState.booleanQuestions[9].value,
+        defrosterAircon: formState.booleanQuestions[10].value,
+        emergencyKit: formState.booleanQuestions[11].value,
+        clean: formState.booleanQuestions[12].value,
+        warnings: formState.booleanQuestions[13].value,
+        windscreenWipers: formState.booleanQuestions[14].value,
+        serviceBook: formState.booleanQuestions[15].value,
+        siteKit: formState.booleanQuestions[16].value,
+        photo: s3PhotoKeys,
+        history: historyEntry,
+      };
+
+      // 1. Update fleet km
+      await updateFleetKm({
+        id: formState.selectedVehicleId,
+        currentkm: parseFloat(formState.odometerValue),
+      }).unwrap();
+
+      // 2. Create inspection in Amplify
+      await createInspection({ input: inspectionData }).unwrap();
+
+      // 3. Calculate custom fields
+      const customFields = calculateCustomFields(
+        formState,
+        vehicles,
+        timestamp,
+      );
+
+      // 4. Create ClickUp task
+      const createTaskResponse = await Vif_clickUpService.createTask({
+        vehicleId: formState.selectedVehicleId,
+        inspectionNo: String(inspectionNo),
+        vehicleReg: formState.selectedVehicleReg,
+        vehicleVin: formState.selectedVehicleVin,
+        odometer: Number(formState.odometerValue),
+        username: user?.preferred_username,
+        serviceRequired: String(customFields.serviceRequired),
+        reviewRequired: String(customFields.reviewRequired),
+        tyreRotationRequired: String(customFields.tyreRotationRequired),
+        inspectionResults,
+        timestamp,
+        s3PhotoKeys,
+        photoCount: formState.photos.length,
+      });
+
+      if (!createTaskResponse.success) {
+        throw new Error(
+          createTaskResponse.message || "Failed to create ClickUp task",
+        );
+      }
+
+      const taskId = String(createTaskResponse.taskId);
+      // Replace the photo upload loop in handleSubmit (step 5) with this:
+
+      const successPhotos = formState.photos.filter(
+        (p) => p.status === "success",
+      );
+
+      if (successPhotos.length > 0) {
+        dispatch(
+          setUploadProgress({
+            isUploading: true,
+            currentImage: 0,
+            totalImages: successPhotos.length,
+          }),
+        );
+
+        for (let i = 0; i < successPhotos.length; i++) {
+          dispatch(incrementUploadProgress());
+          const photo = successPhotos[i];
+
+          // ✅ Pass the URI directly — no fetch(), no blob(), no File()
+          // Those are web APIs. RN handles the file read natively via the uri.
+          const uploadResult = await uploadPhoto({
+            photo: {
+              uri: photo.uri,
+              name: `photo_${i + 1}.jpg`,
+              type: "image/jpeg",
+            },
+            taskId,
+          });
+
+          if (!uploadResult?.success) {
+            throw new Error(
+              `Failed to upload photo ${i + 1}: ${uploadResult?.error}`,
+            );
+          }
+        }
+
+        dispatch(resetUploadProgress());
+      }
+
+      // 6. Success
+      dispatch(
+        showResponseModal({
+          successful: true,
+          message: "Inspection submitted successfully!",
+        }),
+      );
+      dispatch(resetVifForm());
+    } catch (error: any) {
+      dispatch(resetUploadProgress());
+      dispatch(
+        showResponseModal({
+          successful: false,
+          message: error.message || "Failed to submit inspection",
+        }),
+      );
+    }
   };
-  // Inside VehicleInspectionForm component, after const { theme } = useTheme()
-  const styles = StyleSheet.create({
-    safe: {
-      flex: 1,
-      backgroundColor: theme.colors.background,
-    },
-    header: {
-      paddingHorizontal: 20,
-      paddingVertical: 14,
-      backgroundColor: theme.colors.card,
-      borderBottomWidth: 0.5,
-      borderBottomColor: theme.colors.border,
-      flexDirection: "row",
-      alignItems: "center",
-      justifyContent: "space-between",
-    },
-    headerTitle: {
-      fontSize: 18,
-      fontWeight: "700",
-      color: theme.colors.text,
-      letterSpacing: -0.3,
-    },
-    headerSub: {
-      fontSize: 12,
-      color: theme.colors.textMuted,
-    },
-    card: {
+
+  const styles = {
+    card: (theme: any) => ({
       backgroundColor: theme.colors.card,
       borderRadius: theme.radius.md,
       borderWidth: 0.5,
       borderColor: theme.colors.border,
-      overflow: "hidden",
-    },
-    cardHeader: {
+    }),
+    cardHeader: (theme: any) => ({
       paddingHorizontal: 16,
       paddingVertical: 14,
       borderBottomWidth: 0.5,
       borderBottomColor: theme.colors.border,
-    },
-    cardTitle: {
-      fontSize: 16,
-      fontWeight: "600",
-      color: theme.colors.text,
-    },
-    cardContent: {
-      padding: 16,
-      gap: 20,
-    },
-    submitBtn: {
+    }),
+    cardTitle: { fontSize: 16, fontWeight: "600" } as const,
+    cardContent: { padding: 16, gap: 20 } as const,
+    submitBtn: (theme: any) => ({
       backgroundColor: theme.colors.accent,
       borderRadius: theme.radius.md,
       paddingVertical: 14,
-      alignItems: "center",
-      marginTop: 4,
-    },
-    submitBtnDisabled: {
-      backgroundColor: theme.colors.textMuted + "80", // semi-transparent muted
-    },
-    submitBtnInner: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 8,
-    },
-    submitBtnText: {
+      alignItems: "center" as const,
+    }),
+    submitBtnDisabled: (theme: any) => ({
+      backgroundColor: theme.colors.textMuted + "80",
+    }),
+    submitBtnText: (theme: any) => ({
       color: theme.colors.primaryText,
       fontSize: 15,
-      fontWeight: "600",
-    },
-    footer: {
-      paddingVertical: 12,
-      alignItems: "center",
-      borderTopWidth: 0.5,
-      borderTopColor: theme.colors.border,
-      backgroundColor: theme.colors.card,
-    },
-    footerText: {
-      fontSize: 12,
-      color: theme.colors.textMuted,
-    },
-  });
+      fontWeight: "600" as const,
+    }),
+  };
+
+  if (vehiclesLoading)
+    return (
+      <NonTabScreen
+        title="Vehicle Inspection"
+        subtitle="Complete all sections"
+        showBack
+        scrollable
+      >
+        <View
+          style={{ flex: 1, justifyContent: "center", alignItems: "center" }}
+        >
+          <ActivityIndicator size="large" />
+        </View>
+      </NonTabScreen>
+    );
 
   return (
     <NonTabScreen
       title="Vehicle Inspection"
       subtitle="Complete all sections"
-      showBack={true}
-      scrollable={true}
-      footerText="Omninexos Fleet Management © 2026"
+      showBack
+      scrollable
     >
       <CustomScrollView>
-        {/* Card */}
-        <View style={styles.card}>
-          <View style={styles.cardHeader}>
+        <View style={styles.card(theme)}>
+          <View style={styles.cardHeader(theme)}>
             <ThemedText style={styles.cardTitle}>
               Vehicle Inspection Form
             </ThemedText>
           </View>
           <View style={styles.cardContent}>
             <VifForm
-              vehicles={MOCK_VEHICLES}
-              formState={formState}
-              inspectionNumber={1}
-              recentInspection={null}
-              onVehicleChange={handleVehicleChange}
-              onOdometerChange={(val) =>
-                setFormState((prev) => ({ ...prev, odometerValue: val }))
-              }
-              onBooleanChange={handleBooleanChange}
-              onPhotosChange={(photos) =>
-                setFormState((prev) => ({ ...prev, photos }))
-              }
+              vehicles={vehiclesForForm}
+              inspectionNumber={(recentInspection?.inspectionNo ?? 0) + 1}
+              recentInspection={recentInspection}
             />
-            {/* Submit button */}
             <TouchableOpacity
               style={[
-                styles.submitBtn,
-                (!canSubmit || loadingBtn) && styles.submitBtnDisabled,
+                styles.submitBtn(theme),
+                (!canSubmit || submitting) && styles.submitBtnDisabled(theme),
               ]}
               onPress={handleSubmit}
-              disabled={!canSubmit || loadingBtn}
-              activeOpacity={0.8}
+              disabled={!canSubmit || submitting}
             >
-              {loadingBtn ? (
-                <View style={styles.submitBtnInner}>
-                  <ActivityIndicator size="small" color={theme.colors.text} />
-                  <ThemedText style={styles.submitBtnText}>
-                    Submitting…
-                  </ThemedText>
-                </View>
+              {submitting ? (
+                <ActivityIndicator color={theme.colors.primaryText} />
               ) : (
-                <ThemedText style={styles.submitBtnText}>
+                <ThemedText style={styles.submitBtnText(theme)}>
                   Submit Inspection
                 </ThemedText>
               )}
@@ -219,19 +366,16 @@ export default function VehicleInspectionForm() {
         </View>
       </CustomScrollView>
 
-      {/* Modals */}
       <ImageUploadLoader
         visible={uploadProgress.isUploading}
         currentImage={uploadProgress.currentImage}
         totalImages={uploadProgress.totalImages}
-        message={`Uploading image ${uploadProgress.currentImage} of ${uploadProgress.totalImages}`}
       />
-
       <ResponseModal
-        visible={showResponse}
-        successful={successful}
-        message={message}
-        onClose={() => setShowResponse(false)}
+        visible={responseModal.visible}
+        successful={responseModal.successful}
+        message={responseModal.message}
+        onClose={() => dispatch(hideResponseModal())}
       />
     </NonTabScreen>
   );

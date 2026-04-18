@@ -37,4 +37,8 @@ Then install manually:
 
 ```bash
 adb install app-release.apk
-```
+
+
+//play store
+
+npx eas build -p android

@@ -112,7 +112,7 @@ export default function HomeScreen() {
         </View>
 
         {/* Stats row */}
-        <View className="flex-row mb-6">
+        <View className="flex-row mb-4">
           <StatCard
             title="Pending Forms"
             value="12"
@@ -128,7 +128,7 @@ export default function HomeScreen() {
             trendType="warning"
           />
         </View>
-        <View className="flex-row mb-6">
+        <View className="flex-row mb-4">
           <StatCard title="Active Vehicles" value="24" icon={Truck} />
           <StatCard
             title="Inspections Due"
@@ -171,10 +171,7 @@ export default function HomeScreen() {
               Recent Activity
             </ThemedText>
             <Pressable>
-              <ThemedText
-                style={{ color: theme.colors.primary }}
-                variant="small"
-              >
+              <ThemedText style={{ color: theme.colors.text }} variant="small">
                 View all
               </ThemedText>
             </Pressable>

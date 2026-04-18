@@ -1,8 +1,19 @@
 // components/viFComponents/PhotoUpload.tsx
 import { useTheme } from "@/src/contexts/theme-context";
+import {
+  addPhoto,
+  clearAllPhotos,
+  incrementUploadProgress,
+  removePhoto,
+  resetUploadProgress,
+  setUploadProgress,
+  updatePhotoStatus,
+} from "@/src/state";
+import { useAppDispatch, useAppSelector } from "@/src/state/redux";
+import { uploadData } from "aws-amplify/storage";
 import * as ImagePicker from "expo-image-picker";
 import { AlertCircle, CheckCircle, Upload, X } from "lucide-react-native";
-import React, { useEffect, useState } from "react";
+import React from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -14,61 +25,86 @@ import {
   View,
 } from "react-native";
 
-export interface PhotoState {
-  id: string;
-  uri: string;
-  status: "uploading" | "success" | "error" | "deleting";
-  error?: string;
-}
-
 interface PhotoUploadProps {
-  photos: PhotoState[];
-  onPhotosChange: (photos: PhotoState[]) => void; // <-- main way to sync to parent
   vehicleReg: string;
   inspectionNumber: number | null;
   disabled?: boolean;
-  // Deprecated props – kept for compatibility but will be ignored
-  onAdd?: () => void;
-  onRemove?: (index: number) => void;
-  onRemoveAll?: () => void;
-  onRetry?: (id: string) => void;
 }
 
-function StatusIcon({ status }: { status: PhotoState["status"] }) {
-  if (status === "uploading" || status === "deleting") {
-    return (
-      <ActivityIndicator
-        size="small"
-        color={status === "uploading" ? "#3b82f6" : "#f97316"}
-      />
-    );
-  }
-  if (status === "success") return <CheckCircle size={16} color="#22c55e" />;
-  if (status === "error") return <AlertCircle size={16} color="#ef4444" />;
-  return null;
-}
+// Helper: clean vehicle registration for S3 path
+const cleanVehicleReg = (reg: string): string => {
+  return reg.replace(/[^a-zA-Z0-9]/g, "-");
+};
+
+// Helper: generate random string for uniqueness
+const randomString = (length: number = 8): string => {
+  return Math.random()
+    .toString(36)
+    .substring(2, 2 + length);
+};
 
 export default function PhotoUpload({
-  photos: externalPhotos,
-  onPhotosChange,
   vehicleReg,
   inspectionNumber,
   disabled = false,
 }: PhotoUploadProps) {
-  // Local state to avoid stale closures and disappearing images
   const { theme } = useTheme();
-  const [localPhotos, setLocalPhotos] = useState<PhotoState[]>(externalPhotos);
-  const [isUploading, setIsUploading] = useState(false);
+  const dispatch = useAppDispatch();
+  const photos = useAppSelector((state) => state.global.vifForm.photos);
+  const uploadProgress = useAppSelector((state) => state.global.uploadProgress);
 
-  // Sync external changes (e.g., when vehicle changes, parent clears photos)
-  useEffect(() => {
-    setLocalPhotos(externalPhotos);
-  }, [externalPhotos]);
+  const generateS3Key = (index: number): string => {
+    const timestamp = Date.now();
+    const cleanReg = cleanVehicleReg(vehicleReg);
+    const random = randomString();
+    return `inspections/${cleanReg}/${inspectionNumber}/${timestamp}-${index}-${random}.jpg`;
+  };
 
-  // Sync local changes to parent
-  useEffect(() => {
-    onPhotosChange(localPhotos);
-  }, [localPhotos, onPhotosChange]);
+  const uploadSinglePhoto = async (
+    photo: any,
+    index: number,
+    total: number,
+  ) => {
+    try {
+      // Update progress before starting this upload
+      dispatch(incrementUploadProgress());
+
+      // Convert URI to blob
+      const response = await fetch(photo.uri);
+      const blob = await response.blob();
+
+      // Generate correct S3 key
+      const s3Key = generateS3Key(index);
+
+      // Upload to S3
+      await uploadData({
+        path: s3Key,
+        data: blob,
+        options: {
+          contentType: "image/jpeg",
+        },
+      }).result;
+
+      // Success
+      dispatch(
+        updatePhotoStatus({
+          id: photo.id,
+          status: "success",
+          s3Key: s3Key, // store only the key, not s3://bucket/
+          error: undefined,
+        }),
+      );
+    } catch (error) {
+      console.error("S3 upload failed:", error);
+      dispatch(
+        updatePhotoStatus({
+          id: photo.id,
+          status: "error",
+          error: error instanceof Error ? error.message : "Upload failed",
+        }),
+      );
+    }
+  };
 
   const pickImages = async () => {
     if (disabled) return;
@@ -76,105 +112,115 @@ export default function PhotoUpload({
       Alert.alert("Cannot Upload", "Please select a vehicle first");
       return;
     }
-    if (localPhotos.length >= 20) {
+    if (photos.length >= 20) {
       Alert.alert("Limit Reached", "Maximum 20 photos allowed");
       return;
     }
 
-    // Request permission (important for iOS)
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== "granted") {
-      Alert.alert(
-        "Permission needed",
-        "Please grant photo library access to upload images",
-      );
+      Alert.alert("Permission needed", "Please grant photo library access");
       return;
     }
 
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"], // ✅ Fix deprecation warning
+      mediaTypes: ["images"],
       allowsMultipleSelection: true,
       quality: 0.8,
     });
 
     if (!result.canceled && result.assets) {
-      const remaining = 20 - localPhotos.length;
+      const remaining = 20 - photos.length;
       const newAssets = result.assets.slice(0, remaining);
 
-      const newPhotos: PhotoState[] = newAssets.map((asset, idx) => ({
-        id: `${Date.now()}_${idx}_${Math.random()}`,
+      // Create photo objects with temporary IDs and 'uploading' status
+      const newPhotos = newAssets.map((asset, idx) => ({
+        id: `${Date.now()}_${idx}_${randomString()}`,
         uri: asset.uri,
-        status: "uploading",
+        status: "uploading" as const,
+        s3Key: "",
       }));
 
-      // Add to local state immediately
-      setLocalPhotos((prev) => [...prev, ...newPhotos]);
+      // Add to Redux
+      newPhotos.forEach((photo) => dispatch(addPhoto(photo)));
 
-      // Simulate upload (replace with real upload logic)
-      for (const photo of newPhotos) {
-        await simulateUpload(photo.id);
+      // Set overall upload progress
+      const totalImages = photos.length + newPhotos.length;
+      dispatch(
+        setUploadProgress({
+          isUploading: true,
+          currentImage: 0,
+          totalImages,
+        }),
+      );
+
+      // Upload each photo sequentially
+      for (let i = 0; i < newPhotos.length; i++) {
+        await uploadSinglePhoto(newPhotos[i], i, totalImages);
       }
+
+      // All done
+      dispatch(resetUploadProgress());
     }
   };
 
-  // Replace this with your actual upload function (e.g., to S3 or API)
-  const simulateUpload = async (photoId: string) => {
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-    const isSuccess = Math.random() > 0.1; // 90% success rate for demo
+  const retryUpload = async (photoId: string) => {
+    const photo = photos.find((p) => p.id === photoId);
+    if (!photo) return;
 
-    setLocalPhotos((prev) =>
-      prev.map((p) =>
-        p.id === photoId
-          ? {
-              ...p,
-              status: isSuccess ? "success" : "error",
-              error: isSuccess ? undefined : "Upload failed",
-            }
-          : p,
-      ),
+    // Reset status to uploading
+    dispatch(
+      updatePhotoStatus({ id: photoId, status: "uploading", error: undefined }),
     );
+
+    // Re-upload
+    try {
+      const response = await fetch(photo.uri);
+      const blob = await response.blob();
+      const s3Key = generateS3Key(photos.findIndex((p) => p.id === photoId));
+      await uploadData({
+        path: s3Key,
+        data: blob,
+        options: { contentType: "image/jpeg" },
+      }).result;
+      dispatch(
+        updatePhotoStatus({
+          id: photoId,
+          status: "success",
+          s3Key,
+          error: undefined,
+        }),
+      );
+    } catch (error) {
+      dispatch(
+        updatePhotoStatus({
+          id: photoId,
+          status: "error",
+          error: error instanceof Error ? error.message : "Upload failed",
+        }),
+      );
+    }
   };
 
-  const retryUpload = (photoId: string) => {
-    setLocalPhotos((prev) =>
-      prev.map((p) =>
-        p.id === photoId ? { ...p, status: "uploading", error: undefined } : p,
-      ),
-    );
-    simulateUpload(photoId);
-  };
-
-  const removePhoto = (index: number) => {
-    setLocalPhotos((prev) => prev.filter((_, i) => i !== index));
+  const removePhotoHandler = (id: string) => {
+    dispatch(removePhoto(id));
   };
 
   const removeAllPhotos = () => {
-    Alert.alert(
-      "Remove All Photos",
-      "Are you sure you want to remove all photos?",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Remove All",
-          style: "destructive",
-          onPress: () => setLocalPhotos([]),
-        },
-      ],
-    );
+    Alert.alert("Remove All Photos", "Are you sure?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Remove All",
+        style: "destructive",
+        onPress: () => dispatch(clearAllPhotos()),
+      },
+    ]);
   };
 
   const allUploaded =
-    localPhotos.length > 0 && localPhotos.every((p) => p.status === "success");
-  const uploading = localPhotos.some((p) => p.status === "uploading");
-  const hasDeleting = localPhotos.some((p) => p.status === "deleting");
-  const hasErrors = localPhotos.some((p) => p.status === "error");
-
-  const canAdd =
-    !!vehicleReg &&
-    !!inspectionNumber &&
-    localPhotos.length < 20 &&
-    !uploading &&
-    !disabled;
+    photos.length > 0 && photos.every((p) => p.status === "success");
+  const uploading = photos.some((p) => p.status === "uploading");
+  const hasErrors = photos.some((p) => p.status === "error");
 
   const styles = StyleSheet.create({
     container: { gap: 12 },
@@ -219,11 +265,7 @@ export default function PhotoUpload({
       backgroundColor: "#fff5f5",
     },
     removeAllText: { fontSize: 13, color: "#ef4444", fontWeight: "500" },
-    allUploadedBadge: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 4,
-    },
+    allUploadedBadge: { flexDirection: "row", alignItems: "center", gap: 4 },
     allUploadedText: { fontSize: 12, color: theme.colors.success },
     warning: { fontSize: 12, color: theme.colors.warning },
     photoList: { paddingVertical: 4, gap: 8, flexDirection: "row" },
@@ -261,13 +303,6 @@ export default function PhotoUpload({
       alignItems: "center",
     },
     retryText: { fontSize: 11, fontWeight: "500", color: theme.colors.text },
-    deletingOverlay: {
-      ...StyleSheet.absoluteFillObject,
-      backgroundColor: "rgba(0,0,0,0.5)",
-      borderRadius: 8,
-      alignItems: "center",
-      justifyContent: "center",
-    },
     summary: {
       fontSize: 11,
       color: theme.colors.textMuted,
@@ -280,37 +315,61 @@ export default function PhotoUpload({
       <View style={styles.toolbar}>
         <View style={styles.toolbarLeft}>
           <TouchableOpacity
-            style={[styles.uploadBtn, !canAdd && styles.uploadBtnDisabled]}
+            style={[
+              styles.uploadBtn,
+              (!vehicleReg ||
+                !inspectionNumber ||
+                photos.length >= 20 ||
+                uploading ||
+                disabled) &&
+                styles.uploadBtnDisabled,
+            ]}
             onPress={pickImages}
-            disabled={!canAdd}
-            activeOpacity={0.7}
+            disabled={
+              !vehicleReg ||
+              !inspectionNumber ||
+              photos.length >= 20 ||
+              uploading ||
+              disabled
+            }
           >
-            <Upload size={15} color={canAdd ? "#1e293b" : "#94a3b8"} />
+            <Upload
+              size={15}
+              color={
+                !vehicleReg ||
+                !inspectionNumber ||
+                photos.length >= 20 ||
+                uploading ||
+                disabled
+                  ? "#94a3b8"
+                  : "#1e293b"
+              }
+            />
             <Text
               style={[
                 styles.uploadBtnText,
-                !canAdd && styles.uploadBtnTextDisabled,
+                (!vehicleReg ||
+                  !inspectionNumber ||
+                  photos.length >= 20 ||
+                  uploading ||
+                  disabled) &&
+                  styles.uploadBtnTextDisabled,
               ]}
             >
-              {uploading
-                ? "Uploading…"
-                : `Upload photos (${localPhotos.length}/20)`}
+              {uploading ? "Uploading…" : `Upload photos (${photos.length}/20)`}
             </Text>
           </TouchableOpacity>
-
-          {localPhotos.length > 0 && (
+          {photos.length > 0 && (
             <TouchableOpacity
               style={styles.removeAllBtn}
               onPress={removeAllPhotos}
-              disabled={uploading || hasDeleting || disabled}
-              activeOpacity={0.7}
+              disabled={uploading || disabled}
             >
               <X size={10} color="#ef4444" />
               <Text style={styles.removeAllText}>Remove all</Text>
             </TouchableOpacity>
           )}
         </View>
-
         {allUploaded && (
           <View style={styles.allUploadedBadge}>
             <CheckCircle size={13} color="#16a34a" />
@@ -328,61 +387,52 @@ export default function PhotoUpload({
         <Text style={styles.warning}>Select an inspection number first</Text>
       )}
 
-      {localPhotos.length > 0 && (
+      {photos.length > 0 && (
         <>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.photoList}
           >
-            {localPhotos.map((photo, index) => (
+            {photos.map((photo, index) => (
               <View key={photo.id} style={styles.photoItem}>
                 <Image source={{ uri: photo.uri }} style={styles.photo} />
-
                 <View style={styles.statusIcon}>
-                  <StatusIcon status={photo.status} />
+                  {photo.status === "uploading" && (
+                    <ActivityIndicator size="small" color="#3b82f6" />
+                  )}
+                  {photo.status === "success" && (
+                    <CheckCircle size={16} color="#22c55e" />
+                  )}
+                  {photo.status === "error" && (
+                    <AlertCircle size={16} color="#ef4444" />
+                  )}
                 </View>
-
                 <TouchableOpacity
                   style={styles.removeBtn}
-                  onPress={() => removePhoto(index)}
-                  disabled={
-                    photo.status === "uploading" ||
-                    photo.status === "deleting" ||
-                    disabled
-                  }
-                  activeOpacity={0.7}
+                  onPress={() => removePhotoHandler(photo.id)}
+                  disabled={photo.status === "uploading" || disabled}
                 >
                   <X size={10} color="#fff" />
                 </TouchableOpacity>
-
                 {photo.status === "error" && (
                   <TouchableOpacity
                     style={styles.retryBtn}
                     onPress={() => retryUpload(photo.id)}
                     disabled={disabled}
-                    activeOpacity={0.7}
                   >
                     <Text style={styles.retryText}>Retry</Text>
                   </TouchableOpacity>
                 )}
-
-                {photo.status === "deleting" && (
-                  <View style={styles.deletingOverlay}>
-                    <ActivityIndicator size="small" color="#fff" />
-                  </View>
-                )}
               </View>
             ))}
           </ScrollView>
-
           <Text style={styles.summary}>
-            {localPhotos.length} photo(s) ·{" "}
-            {localPhotos.filter((p) => p.status === "success").length} uploaded
-            · {localPhotos.filter((p) => p.status === "uploading").length}{" "}
-            uploading · {localPhotos.filter((p) => p.status === "error").length}{" "}
-            failed
-            {hasErrors && " · Fix errors before submitting"}
+            {photos.length} photo(s) ·{" "}
+            {photos.filter((p) => p.status === "success").length} uploaded ·{" "}
+            {photos.filter((p) => p.status === "uploading").length} uploading ·{" "}
+            {photos.filter((p) => p.status === "error").length} failed{" "}
+            {hasErrors && "· Fix errors before submitting"}
           </Text>
         </>
       )}

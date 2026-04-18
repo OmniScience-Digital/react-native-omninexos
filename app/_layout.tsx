@@ -2,7 +2,7 @@ import outputs from "@/amplify_outputs.json";
 import "@/global.css";
 import { AuthProvider, useAuth } from "@/src/contexts/auth-context";
 import { ThemeProvider, useTheme } from "@/src/contexts/theme-context";
-import { store } from "@/src/store";
+import StoreProvider from "@/src/state/redux";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Amplify } from "aws-amplify";
 import { cognitoUserPoolsTokenProvider } from "aws-amplify/auth/cognito";
@@ -10,20 +10,19 @@ import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
-import React, { useEffect } from "react";
-import { Animated, Easing, View } from "react-native";
+import React, { useEffect, useState } from "react";
+import { ActivityIndicator, Animated, Easing, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
-import { Provider } from "react-redux";
 
 Amplify.configure(outputs);
 cognitoUserPoolsTokenProvider.setKeyValueStorage(AsyncStorage);
 
-// Hold the splash screen before anything renders
 SplashScreen.preventAutoHideAsync();
 
 function LayoutInner() {
   const { theme, isReady: themeReady } = useTheme();
   const { isLoading: authLoading } = useAuth();
+
   const [fontsLoaded] = useFonts({
     "sans-regular": require("../assets/fonts/PlusJakartaSans-Regular.ttf"),
     "sans-bold": require("../assets/fonts/PlusJakartaSans-Bold.ttf"),
@@ -33,12 +32,11 @@ function LayoutInner() {
     "sans-light": require("../assets/fonts/PlusJakartaSans-Light.ttf"),
   });
 
-  // --- All hooks must be called unconditionally ---
+  // ── Theme transition overlay ──────────────────────────────────────────────
   const prevBgRef = React.useRef(theme.colors.background);
   const [overlayBg, setOverlayBg] = React.useState(theme.colors.background);
   const overlayOpacity = React.useRef(new Animated.Value(0)).current;
 
-  // Background transition effect
   useEffect(() => {
     const newBg = theme.colors.background;
     const oldBg = prevBgRef.current;
@@ -57,22 +55,42 @@ function LayoutInner() {
     }
   }, [theme.colors.background, overlayOpacity]);
 
-  // --- Readiness condition ---
+  // ── Splash hide ───────────────────────────────────────────────────────────
   const isReady = fontsLoaded && themeReady && !authLoading;
 
-  // Hide splash only when everything is ready
-  useEffect(() => {
-    if (isReady) {
-      SplashScreen.hideAsync();
-    }
-  }, [isReady]);
+  // Track whether splash has been hidden so we don't flash
+  const [splashHidden, setSplashHidden] = useState(false);
 
-  // --- Early return (after all hooks) while not ready ---
-  if (!isReady) {
-    return null; // Native splash remains visible, no React content
+  useEffect(() => {
+    if (isReady && !splashHidden) {
+      // Small delay ensures the first React frame is painted BEFORE
+      // the splash disappears — eliminates the white gap entirely.
+      const timer = setTimeout(async () => {
+        await SplashScreen.hideAsync();
+        setSplashHidden(true);
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [isReady, splashHidden]);
+
+  // ── While not ready: render a solid background that matches the theme ─────
+  // NEVER return null — that exposes the default white window background.
+  if (!isReady || !splashHidden) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: theme.colors.background,
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <ActivityIndicator size="large" color={theme.colors.accent} />
+      </View>
+    );
   }
 
-  // --- Full app UI (only when ready) ---
+  // ── Full app ──────────────────────────────────────────────────────────────
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
       <StatusBar
@@ -82,7 +100,10 @@ function LayoutInner() {
       <Stack
         screenOptions={{
           headerShown: false,
+          // Match the background so screen transitions don't flash white
           contentStyle: { backgroundColor: theme.colors.background },
+          // Disable the default white background on the animation container
+          animation: "fade",
         }}
       />
       <Animated.View
@@ -98,9 +119,9 @@ function LayoutInner() {
   );
 }
 
-export default function Rootlayout() {
+export default function RootLayout() {
   return (
-    <Provider store={store}>
+    <StoreProvider>
       <ThemeProvider>
         <SafeAreaProvider>
           <AuthProvider>
@@ -108,6 +129,6 @@ export default function Rootlayout() {
           </AuthProvider>
         </SafeAreaProvider>
       </ThemeProvider>
-    </Provider>
+    </StoreProvider>
   );
 }

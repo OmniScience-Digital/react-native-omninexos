@@ -2,7 +2,7 @@ import { Screen, ThemedText } from "@/components/ui/screen";
 import "@/global.css";
 import { useTheme } from "@/src/contexts/theme-context";
 import React from "react";
-import { Alert, Pressable, View } from "react-native";
+import { Pressable, View } from "react-native";
 
 import {
   AppCard,
@@ -15,6 +15,8 @@ import { CustomHeader } from "@/components/ui/customHeader";
 import { CustomScrollView } from "@/components/ui/scrollView";
 import { getCopyright } from "@/lib/utils";
 import { useAuth } from "@/src/contexts/auth-context";
+import { showResponseModal } from "@/src/state";
+import { useAppDispatch } from "@/src/state/redux";
 import { Info, LogOut, Moon, Sun, Trash2, User } from "lucide-react-native";
 
 /** Theme Toggle */
@@ -42,6 +44,7 @@ const ThemeToggle = () => {
 
 export default function Settings() {
   const { user, logout } = useAuth();
+  const dispatch = useAppDispatch();
   const { theme, preference, setPreference } = useTheme();
   const getThemeLabel = () =>
     preference === "light"
@@ -54,7 +57,10 @@ export default function Settings() {
     showConfirmationAlert(
       "Clear Cache",
       "This will clear temporary app data.",
-      () => Alert.alert("Success", "Cache cleared"),
+      () =>
+        dispatch(
+          showResponseModal({ successful: true, message: "Cache cleared" }),
+        ),
     );
   };
 

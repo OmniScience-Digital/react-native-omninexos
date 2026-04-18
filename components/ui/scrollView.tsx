@@ -5,7 +5,7 @@ export const CustomScrollView = ({
   children,
   keyboardDismissMode = "on-drag",
   showsVerticalScrollIndicator = false,
-  contentContainerClassName = "pb-30",
+  contentContainerClassName = "pb-35",
   ...props
 }: ScrollViewProps & { contentContainerClassName?: string }) => {
   return (

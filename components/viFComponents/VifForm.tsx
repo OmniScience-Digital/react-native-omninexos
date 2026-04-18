@@ -1,5 +1,8 @@
-// components/viFComponents/VifForm.tsx
+// // components/viFComponents/VifForm.tsx
+
 import { useTheme } from "@/src/contexts/theme-context";
+import { setBooleanAnswer, setOdometer, setSelectedVehicle } from "@/src/state";
+import { useAppDispatch, useAppSelector } from "@/src/state/redux";
 import { ChevronDown, Search, X } from "lucide-react-native";
 import { useState } from "react";
 import {
@@ -11,69 +14,9 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { ThemedText } from "../ui/screen";
 import BooleanQuestion from "./BooleanQuestion";
-import PhotoUpload, { PhotoState } from "./PhotoUpload";
-
-export const booleanQuestions = [
-  {
-    question: "Are the engine oil and Coolant Level Acceptable?",
-    value: null as boolean | null,
-  },
-  { question: "Is there a full tank of Fuel prior to start?", value: null },
-  {
-    question: "Are the Seatbelts, Doors and Mirrors Functioning Correctly?",
-    value: null,
-  },
-  { question: "Is the handbrake Tested and Functional?", value: null },
-  {
-    question: "Are all the Tyres wear, Tread, and Pressure Acceptable?",
-    value: null,
-  },
-  {
-    question:
-      "Is there a Spare tyre, jack, Spanner on the vehicle and in good condition?",
-    value: null,
-  },
-  {
-    question:
-      "Is there a valid number plate on the Front and Back of the vehicle?",
-    value: null,
-  },
-  {
-    question: "Is the License Disc Clearly Visible in the windscreen?",
-    value: null,
-  },
-  {
-    question: "Is there any signs of leaks under the vehicle prior to start?",
-    value: null,
-  },
-  {
-    question:
-      "Are the headlights, Taillights, Fog Lights, indicators and hazards functioning correctly?",
-    value: null,
-  },
-  {
-    question: "Are the defrosters, heaters and air conditioners functional?",
-    value: null,
-  },
-  {
-    question:
-      "Is the Emergency Kit within the Vehicle (First Aid Kit, Fire extinguisher, Warning Triangle)?",
-    value: null,
-  },
-  { question: "Is the car interior and Exterior Clean?", value: null },
-  {
-    question: "Are there any warning Lights present on the Dash at start up?",
-    value: null,
-  },
-  { question: "Are the Windscreen Wipers in working condition?", value: null },
-  { question: "Is the Service book within the vehicle?", value: null },
-  {
-    question:
-      "Is there Reflectors, Buggy Whip, Strobe Light and Stop Blocks within the Vehicle?",
-    value: null,
-  },
-];
+import PhotoUpload from "./PhotoUpload";
 
 interface Vehicle {
   id: string;
@@ -83,64 +26,29 @@ interface Vehicle {
 
 interface VifFormProps {
   vehicles: Vehicle[];
-  formState: {
-    selectedVehicleId: string;
-    selectedVehicleReg: string;
-    odometerValue: string;
-    booleanQuestions: typeof booleanQuestions;
-    photos: PhotoState[];
-  };
   inspectionNumber: number | null;
   recentInspection?: any;
-  onVehicleChange: (id: string, reg: string, vin: string) => void;
-  onOdometerChange: (value: string) => void;
-  onBooleanChange: (index: number, value: boolean) => void;
-  // NEW: only onPhotosChange is required; others are optional for backward compat
-  onPhotosChange: (photos: PhotoState[]) => void;
-  // Optional legacy props (no longer used internally)
-  onPhotosAdd?: () => void;
-  onPhotoRemove?: (index: number) => void;
-  onPhotoRemoveAll?: () => void;
-  onPhotoRetry?: (id: string) => void;
 }
 
 export default function VifForm({
   vehicles,
-  formState,
   inspectionNumber,
   recentInspection,
-  onVehicleChange,
-  onOdometerChange,
-  onBooleanChange,
-  onPhotosChange,
-  // Legacy props are ignored but kept to avoid breaking existing calls
-  onPhotosAdd,
-  onPhotoRemove,
-  onPhotoRemoveAll,
-  onPhotoRetry,
 }: VifFormProps) {
   const { theme } = useTheme();
+  const dispatch = useAppDispatch();
+  const formState = useAppSelector((state) => state.global.vifForm);
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
 
-  const filtered = vehicles
-    .filter((v) =>
-      v.vehicleReg?.toLowerCase().includes(searchTerm.toLowerCase()),
-    )
-    .sort((a, b) => a.vehicleReg?.localeCompare(b.vehicleReg));
-
+  const filtered = vehicles.filter((v) =>
+    v.vehicleReg?.toLowerCase().includes(searchTerm.toLowerCase()),
+  );
   const selectedVehicle = vehicles.find(
     (v) => v.id === formState.selectedVehicleId,
   );
 
-  const canSubmit =
-    formState.selectedVehicleId &&
-    formState.odometerValue &&
-    formState.photos.length > 0 &&
-    formState.photos.every((p) => p.status === "success") &&
-    !formState.booleanQuestions.some((q) => q.value === null);
-
-  const getPreviousAnswer = (index: number): boolean | null => {
+  const getPreviousAnswer = (index: number) => {
     if (!recentInspection) return null;
     const fieldNames = [
       "oilAndCoolant",
@@ -161,8 +69,7 @@ export default function VifForm({
       "serviceBook",
       "siteKit",
     ];
-    const fieldName = fieldNames[index];
-    return fieldName ? (recentInspection[fieldName] ?? null) : null;
+    return fieldNames[index] ? recentInspection[fieldNames[index]] : null;
   };
 
   const styles = StyleSheet.create({
@@ -176,7 +83,6 @@ export default function VifForm({
     },
     field: { gap: 6 },
     label: { fontSize: 13, fontWeight: "500", color: theme.colors.text },
-    labelMuted: { fontWeight: "400", color: theme.colors.accent },
     selectTrigger: {
       flexDirection: "row",
       alignItems: "center",
@@ -251,11 +157,7 @@ export default function VifForm({
     },
     recentText: { fontSize: 13, color: theme.colors.info, fontWeight: "500" },
     questionsList: { gap: 8 },
-    readinessBanner: {
-      padding: 12,
-      borderRadius: 8,
-      borderWidth: 1,
-    },
+    readinessBanner: { padding: 12, borderRadius: 8, borderWidth: 1 },
     readyBanner: {
       backgroundColor: theme.colors.success + "20",
       borderColor: theme.colors.success + "40",
@@ -269,6 +171,13 @@ export default function VifForm({
     warningText: { color: theme.colors.warning },
   });
 
+  const canSubmit =
+    formState.selectedVehicleId &&
+    formState.odometerValue &&
+    formState.photos.length > 0 &&
+    formState.photos.every((p) => p.status === "success") &&
+    !formState.booleanQuestions.some((q) => q.value === null);
+
   return (
     <View style={styles.container}>
       {/* Vehicle selector */}
@@ -277,7 +186,6 @@ export default function VifForm({
         <TouchableOpacity
           style={styles.selectTrigger}
           onPress={() => setDropdownOpen(true)}
-          activeOpacity={0.7}
         >
           <Text
             style={[styles.selectText, !selectedVehicle && styles.placeholder]}
@@ -288,7 +196,6 @@ export default function VifForm({
         </TouchableOpacity>
       </View>
 
-      {/* Vehicle dropdown modal */}
       <Modal visible={dropdownOpen} transparent animationType="fade">
         <TouchableOpacity
           style={styles.modalBackdrop}
@@ -327,11 +234,16 @@ export default function VifForm({
                       styles.dropdownItemActive,
                   ]}
                   onPress={() => {
-                    onVehicleChange(item.id, item.vehicleReg, item.vehicleVin);
+                    dispatch(
+                      setSelectedVehicle({
+                        id: item.id,
+                        reg: item.vehicleReg,
+                        vin: item.vehicleVin,
+                      }),
+                    );
                     setDropdownOpen(false);
                     setSearchTerm("");
                   }}
-                  activeOpacity={0.7}
                 >
                   <Text
                     style={[
@@ -357,15 +269,13 @@ export default function VifForm({
         <View style={styles.field}>
           <Text style={styles.label}>Upload Inspection Photos</Text>
           <PhotoUpload
-            photos={formState.photos}
-            onPhotosChange={onPhotosChange}
             vehicleReg={formState.selectedVehicleReg}
             inspectionNumber={inspectionNumber}
           />
         </View>
       )}
 
-      {/* Rest of form — shown after photos */}
+      {/* Rest of form */}
       {formState.selectedVehicleId && formState.photos.length > 0 && (
         <>
           {recentInspection && (
@@ -376,29 +286,23 @@ export default function VifForm({
               </Text>
             </View>
           )}
-
-          {/* Odometer */}
           <View style={styles.field}>
             <Text style={styles.label}>
-              Odometer Start
+              Odometer Start{" "}
               {recentInspection?.odometerStart && (
-                <Text style={styles.labelMuted}>
-                  {" "}
+                <ThemedText muted>
                   (Last: {recentInspection.odometerStart} km)
-                </Text>
+                </ThemedText>
               )}
             </Text>
             <TextInput
               style={styles.input}
               placeholder="Enter odometer reading"
-              placeholderTextColor="#94a3b8"
               keyboardType="numeric"
               value={formState.odometerValue}
-              onChangeText={onOdometerChange}
+              onChangeText={(val) => dispatch(setOdometer(val))}
             />
           </View>
-
-          {/* Boolean questions */}
           <View style={styles.field}>
             <Text style={styles.label}>Inspection Checklist</Text>
             <View style={styles.questionsList}>
@@ -407,14 +311,14 @@ export default function VifForm({
                   key={i}
                   question={q.question}
                   value={q.value}
-                  onChange={(val) => onBooleanChange(i, val)}
+                  onChange={(val) =>
+                    dispatch(setBooleanAnswer({ index: i, value: val }))
+                  }
                   previousAnswer={getPreviousAnswer(i)}
                 />
               ))}
             </View>
           </View>
-
-          {/* Readiness banner */}
           <View
             style={[
               styles.readinessBanner,
