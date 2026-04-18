@@ -1,8 +1,15 @@
-// app/index.tsx (or components/HomeScreen.tsx)
+// app/index.tsx
 import { ModuleCard, StatCard } from "@/components/ui/DashboardCards";
 import { Screen, ThemedText } from "@/components/ui/screen";
 import { CustomScrollView } from "@/components/ui/scrollView";
 import { useTheme } from "@/src/contexts/theme-context";
+import { showResponseModal } from "@/src/state";
+import {
+  useLazyGetInspectionsByFleetQuery,
+  useListCategoriesQuery,
+  useListFleetsQuery,
+} from "@/src/state/api";
+import { useAppDispatch } from "@/src/state/redux";
 import { format } from "date-fns";
 import { router } from "expo-router";
 import {
@@ -15,29 +22,122 @@ import {
   Settings,
   Truck,
 } from "lucide-react-native";
-import React from "react";
-import { Pressable, View } from "react-native";
+import { useEffect, useState } from "react";
+import { ActivityIndicator, FlatList, Pressable, View } from "react-native";
 
 export default function HomeScreen() {
   const { theme } = useTheme();
-
-  // Inside component
   const currentDate = format(new Date(), "MMM d, yyyy");
+  const dispatch = useAppDispatch();
 
-  const handleStockPress = () => alert("Coming Soon");
-  const handleInspectionPress = () => alert("Coming Soon");
+  // Real data from Redux/RTK Query
+  const { data: vehicles = [], isLoading: vehiclesLoading } =
+    useListFleetsQuery();
+  const { data: categories = [], isLoading: categoriesLoading } =
+    useListCategoriesQuery();
+  const [getInspections] = useLazyGetInspectionsByFleetQuery();
+
+  const [totalInspections, setTotalInspections] = useState(0);
+  const [recentInspections, setRecentInspections] = useState<Inspection[]>([]);
+  const [isCalculating, setIsCalculating] = useState(false);
+
+  // Calculate total inspections by summing the max inspectionNo per vehicle
+  useEffect(() => {
+    const calculateTotal = async () => {
+      if (!vehicles.length) return;
+      setIsCalculating(true);
+      let sum = 0;
+      const allRecent: Inspection[] = [];
+      for (const vehicle of vehicles) {
+        const result = await getInspections({
+          fleetId: vehicle.id,
+          limit: 1,
+        }).unwrap();
+        const latest = result?.[0];
+        if (latest) {
+          sum += latest.inspectionNo ?? 0;
+          allRecent.push(latest);
+        }
+      }
+      setTotalInspections(sum);
+      // Sort recent inspections by date descending and take first 5
+      const sorted = allRecent.sort(
+        (a, b) =>
+          new Date(b.inspectionDate || 0).getTime() -
+          new Date(a.inspectionDate || 0).getTime(),
+      );
+      setRecentInspections(sorted.slice(0, 5));
+      setIsCalculating(false);
+    };
+    calculateTotal();
+  }, [vehicles, getInspections]);
+
+  const totalVehicles = vehicles.length;
+  const totalCategories = categories.length;
+  const isLoading = vehiclesLoading || categoriesLoading || isCalculating;
+
+  const handleStockPress = () => {
+    dispatch(
+      showResponseModal({
+        successful: true,
+        message: "Stock Management coming soon",
+      }),
+    );
+  };
+  const handleInspectionPress = () => {
+    dispatch(
+      showResponseModal({
+        successful: true,
+        message: "Inspection view Coming soon",
+      }),
+    );
+  };
   const handleFormsPress = () => {
     router.push("/forms");
   };
-
   const handleSettingsPress = () => {
     router.push("/settings");
   };
 
+  // Data for stats cards
+  const statsData = [
+    {
+      id: "inspections",
+      title: "Total Inspections",
+      value: isLoading ? "..." : String(totalInspections),
+      icon: ClipboardCheck,
+      trend: "all time",
+      trendType: "success" as const,
+    },
+    {
+      id: "categories",
+      title: "Stock Categories",
+      value: categoriesLoading ? "..." : String(totalCategories),
+      icon: Package,
+      trend: "active",
+      trendType: "success" as const,
+    },
+    {
+      id: "vehicles",
+      title: "Active Vehicles",
+      value: vehiclesLoading ? "..." : String(totalVehicles),
+      icon: Truck,
+      // no trend or trendType
+    },
+    {
+      id: "pending",
+      title: "Out of Stock",
+      value: "0",
+      icon: FileText,
+      trend: "soon",
+      trendType: "warning" as const,
+    },
+  ];
+
   return (
     <Screen>
       <CustomScrollView>
-        {/* Header with vibrant gradient-like background */}
+        {/* Header */}
         <View className="mb-4">
           <View className="flex-row justify-end">
             <Pressable
@@ -52,7 +152,7 @@ export default function HomeScreen() {
             </Pressable>
           </View>
 
-          {/* Stats card */}
+          {/* Stats card with real totals */}
           <View
             className="p-5 rounded-2xl"
             style={{
@@ -70,17 +170,17 @@ export default function HomeScreen() {
                   variant="small"
                   style={{ color: theme.colors.primaryText, opacity: 0.8 }}
                 >
-                  Total Inspections
+                  Total Vehicles
                 </ThemedText>
                 <ThemedText
                   variant="h1"
                   weight="700"
                   style={{ color: theme.colors.primaryText, marginTop: 4 }}
                 >
-                  24
+                  {vehiclesLoading ? "..." : totalVehicles}
                 </ThemedText>
               </View>
-              <ClipboardCheck size={32} color={theme.colors.primaryText} />
+              <Truck size={32} color={theme.colors.primaryText} />
             </View>
 
             <View
@@ -89,12 +189,12 @@ export default function HomeScreen() {
             >
               <View className="flex-row justify-between">
                 <View className="flex-row items-center gap-2">
-                  <Truck size={16} color={theme.colors.primaryText} />
+                  <Package size={16} color={theme.colors.primaryText} />
                   <ThemedText
                     variant="small"
                     style={{ color: theme.colors.primaryText, opacity: 0.9 }}
                   >
-                    Active: 18
+                    Categories: {categoriesLoading ? "..." : totalCategories}
                   </ThemedText>
                 </View>
                 <View className="flex-row items-center gap-2">
@@ -112,32 +212,29 @@ export default function HomeScreen() {
         </View>
 
         {/* Stats row */}
-        <View className="flex-row mb-4">
-          <StatCard
-            title="Pending Forms"
-            value="12"
-            icon={FileText}
-            trend="+2"
-            trendType="success"
-          />
-          <StatCard
-            title="Stock Alerts"
-            value="3"
-            icon={Package}
-            trend="low"
-            trendType="warning"
-          />
+        <View className="mb-1">
+          <ThemedText variant="h2" weight="700">
+            Quick Overview
+          </ThemedText>
         </View>
-        <View className="flex-row mb-4">
-          <StatCard title="Active Vehicles" value="24" icon={Truck} />
-          <StatCard
-            title="Inspections Due"
-            value="8"
-            icon={ClipboardList}
-            trend="urgent"
-            trendType="warning"
-          />
-        </View>
+
+        <FlatList
+          data={statsData}
+          keyExtractor={(item) => item.id}
+          renderItem={({ item }) => (
+            <StatCard
+              title={item.title}
+              value={item.value}
+              icon={item.icon}
+              trend={item.trend}
+              trendType={item.trendType}
+            />
+          )}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ gap: 16 }}
+          className="mb-4"
+        />
 
         {/* Modules */}
         <View className="mb-1">
@@ -164,13 +261,24 @@ export default function HomeScreen() {
           />
         </View>
 
-        {/* Recent Activity */}
+        {/* Recent Activity – real inspections */}
         <View className="mt-2">
           <View className="flex-row justify-between items-center mb-3">
             <ThemedText variant="h2" weight="700">
-              Recent Activity
+              Recent Inspections
             </ThemedText>
-            <Pressable>
+            <Pressable
+              onPress={() =>
+                dispatch(
+                  showResponseModal({
+                    successful: true,
+                    message: "Inspections view Coming soon",
+                  }),
+                )
+              }
+              className="rounded-full border px-4 py-1"
+              style={{ borderColor: theme.colors.text }}
+            >
               <ThemedText style={{ color: theme.colors.text }} variant="small">
                 View all
               </ThemedText>
@@ -183,15 +291,44 @@ export default function HomeScreen() {
               borderColor: theme.colors.border,
             }}
           >
-            <View className="flex-row items-center mb-3">
-              <Bell size={16} color={theme.colors.info} />
-              <ThemedText muted variant="small" style={{ marginLeft: 8 }}>
-                No recent updates
-              </ThemedText>
-            </View>
-            <ThemedText muted variant="small">
-              Complete an inspection or add stock to see activity here.
-            </ThemedText>
+            {isLoading ? (
+              <ActivityIndicator size="small" color={theme.colors.text} />
+            ) : recentInspections.length === 0 ? (
+              <>
+                <View className="flex-row items-center mb-3">
+                  <Bell size={16} color={theme.colors.info} />
+                  <ThemedText muted variant="small" style={{ marginLeft: 8 }}>
+                    No recent inspections
+                  </ThemedText>
+                </View>
+                <ThemedText muted variant="small">
+                  Complete an inspection to see activity here.
+                </ThemedText>
+              </>
+            ) : (
+              recentInspections.map((inspection: Inspection) => (
+                <View
+                  key={inspection.id}
+                  className="mb-3 pb-2 border-b"
+                  style={{ borderColor: theme.colors.border }}
+                >
+                  <View className="flex-row justify-between">
+                    <ThemedText weight="600">
+                      {inspection.vehicleReg ?? "Unknown"}
+                    </ThemedText>
+                    <ThemedText muted variant="small">
+                      {inspection.inspectionDate
+                        ? format(new Date(inspection.inspectionDate), "MMM dd")
+                        : "No date"}
+                    </ThemedText>
+                  </View>
+                  <ThemedText muted variant="small">
+                    Odometer: {inspection.odometerStart ?? 0} km · Inspection #
+                    {inspection.inspectionNo ?? "?"}
+                  </ThemedText>
+                </View>
+              ))
+            )}
           </View>
         </View>
       </CustomScrollView>

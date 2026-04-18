@@ -70,26 +70,26 @@ const STORAGE_KEY = "themePreference";
 // ─────────────────────────────────────────────
 // THEME DEFINITIONS
 // ─────────────────────────────────────────────
-const ACCENT = "#2C3E50"; // dark slate for light mode
-const ACCENT_DARK = "#1A252F"; // almost-black for dark mode
+const ACCENT = "#1A1A1A";
+const ACCENT_DARK = "#0D0D0D";
 
 const lightTheme: Theme = {
   name: "light",
   colors: {
     background: "#F7F8FB",
     card: "#FFFFFF",
-    text: "#0F172A",
-    textMuted: "#64748B",
+    text: "#111111",
+    textMuted: "#555555",
     primary: ACCENT,
     primaryText: "#FFFFFF",
-    border: "#E5E7EB",
-    shadow: "rgba(15, 23, 42, 0.08)",
-    glass: "rgba(255, 255, 255, 0.55)",
+    border: "#E0E0E0",
+    shadow: "rgba(17, 17, 17, 0.08)",
+    glass: "rgba(255, 255, 255, 0.6)",
     tabIconActive: ACCENT,
-    success: "#10B981", // emerald
-    warning: "#F59E0B", // amber
-    info: "#3B82F6", // blue
-    accent: "#0D9488", // teal ← changed
+    success: "#16A34A",
+    warning: "#D97706",
+    info: "#0284C7",
+    accent: "#3D3D3D",
   },
   radius: { md: 14, xl: 24, pill: 999 },
   spacing: { xs: 6, sm: 10, md: 16, lg: 24, xl: 32 },
@@ -108,20 +108,20 @@ const lightTheme: Theme = {
 const darkTheme: Theme = {
   name: "dark",
   colors: {
-    background: "#0F172A",
-    card: "#1E293B",
-    text: "#F1F5F9",
-    textMuted: "#94A3B8",
+    background: "#080808",
+    card: "#111111",
+    text: "#F0F0F0",
+    textMuted: "#737373",
     primary: ACCENT_DARK,
     primaryText: "#FFFFFF",
-    border: "#334155",
-    shadow: "rgba(0, 0, 0, 0.4)",
-    glass: "rgba(30, 41, 59, 0.8)",
+    border: "#1E1E1E",
+    shadow: "rgba(0, 0, 0, 0.65)",
+    glass: "rgba(17, 17, 17, 0.9)",
     tabIconActive: ACCENT_DARK,
     success: "#34D399",
     warning: "#FBBF24",
     info: "#60A5FA",
-    accent: "#14B8A6", // teal ← changed
+    accent: "#909090",
   },
   radius: { md: 14, xl: 24, pill: 999 },
   spacing: { xs: 6, sm: 10, md: 16, lg: 24, xl: 32 },
@@ -136,7 +136,6 @@ const darkTheme: Theme = {
     },
   },
 };
-
 // ─────────────────────────────────────────────
 // CONTEXT
 // ─────────────────────────────────────────────

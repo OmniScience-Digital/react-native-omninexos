@@ -66,32 +66,11 @@ export const AuthFormLayout = ({
                 }}
               >
                 <Image
-                  source={theme.name === "light" ? logo : logodark}
+                  source={theme.name === "light" ? logodark : logo}
                   style={{ width: 90, height: 100 }}
                   resizeMode="contain"
                 />
               </View>
-              {/* <ThemedText
-                weight="700"
-                style={{
-                  fontSize: 28,
-                  color: theme.colors.text,
-                  marginBottom: 4,
-                }}
-              >
-                Omni-Nexos
-              </ThemedText>
-              <ThemedText
-                weight="400"
-                muted
-                style={{
-                  fontSize: 12,
-                  letterSpacing: 1.2,
-                  textTransform: "uppercase",
-                }}
-              >
-                MASSIVE PTY LTD
-              </ThemedText> */}
             </View>
 
             {/* Title & Subtitle */}
@@ -113,7 +92,7 @@ export const AuthFormLayout = ({
                 style={{
                   fontSize: 14,
                   textAlign: "center",
-                  lineHeight: 15,
+                  lineHeight: 18,
                   maxWidth: 300,
                   alignSelf: "center",
                 }}

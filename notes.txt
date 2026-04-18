@@ -5,7 +5,7 @@ You build and install it like a normal Android app after prebuilding:
 1. Prebuild native project
 
    ```bash
-   npx expo prebuild
+   npx expo prebuild --clean
    ```
 
 2. Plug in your phone (USB debugging ON)
@@ -36,7 +36,7 @@ android/app/build/outputs/apk/release/app-release.apk
 Then install manually:
 
 ```bash
-adb install app-release.apk
+adb install -r android/app/build/outputs/apk/release/app-release.apk
 
 
 //play store

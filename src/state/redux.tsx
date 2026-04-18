@@ -1,10 +1,20 @@
 // state/redux.tsx
 import globalReducer, { showResponseModal } from "@/src/state";
 import { api } from "@/src/state/api";
-import { combineReducers, configureStore, isRejectedWithValue } from "@reduxjs/toolkit";
+import stockReducer from "@/src/state/stockSlice";
+import {
+  combineReducers,
+  configureStore,
+  isRejectedWithValue,
+} from "@reduxjs/toolkit";
 import { setupListeners } from "@reduxjs/toolkit/query";
 import React from "react";
-import { Provider, TypedUseSelectorHook, useDispatch, useSelector } from "react-redux";
+import {
+  Provider,
+  TypedUseSelectorHook,
+  useDispatch,
+  useSelector,
+} from "react-redux";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Root reducer
@@ -12,6 +22,7 @@ import { Provider, TypedUseSelectorHook, useDispatch, useSelector } from "react-
 
 const rootReducer = combineReducers({
   global: globalReducer,
+  stock: stockReducer,
   [api.reducerPath]: api.reducer,
 });
 

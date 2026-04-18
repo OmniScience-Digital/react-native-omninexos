@@ -102,6 +102,58 @@ const UPDATE_FLEET = /* GraphQL */ `
   }
 `;
 
+const LIST_RECENT_INSPECTIONS = /* GraphQL */ `
+  query ListRecentInspections($limit: Int) {
+    listInspections(limit: $limit, sortDirection: DESC) {
+      items {
+        id
+        inspectionDate
+        vehicleReg
+        odometerStart
+        inspectionNo
+      }
+    }
+  }
+`;
+
+// Categories
+const LIST_CATEGORIES = /* GraphQL */ `
+  query ListCategories {
+    listCategories {
+      items {
+        id
+        categoryName
+      }
+    }
+  }
+`;
+
+// Subcategories by categoryId
+const LIST_SUBCATEGORIES_BY_CATEGORY = /* GraphQL */ `
+  query ListSubCategoriesByCategoryIdAndName($categoryId: String!) {
+    listSubCategoriesByCategoryIdAndName(categoryId: $categoryId) {
+      items {
+        id
+        subcategoryName
+        categoryId
+      }
+    }
+  }
+`;
+
+// Components by subcategoryId
+const LIST_COMPONENTS_BY_SUBCATEGORY = /* GraphQL */ `
+  query ListComponentsBySubCategoryId($subcategoryId: String!) {
+    listComponentsBySubCategoryId(subcategoryId: $subcategoryId) {
+      items {
+        id
+        componentId
+        componentName
+        subcategoryId
+      }
+    }
+  }
+`;
 // ─────────────────────────────────────────────────────────────────────────────
 // Arg types
 // ─────────────────────────────────────────────────────────────────────────────
@@ -121,6 +173,23 @@ export interface UpdateFleetKmArgs {
   currentkm: number;
 }
 
+export interface Category {
+  id: string;
+  categoryName: string;
+}
+
+export interface Subcategory {
+  id: string;
+  subcategoryName: string;
+  categoryId: string;
+}
+
+export interface Component {
+  id: string;
+  componentId: string;
+  componentName: string;
+  subcategoryId: string;
+}
 // ─────────────────────────────────────────────────────────────────────────────
 // API slice  (mirrors teacher's `api` in state/api.ts)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -128,7 +197,13 @@ export interface UpdateFleetKmArgs {
 export const api = createApi({
   reducerPath: "api",
   baseQuery: fakeBaseQuery(), // Amplify handles transport — no REST base URL
-  tagTypes: ["Fleet", "Inspection"],
+  tagTypes: [
+    "Fleet",
+    "Inspection",
+    "Categories",
+    "Subcategories",
+    "Components",
+  ],
 
   endpoints: (build) => ({
     /* ── FLEET ─────────────────────────────────────────────────────────────── */
@@ -215,6 +290,66 @@ export const api = createApi({
         { type: "Inspection", id: arg.input.fleetid },
       ],
     }),
+
+    // ─── New stock control endpoints ──────────────────────────
+    listCategories: build.query<Category[], void>({
+      queryFn: async () => {
+        try {
+          const { data, errors } = (await client.graphql({
+            query: LIST_CATEGORIES,
+            authMode: "apiKey",
+          })) as any;
+          if (errors) return { error: errors[0].message };
+          return { data: data.listCategories.items as Category[] };
+        } catch (e: any) {
+          return { error: e?.message ?? "Failed to fetch categories" };
+        }
+      },
+      providesTags: ["Categories"],
+    }),
+
+    listSubcategoriesByCategory: build.query<Subcategory[], string>({
+      queryFn: async (categoryId) => {
+        try {
+          const { data, errors } = (await client.graphql({
+            query: LIST_SUBCATEGORIES_BY_CATEGORY,
+            variables: { categoryId },
+            authMode: "apiKey",
+          })) as any;
+          if (errors) return { error: errors[0].message };
+          return {
+            data: data.listSubCategoriesByCategoryIdAndName
+              .items as Subcategory[],
+          };
+        } catch (e: any) {
+          return { error: e?.message ?? "Failed to fetch subcategories" };
+        }
+      },
+      providesTags: (_result, _error, categoryId) => [
+        { type: "Subcategories", id: categoryId },
+      ],
+    }),
+
+    listComponentsBySubcategory: build.query<Component[], string>({
+      queryFn: async (subcategoryId) => {
+        try {
+          const { data, errors } = (await client.graphql({
+            query: LIST_COMPONENTS_BY_SUBCATEGORY,
+            variables: { subcategoryId },
+            authMode: "apiKey",
+          })) as any;
+          if (errors) return { error: errors[0].message };
+          return {
+            data: data.listComponentsBySubCategoryId.items as Component[],
+          };
+        } catch (e: any) {
+          return { error: e?.message ?? "Failed to fetch components" };
+        }
+      },
+      providesTags: (_result, _error, subcategoryId) => [
+        { type: "Components", id: subcategoryId },
+      ],
+    }),
   }),
 });
 
@@ -224,14 +359,8 @@ export const {
   useLazyGetInspectionsByFleetQuery,
   useCreateInspectionMutation,
   useUpdateFleetKmMutation,
+  // stock
+  useListCategoriesQuery,
+  useListSubcategoriesByCategoryQuery,
+  useListComponentsBySubcategoryQuery,
 } = api;
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Pure utility — replaces the async getNextInspectionNumber function
-// ─────────────────────────────────────────────────────────────────────────────
-
-export function getNextInspectionNumber(
-  inspections: Inspection[] | undefined,
-): number {
-  return (inspections?.[0]?.inspectionNo ?? 0) + 1;
-}

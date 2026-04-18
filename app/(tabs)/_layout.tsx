@@ -1,9 +1,8 @@
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/src/contexts/theme-context";
-import { Redirect, Tabs } from "expo-router";
-import { ActivityIndicator, Text, View } from "react-native";
+import { Tabs } from "expo-router";
+import { Text, View } from "react-native";
 
-import { useAuth } from "@/src/contexts/auth-context";
 import { tabs } from "@/src/tabs";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -56,23 +55,23 @@ const TabIcon = ({ focused, icon: Icon, badgeCount }: TabIconProps) => {
 };
 
 export default function TabLayout() {
-  const { isAuthenticated, isLoading } = useAuth();
+  // const { isAuthenticated, isLoading } = useAuth();
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
   const tabBar = theme.components.tabBar;
 
-  // Redirect to sign-in if user is not authenticated
-  if (!isAuthenticated) {
-    return <Redirect href="/(auth)/sign-in" />;
-  }
+  // // Redirect to sign-in if user is not authenticated
+  // if (!isAuthenticated) {
+  //   return <Redirect href="/(auth)/sign-in" />;
+  // }
 
-  if (isLoading) {
-    return (
-      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-        <ActivityIndicator />
-      </View>
-    );
-  }
+  // if (isLoading) {
+  //   return (
+  //     <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+  //       <ActivityIndicator />
+  //     </View>
+  //   );
+  // }
 
   return (
     <Tabs

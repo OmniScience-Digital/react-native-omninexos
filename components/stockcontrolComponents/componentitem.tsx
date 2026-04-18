@@ -1,65 +1,41 @@
+// components/stockcontrol/ComponentItem.tsx
 import { useTheme } from "@/src/contexts/theme-context";
 import {
-    ChevronDown,
-    Plus,
-    PlusCircle,
-    Search,
-    Trash2,
-    X,
-} from "lucide-react-native";
-import { useState } from "react";
+  useListComponentsBySubcategoryQuery,
+  useListSubcategoriesByCategoryQuery,
+} from "@/src/state/api";
+import { RootState, useAppDispatch, useAppSelector } from "@/src/state/redux";
 import {
-    FlatList,
-    Modal,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  addTempCategory,
+  addTempComponent,
+  addTempSubcategory,
+} from "@/src/state/stockSlice";
+import { createSelector } from "@reduxjs/toolkit";
+import {
+  ChevronDown,
+  Plus,
+  PlusCircle,
+  Search,
+  Trash2,
+  X,
+} from "lucide-react-native";
+import { useMemo, useState } from "react";
+import {
+  FlatList,
+  Modal,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
+import { ThemedText } from "../ui/screen";
 import ComponentLoading from "./Componentloading";
 import ResponseModal from "./responsemodal";
 
-export interface SubComponent {
-  id: string;
-  key: string;
-  value: string;
-  componentId: string;
-}
-
-export interface Component {
-  id: string;
-  componentId: string;
-  componentName: string;
-  subcategoryId: string;
-  categoryName?: string;
-  subcategoryName?: string;
-  subComponents: SubComponent[];
-}
-
-export interface Category {
-  id: string;
-  categoryName: string;
-}
-
-interface ComponentItemProps {
-  component: Component;
-  selectedCategoryId: string;
-  onCategoryChange: (id: string) => void;
-  categories: Category[];
-  onUpdate: (c: Component) => void;
-  onRemove: () => void;
-  isRemovable: boolean;
-  usedKeys: string[];
-  usedSubcategoryIds?: string[];
-  onAddNewKey?: (key: string) => void;
-  categoriesLoading?: boolean;
-  // For UI preview — pass available subcategories and components
-  availableSubcategories?: { id: string; subcategoryName: string }[];
-  availableComponents?: { componentId: string; subcategoryId: string }[];
-}
-
-// ── Small reusable inline "add new" input row ──────────────────────────────
+// ------------------------------------------------------------------------
+// Helper components (same as in your RN version)
+// ------------------------------------------------------------------------
 function AddNewInput({
   value,
   onChange,
@@ -69,23 +45,13 @@ function AddNewInput({
   confirmDisabled,
   colors,
   radius,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  onConfirm: () => void;
-  onCancel: () => void;
-  placeholder: string;
-  confirmDisabled?: boolean;
-  colors: any;
-  radius: any;
-}) {
+}: any) {
   return (
     <View style={{ flexDirection: "row", gap: 6 }}>
       <TextInput
         style={[
           addStyles.input,
           {
-            flex: 1,
             color: colors.text,
             borderColor: colors.border,
             backgroundColor: colors.background,
@@ -104,7 +70,6 @@ function AddNewInput({
           { borderColor: colors.border, borderRadius: radius.md },
         ]}
         onPress={onCancel}
-        activeOpacity={0.7}
       >
         <X size={15} color={colors.textMuted} />
       </TouchableOpacity>
@@ -119,7 +84,6 @@ function AddNewInput({
         ]}
         onPress={onConfirm}
         disabled={confirmDisabled}
-        activeOpacity={0.7}
       >
         <Plus size={15} color={confirmDisabled ? colors.textMuted : "#fff"} />
       </TouchableOpacity>
@@ -133,6 +97,7 @@ const addStyles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 14,
+    flex: 1,
   },
   iconBtn: {
     width: 40,
@@ -143,8 +108,7 @@ const addStyles = StyleSheet.create({
   },
 });
 
-// ── Searchable dropdown modal ──────────────────────────────────────────────
-function DropdownModal<T>({
+function DropdownModal({
   visible,
   onClose,
   items,
@@ -163,26 +127,7 @@ function DropdownModal<T>({
   onAddNew,
   colors,
   radius,
-}: {
-  visible: boolean;
-  onClose: () => void;
-  items: T[];
-  selectedId: string;
-  onSelect: (id: string) => void;
-  getLabel: (item: T) => string;
-  getId: (item: T) => string;
-  isDisabled?: (item: T) => boolean;
-  disabledLabel?: string;
-  searchTerm: string;
-  onSearchChange: (v: string) => void;
-  searchPlaceholder: string;
-  loading?: boolean;
-  emptyText?: string;
-  addNewLabel?: string;
-  onAddNew?: () => void;
-  colors: any;
-  radius: any;
-}) {
+}: any) {
   return (
     <Modal visible={visible} transparent animationType="fade">
       <TouchableOpacity
@@ -197,7 +142,6 @@ function DropdownModal<T>({
           ]}
           onStartShouldSetResponder={() => true}
         >
-          {/* Search */}
           <View
             style={[dmStyles.searchRow, { borderBottomColor: colors.border }]}
           >
@@ -216,13 +160,12 @@ function DropdownModal<T>({
               </TouchableOpacity>
             ) : null}
           </View>
-
           {loading ? (
             <ComponentLoading />
           ) : (
             <FlatList
               data={items}
-              keyExtractor={(item) => getId(item)}
+              keyExtractor={getId}
               style={{ maxHeight: 300 }}
               renderItem={({ item }) => {
                 const disabled = isDisabled?.(item) ?? false;
@@ -241,7 +184,6 @@ function DropdownModal<T>({
                         onSearchChange("");
                       }
                     }}
-                    activeOpacity={disabled ? 1 : 0.7}
                   >
                     <Text
                       style={[
@@ -279,7 +221,6 @@ function DropdownModal<T>({
                       onClose();
                       onSearchChange("");
                     }}
-                    activeOpacity={0.7}
                   >
                     <PlusCircle size={15} color={colors.info} />
                     <Text style={[dmStyles.addNewText, { color: colors.info }]}>
@@ -333,7 +274,6 @@ const dmStyles = StyleSheet.create({
   addNewText: { fontSize: 14, fontWeight: "500" },
 });
 
-// ── Trigger button (looks like a select) ───────────────────────────────────
 function SelectTrigger({
   label,
   placeholder,
@@ -341,14 +281,7 @@ function SelectTrigger({
   disabled,
   colors,
   radius,
-}: {
-  label?: string;
-  placeholder: string;
-  onPress: () => void;
-  disabled?: boolean;
-  colors: any;
-  radius: any;
-}) {
+}: any) {
   return (
     <TouchableOpacity
       style={[
@@ -361,7 +294,6 @@ function SelectTrigger({
       ]}
       onPress={onPress}
       disabled={disabled}
-      activeOpacity={0.7}
     >
       <Text
         style={[
@@ -389,7 +321,21 @@ const stStyles = StyleSheet.create({
   triggerText: { flex: 1, fontSize: 14, marginRight: 6 },
 });
 
-// ── Main ComponentItem ─────────────────────────────────────────────────────
+// ------------------------------------------------------------------------
+// Main ComponentItem
+// ------------------------------------------------------------------------
+export interface ComponentItemProps {
+  component: any;
+  selectedCategoryId: string;
+  onCategoryChange: (categoryId: string, categoryName: string) => void;
+  categories: any[];
+  onUpdate: (comp: any) => void;
+  onRemove: () => void;
+  isRemovable: boolean;
+  usedKeys: string[];
+  usedSubcategoryIds: string[];
+}
+
 export default function ComponentItem({
   component,
   selectedCategoryId,
@@ -399,105 +345,139 @@ export default function ComponentItem({
   onRemove,
   isRemovable,
   usedKeys,
-  usedSubcategoryIds = [],
-  onAddNewKey,
-  categoriesLoading = false,
-  availableSubcategories = [],
-  availableComponents = [],
+  usedSubcategoryIds,
 }: ComponentItemProps) {
   const { theme } = useTheme();
-  const { colors, radius, spacing } = theme;
+  const { colors, radius } = theme;
+  const dispatch = useAppDispatch();
+  const [newSubcompModalVisible, setNewSubcompModalVisible] = useState(false);
+  const [newSubcompName, setNewSubcompName] = useState("");
+  const [addingKeyForSubId, setAddingKeyForSubId] = useState<string | null>(
+    null,
+  );
 
-  // Dropdown open states
+  // Fetch real data
+  const { data: subcategories = [], isLoading: subcatsLoading } =
+    useListSubcategoriesByCategoryQuery(selectedCategoryId, {
+      skip: !selectedCategoryId,
+    });
+  const { data: realComponents = [], isLoading: compsLoading } =
+    useListComponentsBySubcategoryQuery(component.subcategoryId, {
+      skip: !component.subcategoryId,
+    });
+
+  const tempCategories = useAppSelector((state) => state.stock.tempCategories);
+
+  const tempSubcategories = useAppSelector(
+    useMemo(
+      () =>
+        createSelector(
+          (state: RootState) => state.stock.tempSubcategories,
+          (tempSubcategories) =>
+            tempSubcategories.filter(
+              (s) => s.categoryId === selectedCategoryId,
+            ),
+        ),
+      [selectedCategoryId],
+    ),
+  );
+
+  const tempComponents = useAppSelector(
+    useMemo(
+      () =>
+        createSelector(
+          (state: RootState) => state.stock.tempComponents,
+          (tempComponents) =>
+            tempComponents.filter(
+              (c) => c.subcategoryId === component.subcategoryId,
+            ),
+        ),
+      [component.subcategoryId],
+    ),
+  );
+  const allCategories = [...categories, ...tempCategories];
+
+  const allSubcategories = [...subcategories, ...tempSubcategories];
+  const allComponents = [...realComponents, ...tempComponents];
+
+  // Dropdown states
   const [catOpen, setCatOpen] = useState(false);
   const [subcatOpen, setSubcatOpen] = useState(false);
-
-  // Search terms
   const [catSearch, setCatSearch] = useState("");
   const [subcatSearch, setSubcatSearch] = useState("");
-
-  // "Add new" inline input states
   const [addingCategory, setAddingCategory] = useState(false);
   const [newCategoryInput, setNewCategoryInput] = useState("");
   const [addingSubcat, setAddingSubcat] = useState(false);
   const [newSubcatInput, setNewSubcatInput] = useState("");
-
-  // Per-subcomponent dropdown & add-new state
   const [keyOpenFor, setKeyOpenFor] = useState<string | null>(null);
   const [keySearch, setKeySearch] = useState("");
   const [addingKeyFor, setAddingKeyFor] = useState<string | null>(null);
   const [newKeyInput, setNewKeyInput] = useState("");
-
-  // Permission error modal
-  const [show, setShow] = useState(false);
   const [permMsg, setPermMsg] = useState("");
+  const [showPerm, setShowPerm] = useState(false);
 
-  const filteredCats = categories.filter((c) =>
+  const selectedCategory = allCategories.find(
+    (c) => c.id === selectedCategoryId,
+  );
+  const selectedSubcat = allSubcategories.find(
+    (s) => s.id === component.subcategoryId,
+  );
+
+  const filteredCats = allCategories.filter((c) =>
     c.categoryName.toLowerCase().includes(catSearch.toLowerCase()),
   );
-
-  const filteredSubcats = availableSubcategories.filter((s) =>
+  const filteredSubcats = allSubcategories.filter((s) =>
     s.subcategoryName.toLowerCase().includes(subcatSearch.toLowerCase()),
   );
-
-  const availableKeys = availableComponents
-    .filter((c) => c.subcategoryId === component.subcategoryId)
-    .map((c) => c.componentId);
-
+  const availableKeys = allComponents
+    .map((c) => c.componentId || c.componentName)
+    .filter(Boolean);
   const filteredKeys = availableKeys.filter((k) =>
     k.toLowerCase().includes(keySearch.toLowerCase()),
   );
 
-  const selectedCategory = categories.find((c) => c.id === selectedCategoryId);
-  const selectedSubcat = availableSubcategories.find(
-    (s) => s.id === component.subcategoryId,
-  );
-
-  // ── Handlers ──────────────────────────────────────────────────────────────
-
   const handleCategorySelect = (id: string) => {
-    onCategoryChange(id);
-    onUpdate({
-      ...component,
-      componentName: "",
-      subcategoryId: "",
-      subcategoryName: "",
-    });
+    const cat = categories.find((c) => c.id === id);
+    onCategoryChange(id, cat?.categoryName || "");
   };
 
   const confirmNewCategory = () => {
     if (!newCategoryInput.trim()) return;
-    const id = `new-cat-${Date.now()}`;
-    // In real app: add to state and call onCategoryChange
-    onCategoryChange(id);
-    onUpdate({
-      ...component,
-      categoryName: newCategoryInput.trim(),
-      componentName: "",
-      subcategoryId: "",
-    });
+    const tempId = `temp-cat-${Date.now()}`;
+    dispatch(
+      addTempCategory({ id: tempId, categoryName: newCategoryInput.trim() }),
+    );
+    onCategoryChange(tempId, newCategoryInput.trim());
     setAddingCategory(false);
     setNewCategoryInput("");
   };
 
   const handleSubcatSelect = (id: string) => {
-    const sub = availableSubcategories.find((s) => s.id === id);
-    if (!sub) return;
-    onUpdate({
-      ...component,
-      componentName: sub.subcategoryName,
-      subcategoryId: sub.id,
-      subcategoryName: sub.subcategoryName,
-    });
+    const sub = allSubcategories.find((s) => s.id === id);
+    if (sub) {
+      onUpdate({
+        ...component,
+        componentName: sub.subcategoryName,
+        subcategoryId: sub.id,
+        subcategoryName: sub.subcategoryName,
+      });
+    }
   };
 
   const confirmNewSubcat = () => {
     if (!newSubcatInput.trim()) return;
-    const id = `temp-sub-${Date.now()}`;
+    const tempId = `temp-sub-${Date.now()}`;
+    dispatch(
+      addTempSubcategory({
+        id: tempId,
+        subcategoryName: newSubcatInput.trim(),
+        categoryId: selectedCategoryId,
+      }),
+    );
     onUpdate({
       ...component,
       componentName: newSubcatInput.trim(),
-      subcategoryId: id,
+      subcategoryId: tempId,
       subcategoryName: newSubcatInput.trim(),
     });
     setAddingSubcat(false);
@@ -507,7 +487,7 @@ export default function ComponentItem({
   const handleKeySelect = (subId: string, key: string) => {
     onUpdate({
       ...component,
-      subComponents: component.subComponents.map((s) =>
+      subComponents: component.subComponents.map((s: any) =>
         s.id === subId ? { ...s, key } : s,
       ),
     });
@@ -517,10 +497,18 @@ export default function ComponentItem({
 
   const confirmNewKey = (subId: string) => {
     if (!newKeyInput.trim()) return;
-    onAddNewKey?.(newKeyInput.trim());
+    const tempId = `temp-comp-${Date.now()}`;
+    dispatch(
+      addTempComponent({
+        id: tempId,
+        componentId: newKeyInput.trim(),
+        componentName: newKeyInput.trim(),
+        subcategoryId: component.subcategoryId,
+      }),
+    );
     onUpdate({
       ...component,
-      subComponents: component.subComponents.map((s) =>
+      subComponents: component.subComponents.map((s: any) =>
         s.id === subId ? { ...s, key: newKeyInput.trim() } : s,
       ),
     });
@@ -531,7 +519,7 @@ export default function ComponentItem({
   const updateValue = (subId: string, value: string) => {
     onUpdate({
       ...component,
-      subComponents: component.subComponents.map((s) =>
+      subComponents: component.subComponents.map((s: any) =>
         s.id === subId ? { ...s, value } : s,
       ),
     });
@@ -556,15 +544,14 @@ export default function ComponentItem({
     if (component.subComponents.length <= 1) return;
     onUpdate({
       ...component,
-      subComponents: component.subComponents.filter((s) => s.id !== subId),
+      subComponents: component.subComponents.filter((s: any) => s.id !== subId),
     });
   };
 
-  // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <View
       style={[
-        s.card,
+        sCard.card,
         {
           backgroundColor: colors.card,
           borderColor: colors.border,
@@ -572,11 +559,10 @@ export default function ComponentItem({
         },
       ]}
     >
-      {/* ── Category row ── */}
-      <View style={s.row}>
+      {/* Category row */}
+      <View style={sCard.row}>
         <View style={{ flex: 1, gap: 5 }}>
-          <Text style={[s.label, { color: colors.text }]}>Category</Text>
-
+          <Text style={[sCard.label, { color: colors.text }]}>Category</Text>
           {addingCategory ? (
             <AddNewInput
               value={newCategoryInput}
@@ -601,10 +587,9 @@ export default function ComponentItem({
             />
           )}
         </View>
-
         <TouchableOpacity
           style={[
-            s.trashBtn,
+            sCard.trashBtn,
             {
               borderColor: colors.border,
               borderRadius: radius.md,
@@ -613,16 +598,14 @@ export default function ComponentItem({
           ]}
           onPress={onRemove}
           disabled={!isRemovable}
-          activeOpacity={0.7}
         >
           <Trash2 size={16} color={colors.textMuted} />
         </TouchableOpacity>
       </View>
 
-      {/* ── Subcategory ── */}
+      {/* Subcategory */}
       <View style={{ gap: 5 }}>
-        <Text style={[s.label, { color: colors.text }]}>Subcategory</Text>
-
+        <Text style={[sCard.label, { color: colors.text }]}>Subcategory</Text>
         {addingSubcat ? (
           <AddNewInput
             value={newSubcatInput}
@@ -649,29 +632,29 @@ export default function ComponentItem({
         )}
       </View>
 
-      {/* ── Subcomponents ── */}
-      <View style={[s.subSection, { borderLeftColor: colors.info + "60" }]}>
-        <View style={s.subHeader}>
-          <Text style={[s.subTitle, { color: colors.textMuted }]}>
+      {/* Subcomponents section */}
+      <View style={[sCard.subSection, { borderLeftColor: colors.info + "60" }]}>
+        <View style={sCard.subHeader}>
+          <Text style={[sCard.subTitle, { color: colors.textMuted }]}>
             Subcomponents
           </Text>
           <View
             style={[
-              s.countBadge,
+              sCard.countBadge,
               { backgroundColor: colors.background, borderRadius: radius.md },
             ]}
           >
-            <Text style={[s.countText, { color: colors.textMuted }]}>
+            <Text style={[sCard.countText, { color: colors.textMuted }]}>
               {component.subComponents.length}
             </Text>
           </View>
         </View>
 
-        {component.subComponents.map((sub) => (
+        {component.subComponents.map((sub: any) => (
           <View
             key={sub.id}
             style={[
-              s.subRow,
+              sCard.subRow,
               {
                 backgroundColor: colors.background,
                 borderColor: colors.border,
@@ -679,9 +662,8 @@ export default function ComponentItem({
               },
             ]}
           >
-            {/* Key select */}
             <View style={{ flex: 1 }}>
-              {addingKeyFor === sub.id ? (
+              {/* {addingKeyFor === sub.id ? (
                 <AddNewInput
                   value={newKeyInput}
                   onChange={setNewKeyInput}
@@ -706,13 +688,22 @@ export default function ComponentItem({
                   colors={colors}
                   radius={radius}
                 />
-              )}
-            </View>
+              )} */}
 
-            {/* Value input */}
+              <SelectTrigger
+                label={sub.key}
+                placeholder="Select subcomponent"
+                onPress={() => {
+                  setKeyOpenFor(sub.id);
+                  setKeySearch("");
+                }}
+                colors={colors}
+                radius={radius}
+              />
+            </View>
             <TextInput
               style={[
-                s.valueInput,
+                sCard.valueInput,
                 {
                   color: colors.text,
                   borderColor: colors.border,
@@ -723,14 +714,11 @@ export default function ComponentItem({
               value={sub.value}
               onChangeText={(v) => updateValue(sub.id, v)}
               placeholder="Value"
-              placeholderTextColor={colors.textMuted}
               keyboardType="numeric"
             />
-
-            {/* Remove subcomponent */}
             <TouchableOpacity
               style={[
-                s.trashBtnSm,
+                sCard.trashBtnSm,
                 {
                   borderColor: colors.border,
                   borderRadius: radius.md,
@@ -739,30 +727,27 @@ export default function ComponentItem({
               ]}
               onPress={() => removeSubComponent(sub.id)}
               disabled={component.subComponents.length === 1}
-              activeOpacity={0.7}
             >
               <Trash2 size={14} color={colors.textMuted} />
             </TouchableOpacity>
           </View>
         ))}
 
-        {/* Add subcomponent */}
         <TouchableOpacity
           style={[
-            s.addSubBtn,
+            sCard.addSubBtn,
             { borderColor: colors.border, borderRadius: radius.md },
           ]}
           onPress={addSubComponent}
-          activeOpacity={0.7}
         >
           <PlusCircle size={15} color={colors.textMuted} />
-          <Text style={[s.addSubText, { color: colors.textMuted }]}>
+          <Text style={[sCard.addSubText, { color: colors.textMuted }]}>
             Add Subcomponent
           </Text>
         </TouchableOpacity>
       </View>
 
-      {/* ── Dropdowns ── */}
+      {/* Dropdown modals */}
       <DropdownModal
         visible={catOpen}
         onClose={() => {
@@ -772,12 +757,11 @@ export default function ComponentItem({
         items={filteredCats}
         selectedId={selectedCategoryId}
         onSelect={handleCategorySelect}
-        getLabel={(c) => c.categoryName}
-        getId={(c) => c.id}
+        getLabel={(c: any) => c.categoryName}
+        getId={(c: any) => c.id}
         searchTerm={catSearch}
         onSearchChange={setCatSearch}
         searchPlaceholder="Search categories…"
-        loading={categoriesLoading}
         emptyText="No categories found"
         addNewLabel="Add New Category…"
         onAddNew={() => {
@@ -797,9 +781,9 @@ export default function ComponentItem({
         items={filteredSubcats}
         selectedId={component.subcategoryId}
         onSelect={handleSubcatSelect}
-        getLabel={(s) => s.subcategoryName}
-        getId={(s) => s.id}
-        isDisabled={(s) =>
+        getLabel={(s: any) => s.subcategoryName}
+        getId={(s: any) => s.id}
+        isDisabled={(s: any) =>
           usedSubcategoryIds.includes(s.id) && s.id !== component.subcategoryId
         }
         disabledLabel="already used"
@@ -829,15 +813,16 @@ export default function ComponentItem({
           }}
           items={filteredKeys.map((k) => ({ id: k, label: k }))}
           selectedId={
-            component.subComponents.find((s) => s.id === keyOpenFor)?.key ?? ""
+            component.subComponents.find((s: any) => s.id === keyOpenFor)
+              ?.key ?? ""
           }
-          onSelect={(key) => handleKeySelect(keyOpenFor, key)}
-          getLabel={(item) => item.label}
-          getId={(item) => item.id}
-          isDisabled={(item) =>
+          onSelect={(key: string) => handleKeySelect(keyOpenFor, key)}
+          getLabel={(item: any) => item.label}
+          getId={(item: any) => item.id}
+          isDisabled={(item: any) =>
             usedKeys.includes(item.id) &&
             item.id !==
-              component.subComponents.find((s) => s.id === keyOpenFor)?.key
+              component.subComponents.find((s: any) => s.id === keyOpenFor)?.key
           }
           disabledLabel="already used"
           searchTerm={keySearch}
@@ -845,29 +830,110 @@ export default function ComponentItem({
           searchPlaceholder="Search subcomponents…"
           emptyText="No subcomponents available"
           addNewLabel="Add New Subcomponent…"
+          // onAddNew={() => {
+          //   setKeyOpenFor(null);
+          //   setAddingKeyFor(keyOpenFor);
+          //   setNewKeyInput("");
+          // }}
           onAddNew={() => {
-            const id = keyOpenFor;
             setKeyOpenFor(null);
-            setAddingKeyFor(id);
-            setNewKeyInput("");
+            setAddingKeyForSubId(keyOpenFor);
+            setNewSubcompName("");
+            setNewSubcompModalVisible(true);
           }}
           colors={colors}
           radius={radius}
         />
       )}
 
-      {/* Permission error */}
+      <Modal
+        visible={newSubcompModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setNewSubcompModalVisible(false)}
+      >
+        <View style={modalStyles.overlay}>
+          <View
+            style={[
+              modalStyles.container,
+              { backgroundColor: colors.card, borderRadius: radius.xl },
+            ]}
+          >
+            <Text style={[modalStyles.title, { color: colors.text }]}>
+              New Subcomponent
+            </Text>
+            <TextInput
+              style={[
+                modalStyles.input,
+                {
+                  color: colors.text,
+                  borderColor: colors.border,
+                  backgroundColor: colors.background,
+                  borderRadius: radius.md,
+                },
+              ]}
+              placeholder="Enter subcomponent name"
+              placeholderTextColor={colors.textMuted}
+              value={newSubcompName}
+              onChangeText={setNewSubcompName}
+              autoFocus
+            />
+            <View style={modalStyles.buttons}>
+              <TouchableOpacity
+                style={[modalStyles.button]}
+                onPress={() => setNewSubcompModalVisible(false)}
+              >
+                <ThemedText style={[modalStyles.buttonText]}>Cancel</ThemedText>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  modalStyles.button,
+                  { backgroundColor: colors.accent, borderRadius: radius.md },
+                ]}
+                onPress={() => {
+                  if (addingKeyForSubId && newSubcompName.trim()) {
+                    const tempId = `temp-comp-${Date.now()}`;
+                    dispatch(
+                      addTempComponent({
+                        id: tempId,
+                        componentId: newSubcompName.trim(),
+                        componentName: newSubcompName.trim(),
+                        subcategoryId: component.subcategoryId,
+                      }),
+                    );
+                    // Update the specific subcomponent's key
+                    onUpdate({
+                      ...component,
+                      subComponents: component.subComponents.map((s: any) =>
+                        s.id === addingKeyForSubId
+                          ? { ...s, key: newSubcompName.trim() }
+                          : s,
+                      ),
+                    });
+                    setNewSubcompModalVisible(false);
+                    setAddingKeyForSubId(null);
+                    setNewSubcompName("");
+                  }
+                }}
+                disabled={!newSubcompName.trim()}
+              >
+                <ThemedText style={[modalStyles.buttonText]}>Add</ThemedText>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
       <ResponseModal
-        visible={show}
+        visible={showPerm}
         successful={false}
         message={permMsg}
-        onClose={() => setShow(false)}
+        onClose={() => setShowPerm(false)}
       />
     </View>
   );
 }
 
-const s = StyleSheet.create({
+const sCard = StyleSheet.create({
   card: { borderWidth: 0.5, padding: 16, gap: 16 },
   row: { flexDirection: "row", alignItems: "flex-end", gap: 10 },
   label: { fontSize: 13, fontWeight: "500" },
@@ -919,4 +985,46 @@ const s = StyleSheet.create({
     paddingVertical: 11,
   },
   addSubText: { fontSize: 13 },
+});
+
+const modalStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  container: {
+    width: "80%",
+    padding: 20,
+    gap: 16,
+  },
+  title: {
+    fontSize: 18,
+    fontWeight: "600",
+    textAlign: "center",
+  },
+  input: {
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 16,
+  },
+  buttons: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  button: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: "center",
+    borderWidth: 1,
+  },
+  buttonText: {
+    fontSize: 16,
+    fontWeight: "500",
+    borderRadius: 18,
+  },
 });

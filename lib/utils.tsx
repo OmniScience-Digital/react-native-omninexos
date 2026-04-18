@@ -97,3 +97,9 @@ export function normalize(str: any): string {
   if (typeof str !== "string") return String(str);
   return str.trim().replace(/^"+|"+$/g, "");
 }
+
+export function getNextInspectionNumber(
+  inspections: Inspection[] | undefined,
+): number {
+  return (inspections?.[0]?.inspectionNo ?? 0) + 1;
+}
