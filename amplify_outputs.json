@@ -5,16 +5,9 @@
     "user_pool_client_id": "2k14mmqslvb6mnd5ds3brn2ok1",
     "identity_pool_id": "us-east-1:718f28db-6cfe-4334-a359-38a6d15631b2",
     "mfa_methods": [],
-    "standard_required_attributes": [
-      "email",
-      "preferred_username"
-    ],
-    "username_attributes": [
-      "email"
-    ],
-    "user_verification_types": [
-      "email"
-    ],
+    "standard_required_attributes": ["email", "preferred_username"],
+    "username_attributes": ["email"],
+    "user_verification_types": ["email"],
     "groups": [
       {
         "ADMINS": {
@@ -36,20 +29,20 @@
       "require_uppercase": true
     },
     "oauth": {
-      "identity_providers": [
-        "GOOGLE"
-      ],
+      "identity_providers": ["GOOGLE"],
       "redirect_sign_in_uri": [
         "http://localhost:5173/landing",
         "https://vite.d2ib10qin54ac6.amplifyapp.com/landing",
         "https://test.d2ib10qin54ac6.amplifyapp.com/landing",
-        "https://main.d2ib10qin54ac6.amplifyapp.com/landing"
+        "https://main.d2ib10qin54ac6.amplifyapp.com/landing",
+        "reactnativeomninexos://"
       ],
       "redirect_sign_out_uri": [
         "http://localhost:5173/",
         "https://vite.d2ib10qin54ac6.amplifyapp.com/",
         "https://test.d2ib10qin54ac6.amplifyapp.com/",
-        "https://main.d2ib10qin54ac6.amplifyapp.com/"
+        "https://main.d2ib10qin54ac6.amplifyapp.com/",
+        "reactnativeomninexos://"
       ],
       "response_type": "code",
       "scopes": [
@@ -68,10 +61,7 @@
     "aws_region": "us-east-1",
     "api_key": "da2-ri4t74sxavdijoeetta7pjcp34",
     "default_authorization_type": "API_KEY",
-    "authorization_types": [
-      "AMAZON_COGNITO_USER_POOLS",
-      "AWS_IAM"
-    ],
+    "authorization_types": ["AMAZON_COGNITO_USER_POOLS", "AWS_IAM"],
     "model_introspection": {
       "version": 1,
       "models": {
@@ -130,12 +120,7 @@
                   {
                     "allow": "public",
                     "provider": "apiKey",
-                    "operations": [
-                      "create",
-                      "update",
-                      "delete",
-                      "read"
-                    ]
+                    "operations": ["create", "update", "delete", "read"]
                   }
                 ]
               }
@@ -175,9 +160,7 @@
               "isArrayNullable": true,
               "association": {
                 "connectionType": "HAS_MANY",
-                "associatedWith": [
-                  "categoryId"
-                ]
+                "associatedWith": ["categoryId"]
               }
             },
             "createdAt": {
@@ -209,9 +192,7 @@
               "properties": {
                 "name": "categoriesByCategoryName",
                 "queryField": "listCategoryByCategoryName",
-                "fields": [
-                  "categoryName"
-                ]
+                "fields": ["categoryName"]
               }
             },
             {
@@ -221,12 +202,7 @@
                   {
                     "allow": "public",
                     "provider": "apiKey",
-                    "operations": [
-                      "create",
-                      "update",
-                      "delete",
-                      "read"
-                    ]
+                    "operations": ["create", "update", "delete", "read"]
                   }
                 ]
               }
@@ -272,9 +248,7 @@
               "attributes": [],
               "association": {
                 "connectionType": "BELONGS_TO",
-                "targetNames": [
-                  "categoryId"
-                ]
+                "targetNames": ["categoryId"]
               }
             },
             "components": {
@@ -288,9 +262,7 @@
               "isArrayNullable": true,
               "association": {
                 "connectionType": "HAS_MANY",
-                "associatedWith": [
-                  "subcategoryId"
-                ]
+                "associatedWith": ["subcategoryId"]
               }
             },
             "createdAt": {
@@ -322,10 +294,7 @@
               "properties": {
                 "name": "subCategoriesByCategoryIdAndSubcategoryName",
                 "queryField": "listSubCategoriesByCategoryIdAndName",
-                "fields": [
-                  "categoryId",
-                  "subcategoryName"
-                ]
+                "fields": ["categoryId", "subcategoryName"]
               }
             },
             {
@@ -335,12 +304,7 @@
                   {
                     "allow": "public",
                     "provider": "apiKey",
-                    "operations": [
-                      "create",
-                      "update",
-                      "delete",
-                      "read"
-                    ]
+                    "operations": ["create", "update", "delete", "read"]
                   }
                 ]
               }
@@ -463,9 +427,7 @@
               "attributes": [],
               "association": {
                 "connectionType": "BELONGS_TO",
-                "targetNames": [
-                  "subcategoryId"
-                ]
+                "targetNames": ["subcategoryId"]
               }
             },
             "createdAt": {
@@ -497,10 +459,7 @@
               "properties": {
                 "name": "componentsByPrimarySupplierIdAndComponentId",
                 "queryField": "listComponentsByPrimarySupplier",
-                "fields": [
-                  "primarySupplierId",
-                  "componentId"
-                ]
+                "fields": ["primarySupplierId", "componentId"]
               }
             },
             {
@@ -508,10 +467,7 @@
               "properties": {
                 "name": "componentsBySubcategoryIdAndComponentId",
                 "queryField": "listComponentsBySubCategoryId",
-                "fields": [
-                  "subcategoryId",
-                  "componentId"
-                ]
+                "fields": ["subcategoryId", "componentId"]
               }
             },
             {
@@ -521,12 +477,7 @@
                   {
                     "allow": "public",
                     "provider": "apiKey",
-                    "operations": [
-                      "create",
-                      "update",
-                      "delete",
-                      "read"
-                    ]
+                    "operations": ["create", "update", "delete", "read"]
                   }
                 ]
               }
@@ -713,9 +664,7 @@
               "isArrayNullable": true,
               "association": {
                 "connectionType": "HAS_MANY",
-                "associatedWith": [
-                  "fleetid"
-                ]
+                "associatedWith": ["fleetid"]
               }
             },
             "createdAt": {
@@ -749,12 +698,7 @@
                   {
                     "allow": "public",
                     "provider": "apiKey",
-                    "operations": [
-                      "create",
-                      "update",
-                      "delete",
-                      "read"
-                    ]
+                    "operations": ["create", "update", "delete", "read"]
                   }
                 ]
               }
@@ -976,9 +920,7 @@
               "attributes": [],
               "association": {
                 "connectionType": "BELONGS_TO",
-                "targetNames": [
-                  "fleetid"
-                ]
+                "targetNames": ["fleetid"]
               }
             },
             "createdAt": {
@@ -1010,10 +952,7 @@
               "properties": {
                 "name": "inspectionsByFleetidAndInspectionDate",
                 "queryField": "inspectionsByFleetAndDate",
-                "fields": [
-                  "fleetid",
-                  "inspectionDate"
-                ]
+                "fields": ["fleetid", "inspectionDate"]
               }
             },
             {
@@ -1021,10 +960,7 @@
               "properties": {
                 "name": "inspectionsByFleetidAndInspectionNo",
                 "queryField": "inspectionsByFleetAndNumber",
-                "fields": [
-                  "fleetid",
-                  "inspectionNo"
-                ]
+                "fields": ["fleetid", "inspectionNo"]
               }
             },
             {
@@ -1034,12 +970,7 @@
                   {
                     "allow": "public",
                     "provider": "apiKey",
-                    "operations": [
-                      "create",
-                      "update",
-                      "delete",
-                      "read"
-                    ]
+                    "operations": ["create", "update", "delete", "read"]
                   }
                 ]
               }
@@ -1113,10 +1044,7 @@
               "properties": {
                 "name": "taskTablesByVehicleRegAndTaskType",
                 "queryField": "listTaskTableByVehicleRegAndTaskType",
-                "fields": [
-                  "vehicleReg",
-                  "taskType"
-                ]
+                "fields": ["vehicleReg", "taskType"]
               }
             },
             {
@@ -1124,9 +1052,7 @@
               "properties": {
                 "name": "taskTablesByClickupTaskId",
                 "queryField": "listTaskTableByClickupTaskId",
-                "fields": [
-                  "clickupTaskId"
-                ]
+                "fields": ["clickupTaskId"]
               }
             },
             {
@@ -1136,12 +1062,7 @@
                   {
                     "allow": "public",
                     "provider": "apiKey",
-                    "operations": [
-                      "create",
-                      "update",
-                      "delete",
-                      "read"
-                    ]
+                    "operations": ["create", "update", "delete", "read"]
                   }
                 ]
               }
@@ -1234,10 +1155,7 @@
               "properties": {
                 "name": "employeeTaskTablesByEmployeeIdAndEmployeeName",
                 "queryField": "listEmployeeTaskTableByEmployeeIdAndEmployeeName",
-                "fields": [
-                  "employeeId",
-                  "employeeName"
-                ]
+                "fields": ["employeeId", "employeeName"]
               }
             },
             {
@@ -1245,9 +1163,7 @@
               "properties": {
                 "name": "employeeTaskTablesByEmployeeId",
                 "queryField": "listEmployeeTaskTableByEmployeeId",
-                "fields": [
-                  "employeeId"
-                ]
+                "fields": ["employeeId"]
               }
             },
             {
@@ -1255,9 +1171,7 @@
               "properties": {
                 "name": "employeeTaskTablesByTaskType",
                 "queryField": "listEmployeeTaskTableByTaskType",
-                "fields": [
-                  "taskType"
-                ]
+                "fields": ["taskType"]
               }
             },
             {
@@ -1265,9 +1179,7 @@
               "properties": {
                 "name": "employeeTaskTablesByDocumentIdentifier",
                 "queryField": "listEmployeeTaskTableByDocumentIdentifier",
-                "fields": [
-                  "documentIdentifier"
-                ]
+                "fields": ["documentIdentifier"]
               }
             },
             {
@@ -1275,9 +1187,7 @@
               "properties": {
                 "name": "employeeTaskTablesByClickupTaskId",
                 "queryField": "listEmployeeTaskTableByClickupTaskId",
-                "fields": [
-                  "clickupTaskId"
-                ]
+                "fields": ["clickupTaskId"]
               }
             },
             {
@@ -1287,12 +1197,7 @@
                   {
                     "allow": "public",
                     "provider": "apiKey",
-                    "operations": [
-                      "create",
-                      "update",
-                      "delete",
-                      "read"
-                    ]
+                    "operations": ["create", "update", "delete", "read"]
                   }
                 ]
               }
@@ -1451,9 +1356,7 @@
               "isArrayNullable": true,
               "association": {
                 "connectionType": "HAS_MANY",
-                "associatedWith": [
-                  "employeeId"
-                ]
+                "associatedWith": ["employeeId"]
               }
             },
             "trainingCertificates": {
@@ -1467,9 +1370,7 @@
               "isArrayNullable": true,
               "association": {
                 "connectionType": "HAS_MANY",
-                "associatedWith": [
-                  "employeeId"
-                ]
+                "associatedWith": ["employeeId"]
               }
             },
             "additionalCertificates": {
@@ -1483,9 +1384,7 @@
               "isArrayNullable": true,
               "association": {
                 "connectionType": "HAS_MANY",
-                "associatedWith": [
-                  "employeeId"
-                ]
+                "associatedWith": ["employeeId"]
               }
             },
             "createdAt": {
@@ -1517,9 +1416,7 @@
               "properties": {
                 "name": "employeesByEmployeeId",
                 "queryField": "listEmployeeByEmployeeId",
-                "fields": [
-                  "employeeId"
-                ]
+                "fields": ["employeeId"]
               }
             },
             {
@@ -1527,9 +1424,7 @@
               "properties": {
                 "name": "employeesByEmployeeNumber",
                 "queryField": "listEmployeeByEmployeeNumber",
-                "fields": [
-                  "employeeNumber"
-                ]
+                "fields": ["employeeNumber"]
               }
             },
             {
@@ -1537,9 +1432,7 @@
               "properties": {
                 "name": "employeesByPassportExpiry",
                 "queryField": "employeesByPassportExpiry",
-                "fields": [
-                  "passportExpiry"
-                ]
+                "fields": ["passportExpiry"]
               }
             },
             {
@@ -1547,9 +1440,7 @@
               "properties": {
                 "name": "employeesByDriversLicenseExpiry",
                 "queryField": "employeesByLicenseExpiry",
-                "fields": [
-                  "driversLicenseExpiry"
-                ]
+                "fields": ["driversLicenseExpiry"]
               }
             },
             {
@@ -1559,12 +1450,7 @@
                   {
                     "allow": "public",
                     "provider": "apiKey",
-                    "operations": [
-                      "create",
-                      "update",
-                      "delete",
-                      "read"
-                    ]
+                    "operations": ["create", "update", "delete", "read"]
                   }
                 ]
               }
@@ -1626,9 +1512,7 @@
               "attributes": [],
               "association": {
                 "connectionType": "BELONGS_TO",
-                "targetNames": [
-                  "employeeId"
-                ]
+                "targetNames": ["employeeId"]
               }
             },
             "createdAt": {
@@ -1660,10 +1544,7 @@
               "properties": {
                 "name": "employeeMedicalCertificatesByEmployeeIdAndExpiryDate",
                 "queryField": "medicalCertsByEmployee",
-                "fields": [
-                  "employeeId",
-                  "expiryDate"
-                ]
+                "fields": ["employeeId", "expiryDate"]
               }
             },
             {
@@ -1671,9 +1552,7 @@
               "properties": {
                 "name": "employeeMedicalCertificatesByExpiryDate",
                 "queryField": "medicalCertsByExpiry",
-                "fields": [
-                  "expiryDate"
-                ]
+                "fields": ["expiryDate"]
               }
             },
             {
@@ -1683,12 +1562,7 @@
                   {
                     "allow": "public",
                     "provider": "apiKey",
-                    "operations": [
-                      "create",
-                      "update",
-                      "delete",
-                      "read"
-                    ]
+                    "operations": ["create", "update", "delete", "read"]
                   }
                 ]
               }
@@ -1750,9 +1624,7 @@
               "attributes": [],
               "association": {
                 "connectionType": "BELONGS_TO",
-                "targetNames": [
-                  "employeeId"
-                ]
+                "targetNames": ["employeeId"]
               }
             },
             "createdAt": {
@@ -1784,10 +1656,7 @@
               "properties": {
                 "name": "employeeTrainingCertificatesByEmployeeIdAndExpiryDate",
                 "queryField": "trainingCertsByEmployee",
-                "fields": [
-                  "employeeId",
-                  "expiryDate"
-                ]
+                "fields": ["employeeId", "expiryDate"]
               }
             },
             {
@@ -1795,9 +1664,7 @@
               "properties": {
                 "name": "employeeTrainingCertificatesByCertificateType",
                 "queryField": "trainingCertsByType",
-                "fields": [
-                  "certificateType"
-                ]
+                "fields": ["certificateType"]
               }
             },
             {
@@ -1805,9 +1672,7 @@
               "properties": {
                 "name": "employeeTrainingCertificatesByExpiryDate",
                 "queryField": "trainingCertsByExpiry",
-                "fields": [
-                  "expiryDate"
-                ]
+                "fields": ["expiryDate"]
               }
             },
             {
@@ -1817,12 +1682,7 @@
                   {
                     "allow": "public",
                     "provider": "apiKey",
-                    "operations": [
-                      "create",
-                      "update",
-                      "delete",
-                      "read"
-                    ]
+                    "operations": ["create", "update", "delete", "read"]
                   }
                 ]
               }
@@ -1882,9 +1742,7 @@
               "attributes": [],
               "association": {
                 "connectionType": "BELONGS_TO",
-                "targetNames": [
-                  "employeeId"
-                ]
+                "targetNames": ["employeeId"]
               }
             },
             "createdAt": {
@@ -1916,10 +1774,7 @@
               "properties": {
                 "name": "employeeAdditionalCertificatesByEmployeeIdAndExpiryDate",
                 "queryField": "additionalCertsByEmployee",
-                "fields": [
-                  "employeeId",
-                  "expiryDate"
-                ]
+                "fields": ["employeeId", "expiryDate"]
               }
             },
             {
@@ -1927,9 +1782,7 @@
               "properties": {
                 "name": "employeeAdditionalCertificatesByExpiryDate",
                 "queryField": "additionalCertsByExpiry",
-                "fields": [
-                  "expiryDate"
-                ]
+                "fields": ["expiryDate"]
               }
             },
             {
@@ -1939,12 +1792,7 @@
                   {
                     "allow": "public",
                     "provider": "apiKey",
-                    "operations": [
-                      "create",
-                      "update",
-                      "delete",
-                      "read"
-                    ]
+                    "operations": ["create", "update", "delete", "read"]
                   }
                 ]
               }
@@ -2004,12 +1852,7 @@
                   {
                     "allow": "public",
                     "provider": "apiKey",
-                    "operations": [
-                      "create",
-                      "update",
-                      "delete",
-                      "read"
-                    ]
+                    "operations": ["create", "update", "delete", "read"]
                   }
                 ]
               }
@@ -2104,10 +1947,7 @@
               "properties": {
                 "name": "historiesByEntityIdAndTimestamp",
                 "queryField": "getHistoryByEntityId",
-                "fields": [
-                  "entityId",
-                  "timestamp"
-                ]
+                "fields": ["entityId", "timestamp"]
               }
             },
             {
@@ -2115,10 +1955,7 @@
               "properties": {
                 "name": "historiesByUpdatedByAndTimestamp",
                 "queryField": "getHistoryByUpdatedBy",
-                "fields": [
-                  "updatedBy",
-                  "timestamp"
-                ]
+                "fields": ["updatedBy", "timestamp"]
               }
             },
             {
@@ -2128,12 +1965,7 @@
                   {
                     "allow": "public",
                     "provider": "apiKey",
-                    "operations": [
-                      "create",
-                      "update",
-                      "delete",
-                      "read"
-                    ]
+                    "operations": ["create", "update", "delete", "read"]
                   }
                 ]
               }
@@ -2341,9 +2173,7 @@
               "isArrayNullable": true,
               "association": {
                 "connectionType": "HAS_MANY",
-                "associatedWith": [
-                  "customerSiteId"
-                ]
+                "associatedWith": ["customerSiteId"]
               }
             },
             "compliance": {
@@ -2357,9 +2187,7 @@
               "isArrayNullable": true,
               "association": {
                 "connectionType": "HAS_MANY",
-                "associatedWith": [
-                  "customerSiteId"
-                ]
+                "associatedWith": ["customerSiteId"]
               }
             },
             "comment": {
@@ -2398,9 +2226,7 @@
               "properties": {
                 "name": "customerSitesBySiteName",
                 "queryField": "listCustomerSiteBySiteName",
-                "fields": [
-                  "siteName"
-                ]
+                "fields": ["siteName"]
               }
             },
             {
@@ -2408,9 +2234,7 @@
               "properties": {
                 "name": "customerSitesByCustomerName",
                 "queryField": "listCustomerSiteByCustomerName",
-                "fields": [
-                  "customerName"
-                ]
+                "fields": ["customerName"]
               }
             },
             {
@@ -2418,9 +2242,7 @@
               "properties": {
                 "name": "customerSitesByRegistrationNo",
                 "queryField": "listCustomerSiteByRegistrationNo",
-                "fields": [
-                  "registrationNo"
-                ]
+                "fields": ["registrationNo"]
               }
             },
             {
@@ -2428,9 +2250,7 @@
               "properties": {
                 "name": "customerSitesByVendorNumber",
                 "queryField": "listCustomerSiteByVendorNumber",
-                "fields": [
-                  "vendorNumber"
-                ]
+                "fields": ["vendorNumber"]
               }
             },
             {
@@ -2440,12 +2260,7 @@
                   {
                     "allow": "public",
                     "provider": "apiKey",
-                    "operations": [
-                      "create",
-                      "update",
-                      "delete",
-                      "read"
-                    ]
+                    "operations": ["create", "update", "delete", "read"]
                   }
                 ]
               }
@@ -2638,9 +2453,7 @@
               "attributes": [],
               "association": {
                 "connectionType": "BELONGS_TO",
-                "targetNames": [
-                  "customerSiteId"
-                ]
+                "targetNames": ["customerSiteId"]
               }
             },
             "createdAt": {
@@ -2672,9 +2485,7 @@
               "properties": {
                 "name": "assetsByScaleTag",
                 "queryField": "listAssetByScaleTag",
-                "fields": [
-                  "scaleTag"
-                ]
+                "fields": ["scaleTag"]
               }
             },
             {
@@ -2682,9 +2493,7 @@
               "properties": {
                 "name": "assetsByCustomerSiteId",
                 "queryField": "listAssetByCustomerSiteId",
-                "fields": [
-                  "customerSiteId"
-                ]
+                "fields": ["customerSiteId"]
               }
             },
             {
@@ -2694,12 +2503,7 @@
                   {
                     "allow": "public",
                     "provider": "apiKey",
-                    "operations": [
-                      "create",
-                      "update",
-                      "delete",
-                      "read"
-                    ]
+                    "operations": ["create", "update", "delete", "read"]
                   }
                 ]
               }
@@ -3023,9 +2827,7 @@
               "attributes": [],
               "association": {
                 "connectionType": "BELONGS_TO",
-                "targetNames": [
-                  "customerSiteId"
-                ]
+                "targetNames": ["customerSiteId"]
               }
             },
             "employeeLookup": {
@@ -3046,9 +2848,7 @@
               "isArrayNullable": true,
               "association": {
                 "connectionType": "HAS_MANY",
-                "associatedWith": [
-                  "complianceid"
-                ]
+                "associatedWith": ["complianceid"]
               }
             },
             "createdAt": {
@@ -3080,9 +2880,7 @@
               "properties": {
                 "name": "compliancesByComplianceRating",
                 "queryField": "listComplianceByComplianceRating",
-                "fields": [
-                  "complianceRating"
-                ]
+                "fields": ["complianceRating"]
               }
             },
             {
@@ -3090,9 +2888,7 @@
               "properties": {
                 "name": "compliancesByCustomerSiteId",
                 "queryField": "listComplianceByCustomerSiteId",
-                "fields": [
-                  "customerSiteId"
-                ]
+                "fields": ["customerSiteId"]
               }
             },
             {
@@ -3100,9 +2896,7 @@
               "properties": {
                 "name": "compliancesByEmployeeLookup",
                 "queryField": "listComplianceByEmployeeLookup",
-                "fields": [
-                  "employeeLookup"
-                ]
+                "fields": ["employeeLookup"]
               }
             },
             {
@@ -3112,12 +2906,7 @@
                   {
                     "allow": "public",
                     "provider": "apiKey",
-                    "operations": [
-                      "create",
-                      "update",
-                      "delete",
-                      "read"
-                    ]
+                    "operations": ["create", "update", "delete", "read"]
                   }
                 ]
               }
@@ -3184,9 +2973,7 @@
               "attributes": [],
               "association": {
                 "connectionType": "BELONGS_TO",
-                "targetNames": [
-                  "complianceid"
-                ]
+                "targetNames": ["complianceid"]
               }
             },
             "createdAt": {
@@ -3218,9 +3005,7 @@
               "properties": {
                 "name": "complianceAdditionalsByComplianceid",
                 "queryField": "listComplianceAdditionalsByComplianceid",
-                "fields": [
-                  "complianceid"
-                ]
+                "fields": ["complianceid"]
               }
             },
             {
@@ -3228,9 +3013,7 @@
               "properties": {
                 "name": "complianceAdditionalsByName",
                 "queryField": "listComplianceAdditionalsByName",
-                "fields": [
-                  "name"
-                ]
+                "fields": ["name"]
               }
             },
             {
@@ -3240,12 +3023,7 @@
                   {
                     "allow": "public",
                     "provider": "apiKey",
-                    "operations": [
-                      "create",
-                      "update",
-                      "delete",
-                      "read"
-                    ]
+                    "operations": ["create", "update", "delete", "read"]
                   }
                 ]
               }
@@ -3311,9 +3089,7 @@
               "properties": {
                 "name": "permissionsByUserId",
                 "queryField": "listPermissionByUserId",
-                "fields": [
-                  "userId"
-                ]
+                "fields": ["userId"]
               }
             },
             {
@@ -3323,12 +3099,7 @@
                   {
                     "allow": "public",
                     "provider": "apiKey",
-                    "operations": [
-                      "create",
-                      "update",
-                      "delete",
-                      "read"
-                    ]
+                    "operations": ["create", "update", "delete", "read"]
                   }
                 ]
               }
@@ -3389,9 +3160,7 @@
               "isArrayNullable": true,
               "association": {
                 "connectionType": "HAS_MANY",
-                "associatedWith": [
-                  "xeroContactId"
-                ]
+                "associatedWith": ["xeroContactId"]
               }
             },
             "createdAt": {
@@ -3423,9 +3192,7 @@
               "properties": {
                 "name": "xeroContactsByContactId",
                 "queryField": "listXeroContactsByContactId",
-                "fields": [
-                  "contactId"
-                ]
+                "fields": ["contactId"]
               }
             },
             {
@@ -3433,9 +3200,7 @@
               "properties": {
                 "name": "xeroContactsByContactName",
                 "queryField": "listXeroContactsByContactName",
-                "fields": [
-                  "contactName"
-                ]
+                "fields": ["contactName"]
               }
             },
             {
@@ -3444,12 +3209,7 @@
                 "rules": [
                   {
                     "allow": "private",
-                    "operations": [
-                      "create",
-                      "update",
-                      "delete",
-                      "read"
-                    ]
+                    "operations": ["create", "update", "delete", "read"]
                   }
                 ]
               }
@@ -3488,9 +3248,7 @@
               "attributes": [],
               "association": {
                 "connectionType": "BELONGS_TO",
-                "targetNames": [
-                  "xeroContactId"
-                ]
+                "targetNames": ["xeroContactId"]
               }
             },
             "supplierAddress": {
@@ -3629,9 +3387,7 @@
               "properties": {
                 "name": "suppliersByXeroContactId",
                 "queryField": "listSupplierByXeroContactId",
-                "fields": [
-                  "xeroContactId"
-                ]
+                "fields": ["xeroContactId"]
               }
             },
             {
@@ -3641,12 +3397,7 @@
                   {
                     "allow": "public",
                     "provider": "apiKey",
-                    "operations": [
-                      "create",
-                      "update",
-                      "delete",
-                      "read"
-                    ]
+                    "operations": ["create", "update", "delete", "read"]
                   }
                 ]
               }
@@ -3725,9 +3476,7 @@
               "properties": {
                 "name": "xeroConfigsByTenantId",
                 "queryField": "listXeroConfigByTenantId",
-                "fields": [
-                  "tenantId"
-                ]
+                "fields": ["tenantId"]
               }
             },
             {
@@ -3737,12 +3486,7 @@
                   {
                     "allow": "public",
                     "provider": "apiKey",
-                    "operations": [
-                      "create",
-                      "update",
-                      "delete",
-                      "read"
-                    ]
+                    "operations": ["create", "update", "delete", "read"]
                   }
                 ]
               }
@@ -3758,12 +3502,7 @@
       "enums": {
         "TaskTableTaskType": {
           "name": "TaskTableTaskType",
-          "values": [
-            "service",
-            "rotation",
-            "licensedisc",
-            "breaknlux"
-          ]
+          "values": ["service", "rotation", "licensedisc", "breaknlux"]
         },
         "EmployeeMedicalCertificateCertificateType": {
           "name": "EmployeeMedicalCertificateCertificateType",
@@ -3844,58 +3583,19 @@
         "aws_region": "us-east-1",
         "paths": {
           "inspections/*": {
-            "groupsUSERS": [
-              "get",
-              "list",
-              "write",
-              "delete"
-            ],
-            "groupsADMINS": [
-              "get",
-              "list",
-              "write",
-              "delete"
-            ],
-            "guest": [
-              "get",
-              "list"
-            ]
+            "groupsUSERS": ["get", "list", "write", "delete"],
+            "groupsADMINS": ["get", "list", "write", "delete"],
+            "guest": ["get", "list"]
           },
           "documents/*": {
-            "groupsUSERS": [
-              "get",
-              "list",
-              "write",
-              "delete"
-            ],
-            "groupsADMINS": [
-              "get",
-              "list",
-              "write",
-              "delete"
-            ],
-            "guest": [
-              "get",
-              "list"
-            ]
+            "groupsUSERS": ["get", "list", "write", "delete"],
+            "groupsADMINS": ["get", "list", "write", "delete"],
+            "guest": ["get", "list"]
           },
           "hr/*": {
-            "groupsUSERS": [
-              "get",
-              "list",
-              "write",
-              "delete"
-            ],
-            "groupsADMINS": [
-              "get",
-              "list",
-              "write",
-              "delete"
-            ],
-            "guest": [
-              "get",
-              "list"
-            ]
+            "groupsUSERS": ["get", "list", "write", "delete"],
+            "groupsADMINS": ["get", "list", "write", "delete"],
+            "guest": ["get", "list"]
           }
         }
       }

@@ -49,7 +49,7 @@ export const AuthFormLayout = ({
               flex: 1,
               justifyContent: "center",
               paddingHorizontal: 24,
-              paddingVertical: 40,
+              paddingVertical: 45,
             }}
           >
             {/* Logo & Brand */}

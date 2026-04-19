@@ -1,149 +1,3 @@
-// //app/_layout.tsx
-// import outputs from "@/amplify_outputs.json";
-// import ResponseModal from "@/components/stockcontrolComponents/responsemodal";
-// import "@/global.css";
-// import { AuthProvider, useAuth } from "@/src/contexts/auth-context";
-// import { ThemeProvider, useTheme } from "@/src/contexts/theme-context";
-// import { hideResponseModal } from "@/src/state";
-// import StoreProvider, {
-//   useAppDispatch,
-//   useAppSelector,
-// } from "@/src/state/redux";
-// import AsyncStorage from "@react-native-async-storage/async-storage";
-// import { Amplify } from "aws-amplify";
-// import { cognitoUserPoolsTokenProvider } from "aws-amplify/auth/cognito";
-// import { useFonts } from "expo-font";
-// import { Stack } from "expo-router";
-// import * as SplashScreen from "expo-splash-screen";
-// import { StatusBar } from "expo-status-bar";
-// import React, { useEffect, useState } from "react";
-// import { ActivityIndicator, Animated, Easing, View } from "react-native";
-// import { SafeAreaProvider } from "react-native-safe-area-context";
-
-// Amplify.configure(outputs);
-// cognitoUserPoolsTokenProvider.setKeyValueStorage(AsyncStorage);
-
-// SplashScreen.preventAutoHideAsync();
-
-// // Inner component that has access to Redux and theme
-// function LayoutInner() {
-//   const { theme, isReady: themeReady } = useTheme();
-//   const { isLoading: authLoading } = useAuth();
-//   const dispatch = useAppDispatch();
-//   const responseModal = useAppSelector((state) => state.global.responseModal);
-
-//   const [fontsLoaded] = useFonts({
-//     "sans-regular": require("../assets/fonts/PlusJakartaSans-Regular.ttf"),
-//     "sans-bold": require("../assets/fonts/PlusJakartaSans-Bold.ttf"),
-//     "sans-medium": require("../assets/fonts/PlusJakartaSans-Medium.ttf"),
-//     "sans-semibold": require("../assets/fonts/PlusJakartaSans-SemiBold.ttf"),
-//     "sans-extrabold": require("../assets/fonts/PlusJakartaSans-ExtraBold.ttf"),
-//     "sans-light": require("../assets/fonts/PlusJakartaSans-Light.ttf"),
-//   });
-
-//   // Theme transition overlay (kept as is)
-//   const prevBgRef = React.useRef(theme.colors.background);
-//   const [overlayBg, setOverlayBg] = React.useState(theme.colors.background);
-//   const overlayOpacity = React.useRef(new Animated.Value(0)).current;
-
-//   useEffect(() => {
-//     const newBg = theme.colors.background;
-//     const oldBg = prevBgRef.current;
-//     if (oldBg !== newBg) {
-//       setOverlayBg(oldBg);
-//       overlayOpacity.setValue(1);
-//       const anim = Animated.timing(overlayOpacity, {
-//         toValue: 0,
-//         duration: 380,
-//         easing: Easing.out(Easing.ease),
-//         useNativeDriver: true,
-//       });
-//       anim.start();
-//       prevBgRef.current = newBg;
-//       return () => anim.stop();
-//     }
-//   }, [theme.colors.background, overlayOpacity]);
-
-//   // Splash hide logic (unchanged)
-//   const isReady = fontsLoaded && themeReady && !authLoading;
-//   const [splashHidden, setSplashHidden] = useState(false);
-
-//   useEffect(() => {
-//     if (isReady && !splashHidden) {
-//       const timer = setTimeout(async () => {
-//         await SplashScreen.hideAsync();
-//         setSplashHidden(true);
-//       }, 50);
-//       return () => clearTimeout(timer);
-//     }
-//   }, [isReady, splashHidden]);
-
-//   // While loading: show a themed loading screen (no white flash)
-//   if (!isReady || !splashHidden) {
-//     return (
-//       <View
-//         style={{
-//           flex: 1,
-//           backgroundColor: theme.colors.background,
-//           alignItems: "center",
-//           justifyContent: "center",
-//         }}
-//       >
-//         <ActivityIndicator size="large" color={theme.colors.accent} />
-//       </View>
-//     );
-//   }
-
-//   // Full app UI
-//   return (
-//     <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
-//       <StatusBar
-//         style={theme.name === "light" ? "dark" : "light"}
-//         backgroundColor={theme.colors.background}
-//       />
-//       <Stack
-//         screenOptions={{
-//           headerShown: false,
-//           contentStyle: { backgroundColor: theme.colors.background },
-//           animation: "fade",
-//         }}
-//       />
-//       {/* Theme transition overlay (on top of everything except modal) */}
-//       <Animated.View
-//         pointerEvents="none"
-//         style={{
-//           position: "absolute",
-//           inset: 0,
-//           backgroundColor: overlayBg,
-//           opacity: overlayOpacity,
-//         }}
-//       />
-
-//       {/* ✅ Global Response Modal – appears above everything */}
-//       <ResponseModal
-//         visible={responseModal.visible}
-//         successful={responseModal.successful}
-//         message={responseModal.message}
-//         onClose={() => dispatch(hideResponseModal())}
-//       />
-//     </View>
-//   );
-// }
-
-// export default function RootLayout() {
-//   return (
-//     <StoreProvider>
-//       <ThemeProvider>
-//         <SafeAreaProvider>
-//           <AuthProvider>
-//             <LayoutInner />
-//           </AuthProvider>
-//         </SafeAreaProvider>
-//       </ThemeProvider>
-//     </StoreProvider>
-//   );
-// }
-
 // app/_layout.tsx
 import outputs from "@/amplify_outputs.json";
 import ResponseModal from "@/components/stockcontrolComponents/responsemodal";
@@ -162,6 +16,7 @@ import { useFonts } from "expo-font";
 import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
+import * as WebBrowser from "expo-web-browser";
 import React, { useEffect, useState } from "react";
 import { ActivityIndicator, Animated, Easing, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -170,7 +25,7 @@ Amplify.configure(outputs);
 cognitoUserPoolsTokenProvider.setKeyValueStorage(AsyncStorage);
 
 SplashScreen.preventAutoHideAsync();
-
+WebBrowser.maybeCompleteAuthSession();
 // Inner component that has access to Redux and theme
 function LayoutInner() {
   const { theme, isReady: themeReady } = useTheme();
@@ -201,6 +56,16 @@ function LayoutInner() {
       return () => clearTimeout(timer);
     }
   }, [fontsLoaded, themeReady, splashHidden]);
+
+  // useEffect(() => {
+  //   if (fontsLoaded && themeReady && !authLoading && !splashHidden) {
+  //     const timer = setTimeout(async () => {
+  //       await SplashScreen.hideAsync();
+  //       setSplashHidden(true);
+  //     }, 50);
+  //     return () => clearTimeout(timer);
+  //   }
+  // }, [fontsLoaded, themeReady, authLoading, splashHidden]);
 
   // ✅ 2. Single source of truth for auth routing
   useEffect(() => {
