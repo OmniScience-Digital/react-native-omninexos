@@ -1,5 +1,7 @@
 // app/_layout.tsx
 import outputs from "@/amplify_outputs.json";
+import logodark from "@/assets/images/icon.png";
+import logo from "@/assets/images/logo_dark.png";
 import ResponseModal from "@/components/stockcontrolComponents/responsemodal";
 import "@/global.css";
 import { AuthProvider, useAuth } from "@/src/contexts/auth-context";
@@ -18,7 +20,7 @@ import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import * as WebBrowser from "expo-web-browser";
 import React, { useEffect, useState } from "react";
-import { ActivityIndicator, Animated, Easing, View } from "react-native";
+import { ActivityIndicator, Animated, Easing, Image, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 Amplify.configure(outputs);
@@ -87,6 +89,9 @@ function LayoutInner() {
   const [overlayBg, setOverlayBg] = React.useState(theme.colors.background);
   const overlayOpacity = React.useRef(new Animated.Value(0)).current;
 
+  // ✅ 3. Show themed loading screen while fonts/theme/auth load
+  const isUIReady = fontsLoaded && themeReady;
+
   useEffect(() => {
     const newBg = theme.colors.background;
     const oldBg = prevBgRef.current;
@@ -105,20 +110,72 @@ function LayoutInner() {
     }
   }, [theme.colors.background, overlayOpacity]);
 
-  // ✅ 3. Show themed loading screen while fonts/theme/auth load
-  const isUIReady = fontsLoaded && themeReady;
+  // useEffect(() => {
+  //   const newBg = theme.colors.background;
+  //   const oldBg = prevBgRef.current;
+  //   if (oldBg !== newBg) {
+  //     setOverlayBg(oldBg);
+  //     overlayOpacity.setValue(1);
+  //     const anim = Animated.timing(overlayOpacity, {
+  //       toValue: 0,
+  //       duration: 380,
+  //       easing: Easing.out(Easing.ease),
+  //       useNativeDriver: true,
+  //     });
+  //     // Only start if UI is ready (overlay is mounted)
+  //     if (isUIReady && splashHidden) {
+  //       anim.start();
+  //     }
+  //     prevBgRef.current = newBg;
+  //     return () => anim.stop();
+  //   }
+  // }, [theme.colors.background, overlayOpacity, isUIReady, splashHidden]);
 
   if (!isUIReady || !splashHidden || authLoading) {
     return (
+      // <View
+      //   style={{
+      //     flex: 1,
+      //     backgroundColor: theme.colors.background,
+      //     alignItems: "center",
+      //     justifyContent: "center",
+      //     gap: 24,
+      //   }}
+      // >
       <View
         style={{
           flex: 1,
           backgroundColor: theme.colors.background,
           alignItems: "center",
-          justifyContent: "center",
+          justifyContent: "flex-start",
+          paddingTop: "35%",
+          gap: 24,
         }}
       >
-        <ActivityIndicator size="large" color={theme.colors.accent} />
+        {/* Logo shifted up */}
+        <View
+          style={{
+            width: 120,
+            height: 100,
+            borderRadius: 20,
+            backgroundColor: theme.colors.accent,
+            alignItems: "center",
+            justifyContent: "center",
+            marginBottom: 40, // ← pushes spinner further down
+          }}
+        >
+          <Image
+            source={theme.name === "light" ? logodark : logo}
+            style={{ width: 90, height: 100 }}
+            resizeMode="contain"
+          />
+        </View>
+
+        <ActivityIndicator
+          size="large"
+          color={theme.colors.accent}
+          style={{ marginTop: 120 }}
+        />
       </View>
     );
   }
