@@ -1,4 +1,5 @@
 import { NonTabScreen } from "@/components/ui/non-tab-screen";
+import { CustomScrollView } from "@/components/ui/scrollView";
 import { useTheme } from "@/src/contexts/theme-context";
 import {
     AlertTriangle,
@@ -15,7 +16,6 @@ import {
 import React, { useMemo, useState } from "react";
 import {
     Modal,
-    ScrollView,
     StatusBar,
     StyleSheet,
     Text,
@@ -422,10 +422,7 @@ const EditComponentModal: React.FC<EditModalProps> = ({
             </TouchableOpacity>
           </View>
 
-          <ScrollView
-            style={styles.sheetBody}
-            keyboardShouldPersistTaps="handled"
-          >
+          <CustomScrollView>
             {/* Row: ID + Name */}
             <View style={styles.formRow}>
               <View style={styles.formHalf}>
@@ -654,7 +651,7 @@ const EditComponentModal: React.FC<EditModalProps> = ({
                 </Text>
               </TouchableOpacity>
             </View>
-          </ScrollView>
+          </CustomScrollView>
         </View>
       </View>
     </Modal>
@@ -923,12 +920,10 @@ const SubcategoryScreen: React.FC<SubcategoryScreenProps> = ({
         </View>
       </View>
 
-      <ScrollView
-        contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="handled"
-      >
+      <CustomScrollView>
         {/* Subcategory chips */}
         <View
+          className="mt-3"
           style={[
             styles.card,
             { backgroundColor: C.card, borderColor: C.border },
@@ -937,11 +932,7 @@ const SubcategoryScreen: React.FC<SubcategoryScreenProps> = ({
           <Text style={[styles.sectionLabel, { color: C.accent }]}>
             SUBCATEGORY
           </Text>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={{ marginTop: 10 }}
-          >
+          <CustomScrollView>
             <View style={styles.chipRow}>
               {category.subcategories.map((sub) => {
                 const active = sub.id === selectedSubId;
@@ -971,7 +962,7 @@ const SubcategoryScreen: React.FC<SubcategoryScreenProps> = ({
                 );
               })}
             </View>
-          </ScrollView>
+          </CustomScrollView>
         </View>
 
         {/* Search + Filter */}
@@ -1087,7 +1078,7 @@ const SubcategoryScreen: React.FC<SubcategoryScreenProps> = ({
         )}
 
         <View style={{ height: 40 }} />
-      </ScrollView>
+      </CustomScrollView>
 
       {/* Edit Modal */}
       {editTarget && (
@@ -1385,7 +1376,7 @@ const styles = StyleSheet.create({
   catRight: { flexDirection: "row", alignItems: "center", gap: 8 },
 
   // Card
-  card: { borderRadius: 14, borderWidth: 1, padding: 14, marginBottom: 10 },
+  card: { borderRadius: 14, borderWidth: 1, padding: 14, marginBottom: 5 },
 
   // Chips
   chipRow: { flexDirection: "row", gap: 8 },

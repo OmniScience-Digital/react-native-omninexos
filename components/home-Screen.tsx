@@ -232,7 +232,7 @@ export default function HomeScreen() {
             Modules
           </ThemedText>
           <ModuleCard
-            title="Stock Management"
+            title="Inventory Management"
             description="Track inventory, low stock alerts"
             icon={Package}
             onPress={handleStockPress}

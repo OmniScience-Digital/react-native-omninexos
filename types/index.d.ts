@@ -142,6 +142,15 @@ declare global {
     breakandLuxExpirey: string | null;
     liscenseDiscExpirey: string | null;
   }
+  interface HistoryEntry {
+    id: string;
+    entityType: string;
+    entityId: string;
+    action: string;
+    timestamp: string;
+    updatedBy: string;
+    details: string;
+  }
 }
 
 export { };

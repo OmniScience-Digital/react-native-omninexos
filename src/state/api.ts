@@ -1,195 +1,24 @@
 // state/api.ts
 import { client } from "@/src/amplify";
 import { createApi, fakeBaseQuery } from "@reduxjs/toolkit/query/react";
+import {
+  CREATE_FLEET,
+  CREATE_HISTORY,
+  CREATE_INSPECTION,
+  CreateInspectionArgs,
+  DELETE_FLEET,
+  GetInspectionsByFleetArgs,
+  INSPECTIONS_BY_FLEET_AND_NUMBER,
+  LIST_CATEGORIES,
+  LIST_COMPONENTS_BY_SUBCATEGORY,
+  LIST_FLEETS,
+  LIST_INSPECTIONS_BY_FLEET,
+  LIST_SUBCATEGORIES_BY_CATEGORY,
+  Subcategory,
+  UPDATE_FLEET,
+  UpdateFleetKmArgs,
+} from "./graphql/queries";
 
-// ─────────────────────────────────────────────────────────────────────────────
-// GraphQL documents
-// ─────────────────────────────────────────────────────────────────────────────
-
-const LIST_FLEETS = /* GraphQL */ `
-  query ListFleets {
-    listFleets {
-      items {
-        id
-        vehicleVin
-        vehicleReg
-        vehicleMake
-        vehicleModel
-        transmitionType
-        ownershipStatus
-        fleetIndex
-        fleetNumber
-        lastServicedate
-        lastServicekm
-        lastRotationdate
-        lastRotationkm
-        servicePlanStatus
-        servicePlan
-        currentDriver
-        currentkm
-        codeRequirement
-        pdpRequirement
-        breakandLuxTest
-        serviceplankm
-        breakandLuxExpirey
-        liscenseDiscExpirey
-      }
-    }
-  }
-`;
-
-const INSPECTIONS_BY_FLEET_AND_NUMBER = /* GraphQL */ `
-  query InspectionsByFleetAndNumber(
-    $fleetid: String!
-    $sortDirection: ModelSortDirection
-    $limit: Int
-  ) {
-    inspectionsByFleetAndNumber(
-      fleetid: $fleetid
-      sortDirection: $sortDirection
-      limit: $limit
-    ) {
-      items {
-        id
-        fleetid
-        inspectionNo
-        vehicleVin
-        inspectionDate
-        inspectionTime
-        odometerStart
-        vehicleReg
-        inspectorOrDriver
-        oilAndCoolant
-        fuelLevel
-        seatbeltDoorsMirrors
-        handbrake
-        tyreCondition
-        spareTyre
-        numberPlate
-        licenseDisc
-        leaks
-        lights
-        defrosterAircon
-        emergencyKit
-        clean
-        warnings
-        windscreenWipers
-        serviceBook
-        siteKit
-        photo
-        history
-      }
-    }
-  }
-`;
-
-const CREATE_INSPECTION = /* GraphQL */ `
-  mutation CreateInspection($input: CreateInspectionInput!) {
-    createInspection(input: $input) {
-      id
-      fleetid
-      inspectionNo
-    }
-  }
-`;
-
-const UPDATE_FLEET = /* GraphQL */ `
-  mutation UpdateFleet($input: UpdateFleetInput!) {
-    updateFleet(input: $input) {
-      id
-      currentkm
-    }
-  }
-`;
-
-const LIST_RECENT_INSPECTIONS = /* GraphQL */ `
-  query ListRecentInspections($limit: Int) {
-    listInspections(limit: $limit, sortDirection: DESC) {
-      items {
-        id
-        inspectionDate
-        vehicleReg
-        odometerStart
-        inspectionNo
-      }
-    }
-  }
-`;
-
-// Categories
-const LIST_CATEGORIES = /* GraphQL */ `
-  query ListCategories {
-    listCategories {
-      items {
-        id
-        categoryName
-      }
-    }
-  }
-`;
-
-// Subcategories by categoryId
-const LIST_SUBCATEGORIES_BY_CATEGORY = /* GraphQL */ `
-  query ListSubCategoriesByCategoryIdAndName($categoryId: String!) {
-    listSubCategoriesByCategoryIdAndName(categoryId: $categoryId) {
-      items {
-        id
-        subcategoryName
-        categoryId
-      }
-    }
-  }
-`;
-
-// Components by subcategoryId
-const LIST_COMPONENTS_BY_SUBCATEGORY = /* GraphQL */ `
-  query ListComponentsBySubCategoryId($subcategoryId: String!) {
-    listComponentsBySubCategoryId(subcategoryId: $subcategoryId) {
-      items {
-        id
-        componentId
-        componentName
-        subcategoryId
-      }
-    }
-  }
-`;
-// ─────────────────────────────────────────────────────────────────────────────
-// Arg types
-// ─────────────────────────────────────────────────────────────────────────────
-
-export interface GetInspectionsByFleetArgs {
-  fleetId: string;
-  sortDirection?: "ASC" | "DESC";
-  limit?: number;
-}
-
-export interface CreateInspectionArgs {
-  input: Omit<Inspection, "id">;
-}
-
-export interface UpdateFleetKmArgs {
-  id: string;
-  currentkm: number;
-}
-
-export interface Category {
-  id: string;
-  categoryName: string;
-}
-
-export interface Subcategory {
-  id: string;
-  subcategoryName: string;
-  categoryId: string;
-}
-
-export interface Component {
-  id: string;
-  componentId: string;
-  componentName: string;
-  subcategoryId: string;
-}
 // ─────────────────────────────────────────────────────────────────────────────
 // API slice  (mirrors teacher's `api` in state/api.ts)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -244,6 +73,57 @@ export const api = createApi({
       invalidatesTags: ["Fleet"],
     }),
 
+    createFleet: build.mutation<Fleet, Omit<Fleet, "id">>({
+      queryFn: async (input) => {
+        try {
+          const { data, errors } = (await client.graphql({
+            query: CREATE_FLEET,
+            variables: { input },
+            authMode: "apiKey",
+          })) as any;
+          if (errors) throw new Error(errors[0].message);
+          return { data: data.createFleet };
+        } catch (e: any) {
+          return { error: e.message };
+        }
+      },
+      invalidatesTags: ["Fleet"],
+    }),
+
+    updateFleet: build.mutation<Fleet, Partial<Fleet> & { id: string }>({
+      queryFn: async (input) => {
+        try {
+          const { data, errors } = (await client.graphql({
+            query: UPDATE_FLEET,
+            variables: { input },
+            authMode: "apiKey",
+          })) as any;
+          if (errors) throw new Error(errors[0].message);
+          return { data: data.updateFleet };
+        } catch (e: any) {
+          return { error: e.message };
+        }
+      },
+      invalidatesTags: ["Fleet"],
+    }),
+
+    deleteFleet: build.mutation<{ id: string }, string>({
+      queryFn: async (id) => {
+        try {
+          const { data, errors } = (await client.graphql({
+            query: DELETE_FLEET,
+            variables: { input: { id } },
+            authMode: "apiKey",
+          })) as any;
+          if (errors) throw new Error(errors[0].message);
+          return { data: { id } };
+        } catch (e: any) {
+          return { error: e.message };
+        }
+      },
+      invalidatesTags: ["Fleet"],
+    }),
+
     /* ── INSPECTION ────────────────────────────────────────────────────────── */
 
     getInspectionsByFleet: build.query<Inspection[], GetInspectionsByFleetArgs>(
@@ -288,6 +168,30 @@ export const api = createApi({
       },
       invalidatesTags: (_result, _error, arg) => [
         { type: "Inspection", id: arg.input.fleetid },
+      ],
+    }),
+    // ---- Inspections ----
+    listInspectionsByFleet: build.query<
+      Inspection[],
+      { fleetId: string; limit?: number }
+    >({
+      queryFn: async ({ fleetId, limit = 100 }) => {
+        try {
+          const { data, errors } = (await client.graphql({
+            query: LIST_INSPECTIONS_BY_FLEET,
+            variables: { fleetId, limit },
+            authMode: "apiKey",
+          })) as any;
+          if (errors) throw new Error(errors[0].message);
+          return {
+            data: data.inspectionsByFleetAndNumber.items as Inspection[],
+          };
+        } catch (e: any) {
+          return { error: e.message };
+        }
+      },
+      providesTags: (_result, _error, { fleetId }) => [
+        { type: "Inspection", id: fleetId },
       ],
     }),
 
@@ -350,6 +254,28 @@ export const api = createApi({
         { type: "Components", id: subcategoryId },
       ],
     }),
+
+    // ---- History ----
+    addHistoryEntry: build.mutation<
+      HistoryEntry,
+      Omit<HistoryEntry, "id" | "timestamp">
+    >({
+      queryFn: async (input) => {
+        try {
+          const { data, errors } = (await client.graphql({
+            query: CREATE_HISTORY,
+            variables: {
+              input: { ...input, timestamp: new Date().toISOString() },
+            },
+            authMode: "apiKey",
+          })) as any;
+          if (errors) throw new Error(errors[0].message);
+          return { data: data.createHistory };
+        } catch (e: any) {
+          return { error: e.message };
+        }
+      },
+    }),
   }),
 });
 
@@ -359,6 +285,11 @@ export const {
   useLazyGetInspectionsByFleetQuery,
   useCreateInspectionMutation,
   useUpdateFleetKmMutation,
+  useCreateFleetMutation,
+  useUpdateFleetMutation,
+  useDeleteFleetMutation,
+  useListInspectionsByFleetQuery,
+  useAddHistoryEntryMutation,
   // stock
   useListCategoriesQuery,
   useListSubcategoriesByCategoryQuery,
