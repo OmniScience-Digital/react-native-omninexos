@@ -77,20 +77,10 @@ export default function HomeScreen() {
   const isLoading = vehiclesLoading || categoriesLoading || isCalculating;
 
   const handleStockPress = () => {
-    dispatch(
-      showResponseModal({
-        successful: true,
-        message: "Stock Management coming soon",
-      }),
-    );
+    router.push("/operations/ims");
   };
   const handleInspectionPress = () => {
-    dispatch(
-      showResponseModal({
-        successful: true,
-        message: "Inspection view Coming soon",
-      }),
-    );
+    router.push("/operations/fms");
   };
   const handleFormsPress = () => {
     router.push("/forms");

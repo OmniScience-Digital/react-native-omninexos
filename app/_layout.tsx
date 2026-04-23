@@ -133,26 +133,15 @@ function LayoutInner() {
 
   if (!isUIReady || !splashHidden || authLoading) {
     return (
-      // <View
-      //   style={{
-      //     flex: 1,
-      //     backgroundColor: theme.colors.background,
-      //     alignItems: "center",
-      //     justifyContent: "center",
-      //     gap: 24,
-      //   }}
-      // >
       <View
         style={{
           flex: 1,
           backgroundColor: theme.colors.background,
           alignItems: "center",
-          justifyContent: "flex-start",
-          paddingTop: "35%",
+          justifyContent: "center",
           gap: 24,
         }}
       >
-        {/* Logo shifted up */}
         <View
           style={{
             width: 120,
@@ -161,7 +150,7 @@ function LayoutInner() {
             backgroundColor: theme.colors.accent,
             alignItems: "center",
             justifyContent: "center",
-            marginBottom: 40, // ← pushes spinner further down
+            marginBottom: 20,
           }}
         >
           <Image
@@ -174,13 +163,13 @@ function LayoutInner() {
         <ActivityIndicator
           size="large"
           color={theme.colors.accent}
-          style={{ marginTop: 120 }}
+          style={{ marginTop: 90 }}
         />
       </View>
     );
   }
 
-  // ✅ 4. Auth is resolved — render the router.
+  //  4. Auth is resolved — render the router.
   //    useEffect above already handled any needed redirects.
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
