@@ -1,15 +1,13 @@
-// app/index.tsx
+// app/index.tsx (corrected)
 import { ModuleCard, StatCard } from "@/components/ui/DashboardCards";
 import { Screen, ThemedText } from "@/components/ui/screen";
 import { CustomScrollView } from "@/components/ui/scrollView";
 import { useTheme } from "@/src/contexts/theme-context";
-import { showResponseModal } from "@/src/state";
 import {
   useLazyGetInspectionsByFleetQuery,
   useListCategoriesQuery,
   useListFleetsQuery,
 } from "@/src/state/api";
-import { useAppDispatch } from "@/src/state/redux";
 import { format } from "date-fns";
 import { router } from "expo-router";
 import {
@@ -28,24 +26,28 @@ import { ActivityIndicator, FlatList, Pressable, View } from "react-native";
 export default function HomeScreen() {
   const { theme } = useTheme();
   const currentDate = format(new Date(), "MMM d, yyyy");
-  const dispatch = useAppDispatch();
 
-  // Real data from Redux/RTK Query
+  // Existing queries
   const { data: vehicles = [], isLoading: vehiclesLoading } =
     useListFleetsQuery();
   const { data: categories = [], isLoading: categoriesLoading } =
     useListCategoriesQuery();
   const [getInspections] = useLazyGetInspectionsByFleetQuery();
 
+  // Inspections aggregated
   const [totalInspections, setTotalInspections] = useState(0);
   const [recentInspections, setRecentInspections] = useState<Inspection[]>([]);
-  const [isCalculating, setIsCalculating] = useState(false);
+  const [isCalculatingInspections, setIsCalculatingInspections] =
+    useState(false);
 
-  // Calculate total inspections by summing the max inspectionNo per vehicle
+  // Low stock count - placeholder until backend resolver is implemented
+  const lowStockCount = 0;
+
+  // Calculate total inspections and recent list
   useEffect(() => {
     const calculateTotal = async () => {
       if (!vehicles.length) return;
-      setIsCalculating(true);
+      setIsCalculatingInspections(true);
       let sum = 0;
       const allRecent: Inspection[] = [];
       for (const vehicle of vehicles) {
@@ -60,36 +62,22 @@ export default function HomeScreen() {
         }
       }
       setTotalInspections(sum);
-      // Sort recent inspections by date descending and take first 5
       const sorted = allRecent.sort(
         (a, b) =>
           new Date(b.inspectionDate || 0).getTime() -
           new Date(a.inspectionDate || 0).getTime(),
       );
       setRecentInspections(sorted.slice(0, 5));
-      setIsCalculating(false);
+      setIsCalculatingInspections(false);
     };
     calculateTotal();
   }, [vehicles, getInspections]);
 
   const totalVehicles = vehicles.length;
   const totalCategories = categories.length;
-  const isLoading = vehiclesLoading || categoriesLoading || isCalculating;
+  const isLoading =
+    vehiclesLoading || categoriesLoading || isCalculatingInspections;
 
-  const handleStockPress = () => {
-    router.push("/operations/ims");
-  };
-  const handleInspectionPress = () => {
-    router.push("/operations/fms");
-  };
-  const handleFormsPress = () => {
-    router.push("/forms");
-  };
-  const handleSettingsPress = () => {
-    router.push("/settings");
-  };
-
-  // Data for stats cards
   const statsData = [
     {
       id: "inspections",
@@ -97,7 +85,7 @@ export default function HomeScreen() {
       value: isLoading ? "..." : String(totalInspections),
       icon: ClipboardCheck,
       trend: "all time",
-      trendType: "success" as const,
+      trendType: "success" as "success",
     },
     {
       id: "categories",
@@ -105,24 +93,28 @@ export default function HomeScreen() {
       value: categoriesLoading ? "..." : String(totalCategories),
       icon: Package,
       trend: "active",
-      trendType: "success" as const,
+      trendType: "success" as "success",
     },
     {
       id: "vehicles",
       title: "Active Vehicles",
       value: vehiclesLoading ? "..." : String(totalVehicles),
       icon: Truck,
-      // no trend or trendType
     },
     {
-      id: "pending",
+      id: "lowstock",
       title: "Out of Stock",
       value: "0",
       icon: FileText,
-      trend: "soon",
-      trendType: "warning" as const,
+      trend: "healthy",
+      trendType: "success" as "success",
     },
   ];
+
+  const handleStockPress = () => router.push("/operations/ims");
+  const handleInspectionPress = () => router.push("/operations/fms");
+  const handleFormsPress = () => router.push("/forms");
+  const handleSettingsPress = () => router.push("/settings");
 
   return (
     <Screen>
@@ -142,7 +134,7 @@ export default function HomeScreen() {
             </Pressable>
           </View>
 
-          {/* Stats card with real totals */}
+          {/* Summary Card */}
           <View
             className="p-5 rounded-2xl"
             style={{
@@ -172,7 +164,6 @@ export default function HomeScreen() {
               </View>
               <Truck size={32} color={theme.colors.primaryText} />
             </View>
-
             <View
               className="mt-4 pt-4 border-t"
               style={{ borderColor: theme.colors.primaryText + "30" }}
@@ -251,21 +242,14 @@ export default function HomeScreen() {
           />
         </View>
 
-        {/* Recent Activity – real inspections */}
+        {/* Recent Inspections */}
         <View className="mt-2">
           <View className="flex-row justify-between items-center mb-3">
             <ThemedText variant="h2" weight="700">
               Recent Inspections
             </ThemedText>
             <Pressable
-              onPress={() =>
-                dispatch(
-                  showResponseModal({
-                    successful: true,
-                    message: "Inspections view Coming soon",
-                  }),
-                )
-              }
+              onPress={() => router.push("/operations/fms")}
               className="rounded-full border px-4 py-1"
               style={{ borderColor: theme.colors.text }}
             >
@@ -296,7 +280,7 @@ export default function HomeScreen() {
                 </ThemedText>
               </>
             ) : (
-              recentInspections.map((inspection: Inspection) => (
+              recentInspections.map((inspection) => (
                 <View
                   key={inspection.id}
                   className="mb-3 pb-2 border-b"

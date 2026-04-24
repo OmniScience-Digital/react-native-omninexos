@@ -222,6 +222,34 @@ export const LIST_COMPONENTS_BY_SUBCATEGORY = /* GraphQL */ `
     }
   }
 `;
+
+export const UPDATE_COMPONENT = /* GraphQL */ `
+  mutation UpdateComponent($input: UpdateComponentInput!) {
+    updateComponent(input: $input) {
+      id
+      componentId
+      componentName
+      description
+      primarySupplier
+      primarySupplierItemCode
+      secondarySupplier
+      secondarySupplierItemCode
+      minimumStock
+      currentStock
+      notes
+      subcategoryId
+    }
+  }
+`;
+
+export const DELETE_COMPONENT = /* GraphQL */ `
+  mutation DeleteComponent($input: DeleteComponentInput!) {
+    deleteComponent(input: $input) {
+      id
+    }
+  }
+`;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Arg types
 // ─────────────────────────────────────────────────────────────────────────────

@@ -2,7 +2,7 @@
 import outputs from "@/amplify_outputs.json";
 import logodark from "@/assets/images/icon.png";
 import logo from "@/assets/images/logo_dark.png";
-import ResponseModal from "@/components/stockcontrolComponents/responsemodal";
+import ResponseModal from "@/components/responsemodal";
 import "@/global.css";
 import { AuthProvider, useAuth } from "@/src/contexts/auth-context";
 import { ThemeProvider, useTheme } from "@/src/contexts/theme-context";

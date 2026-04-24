@@ -30,7 +30,8 @@ declare global {
     secondarySupplier?: string;
     secondarySupplierItemCode?: string;
     qtyExStock?: number;
-    currentStock?: number;
+    currentStock: number; // required
+    minimumStock: number;
     notes?: string;
     history?: string;
     categoryName?: string;

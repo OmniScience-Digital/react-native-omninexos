@@ -1,5 +1,4 @@
-import HomeScreen from "@/components/home-Screen";
-import React from "react";
+import HomeScreen from "@/components/screens/home-Screen";
 
 export default function Index() {
   return <HomeScreen />;

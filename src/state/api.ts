@@ -6,6 +6,7 @@ import {
   CREATE_HISTORY,
   CREATE_INSPECTION,
   CreateInspectionArgs,
+  DELETE_COMPONENT,
   DELETE_FLEET,
   GetInspectionsByFleetArgs,
   INSPECTIONS_BY_FLEET_AND_NUMBER,
@@ -15,6 +16,7 @@ import {
   LIST_INSPECTIONS_BY_FLEET,
   LIST_SUBCATEGORIES_BY_CATEGORY,
   Subcategory,
+  UPDATE_COMPONENT,
   UPDATE_FLEET,
   UpdateFleetKmArgs,
 } from "./graphql/queries";
@@ -254,7 +256,50 @@ export const api = createApi({
         { type: "Components", id: subcategoryId },
       ],
     }),
+    // For updateComponent
+    updateComponent: build.mutation<
+      Component,
+      Partial<Component> & { id: string; subcategoryId?: string }
+    >({
+      queryFn: async (input) => {
+        try {
+          const response: any = await client.graphql({
+            query: UPDATE_COMPONENT,
+            variables: { input },
+            authMode: "apiKey",
+          });
+          if (response.errors) throw new Error(response.errors[0].message);
+          return { data: response.data.updateComponent };
+        } catch (e: any) {
+          return { error: e.message };
+        }
+      },
+      invalidatesTags: (_result, _error, { subcategoryId }) => {
+        // Use a valid tag type and optionally include the subcategoryId
+        return [{ type: "Components" as const, id: subcategoryId }];
+      },
+    }),
 
+    // For deleteComponent
+    deleteComponent: build.mutation<{ id: string }, string>({
+      queryFn: async (id) => {
+        try {
+          const response: any = await client.graphql({
+            query: DELETE_COMPONENT,
+            variables: { input: { id } },
+            authMode: "apiKey",
+          });
+          if (response.errors) throw new Error(response.errors[0].message);
+          return { data: { id } };
+        } catch (e: any) {
+          return { error: e.message };
+        }
+      },
+      invalidatesTags: (_result, _error, id) => {
+        // Invalidate the specific component tag – but you may want to invalidate the entire list for that subcategory
+        return [{ type: "Components" as const, id }];
+      },
+    }),
     // ---- History ----
     addHistoryEntry: build.mutation<
       HistoryEntry,
@@ -294,4 +339,6 @@ export const {
   useListCategoriesQuery,
   useListSubcategoriesByCategoryQuery,
   useListComponentsBySubcategoryQuery,
+  useUpdateComponentMutation,
+  useDeleteComponentMutation,
 } = api;

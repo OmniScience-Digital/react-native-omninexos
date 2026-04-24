@@ -1,6 +1,6 @@
 // components/stockcontrol/StockControlForm.tsx
+import ResponseModal from "@/components/responsemodal";
 import ComponentItem from "@/components/stockcontrolComponents/componentitem";
-import ResponseModal from "@/components/stockcontrolComponents/responsemodal";
 import { NonTabScreen } from "@/components/ui/non-tab-screen";
 import { CustomScrollView } from "@/components/ui/scrollView";
 import { SCF_clickUpService } from "@/services/scf.clickUp.service";
