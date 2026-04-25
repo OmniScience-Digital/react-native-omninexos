@@ -1,25 +1,24 @@
-// src/screens/IMSSubcategoryScreen.tsx
+// src/screens/IMSSubcategoryScreen.tsx (updated)
 import { NonTabScreen } from "@/components/ui/non-tab-screen";
 import { CustomScrollView } from "@/components/ui/scrollView";
-
+import { usePaginatedComponents } from "@/hooks/usePaginatedComponents";
 import { useTheme } from "@/src/contexts/theme-context";
 import {
-    useDeleteComponentMutation,
-    useListComponentsBySubcategoryQuery,
-    useListSubcategoriesByCategoryQuery,
-    useUpdateComponentMutation,
+  useDeleteComponentMutation,
+  useListSubcategoriesByCategoryQuery,
+  useUpdateComponentMutation,
 } from "@/src/state/api";
-
 import { ArrowLeft, Search } from "lucide-react-native";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import {
-    ActivityIndicator,
-    StatusBar,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  FlatList,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import ComponentCard from "./ComponentCard";
 import DeleteConfirmModal from "./DeleteConfirmModal";
@@ -38,13 +37,17 @@ export default function IMSSubcategoryScreen({ category, onBack }: Props) {
   const [selectedSubId, setSelectedSubId] = useState<string>(
     subcategories[0]?.id ?? "",
   );
+
+  // Use the paginated hook instead of the old one
   const {
-    data: componentsRaw = [],
-    isLoading: compsLoading,
-    refetch,
-  } = useListComponentsBySubcategoryQuery(selectedSubId, {
-    skip: !selectedSubId,
-  });
+    items: components,
+    loading: compsLoading,
+    fetchingMore,
+    loadMore,
+    hasMore,
+    refresh,
+  } = usePaginatedComponents(selectedSubId, 20);
+
   const [updateComponent] = useUpdateComponentMutation();
   const [deleteComponent] = useDeleteComponentMutation();
 
@@ -57,37 +60,22 @@ export default function IMSSubcategoryScreen({ category, onBack }: Props) {
     id: string;
     name: string;
   } | null>(null);
-  const [page, setPage] = useState(1);
-  const PAGE_SIZE = 5;
 
-  // Local overrides for optimistic updates
-  const [compOverrides, setCompOverrides] = useState<
-    Record<string, Component[]>
-  >({});
-  const allComponents: Component[] = useMemo(() => {
-    const base = compOverrides[selectedSubId] ?? componentsRaw;
-    return base;
-  }, [selectedSubId, componentsRaw, compOverrides]);
-
-  const filtered = useMemo(() => {
-    return allComponents.filter((c) => {
-      const q = search.toLowerCase();
-      const matchSearch =
-        search.length < 2 ||
-        c.componentId.toLowerCase().includes(q) ||
-        (c.componentName ?? "").toLowerCase().includes(q) ||
-        (c.description ?? "").toLowerCase().includes(q) ||
-        (c.primarySupplier ?? "").toLowerCase().includes(q);
-      const matchStock =
-        stockFilter === "all" ||
-        (stockFilter === "in-stock" && c.currentStock >= c.minimumStock) ||
-        (stockFilter === "out-of-stock" && c.currentStock < c.minimumStock);
-      return matchSearch && matchStock;
-    });
-  }, [allComponents, search, stockFilter]);
-
-  const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
-  const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  // Filter locally (client‑side) – works on already loaded items
+  const filtered = components.filter((c) => {
+    const q = search.toLowerCase();
+    const matchSearch =
+      search.length < 2 ||
+      c.componentId.toLowerCase().includes(q) ||
+      (c.componentName ?? "").toLowerCase().includes(q) ||
+      (c.description ?? "").toLowerCase().includes(q) ||
+      (c.primarySupplier ?? "").toLowerCase().includes(q);
+    const matchStock =
+      stockFilter === "all" ||
+      (stockFilter === "in-stock" && c.currentStock >= c.minimumStock) ||
+      (stockFilter === "out-of-stock" && c.currentStock < c.minimumStock);
+    return matchSearch && matchStock;
+  });
 
   const filterLabels = [
     { key: "all", label: "ALL" },
@@ -96,49 +84,155 @@ export default function IMSSubcategoryScreen({ category, onBack }: Props) {
   ] as const;
 
   const handleUpdateComponent = async (updated: Component) => {
-    // Optimistic update
-    setCompOverrides((prev) => ({
-      ...prev,
-      [selectedSubId]: allComponents.map((c) =>
-        c.id === updated.id ? updated : c,
-      ),
-    }));
+    // Optimistic update (client‑side)
     try {
       await updateComponent(updated).unwrap();
-      refetch();
+      refresh(); // reload first page to sync
     } catch (err) {
-      // revert optimistic update on error
-      refetch();
+      refresh();
     }
   };
 
   const handleDeleteComponent = async (compId: string) => {
-    // Optimistic delete
-    setCompOverrides((prev) => ({
-      ...prev,
-      [selectedSubId]: allComponents.filter((c) => c.id !== compId),
-    }));
     try {
       await deleteComponent(compId).unwrap();
-      refetch();
+      refresh(); // reload after deletion
     } catch (err) {
-      refetch();
+      refresh();
     }
   };
 
-  if (subsLoading)
-    return <ActivityIndicator size="large" style={{ marginTop: 50 }} />;
+  if (subsLoading) {
+    return (
+      <NonTabScreen
+        title="Inventory Management"
+        subtitle="Track inventory"
+        showBack
+        scrollable
+      >
+        <View
+          style={{ flex: 1, justifyContent: "center", alignItems: "center" }}
+        >
+          <ActivityIndicator size="large" />
+        </View>
+      </NonTabScreen>
+    );
+  }
 
   const selectedSub = subcategories.find((s) => s.id === selectedSubId);
+
+  // Header component for FlatList (subcategory chips + search/filter)
+  const ListHeader = () => (
+    <>
+      {/* Subcategory chips */}
+      <View
+        style={[
+          styles.card,
+          { backgroundColor: C.card, borderColor: C.border },
+        ]}
+      >
+        <Text style={[styles.sectionLabel, { color: C.accent }]}>
+          SUBCATEGORY
+        </Text>
+        <CustomScrollView horizontal showsHorizontalScrollIndicator={false}>
+          <View style={styles.chipRow}>
+            {subcategories.map((sub) => {
+              const active = sub.id === selectedSubId;
+              return (
+                <TouchableOpacity
+                  key={sub.id}
+                  style={[
+                    styles.chip,
+                    { borderColor: active ? C.text : C.border },
+                    active && { backgroundColor: C.text },
+                  ]}
+                  onPress={() => {
+                    setSelectedSubId(sub.id);
+                    setSearch("");
+                  }}
+                >
+                  <Text
+                    style={[
+                      styles.chipText,
+                      { color: active ? C.background : C.textMuted },
+                    ]}
+                  >
+                    {sub.subcategoryName}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </CustomScrollView>
+      </View>
+
+      {/* Search & filter card */}
+      <View
+        style={[
+          styles.card,
+          { backgroundColor: C.card, borderColor: C.border },
+        ]}
+      >
+        <View
+          style={[
+            styles.searchWrap,
+            { backgroundColor: C.background, borderColor: C.border },
+          ]}
+        >
+          <Search size={14} color={C.textMuted} />
+          <TextInput
+            style={[styles.searchInput, { color: C.text }]}
+            placeholder="Search by ID, name, supplier…"
+            placeholderTextColor={C.textMuted}
+            value={search}
+            onChangeText={setSearch}
+          />
+        </View>
+        <View style={styles.filterRow}>
+          {filterLabels.map((f) => {
+            const active = stockFilter === f.key;
+            return (
+              <TouchableOpacity
+                key={f.key}
+                style={[
+                  styles.filterPill,
+                  { borderColor: C.border },
+                  active && { backgroundColor: C.text, borderColor: C.text },
+                ]}
+                onPress={() => setStockFilter(f.key)}
+              >
+                <Text
+                  style={[
+                    styles.filterText,
+                    { color: active ? C.background : C.textMuted },
+                  ]}
+                >
+                  {f.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+        <Text style={[styles.resultCount, { color: C.textMuted }]}>
+          {filtered.length} component{filtered.length !== 1 ? "s" : ""}
+        </Text>
+      </View>
+    </>
+  );
+
+  // Footer loading indicator
+  const ListFooter = () =>
+    fetchingMore ? <ActivityIndicator style={{ margin: 20 }} /> : null;
 
   return (
     <NonTabScreen
       title="Inventory Management"
       subtitle="Track your inventory"
       showBack
-      scrollable
+      scrollable={false}
     >
       <StatusBar barStyle="light-content" backgroundColor={C.background} />
+      {/* Navbar */}
       <View
         style={[
           styles.navbar,
@@ -162,167 +256,32 @@ export default function IMSSubcategoryScreen({ category, onBack }: Props) {
         </View>
         <View style={[styles.tagBlue, { borderColor: C.info + "30" }]}>
           <Text style={[styles.tagText, { color: C.info }]}>
-            {allComponents.length} items
+            {components.length} items
           </Text>
         </View>
       </View>
 
-      <CustomScrollView>
-        <View
-          style={[
-            styles.card,
-            { backgroundColor: C.card, borderColor: C.border },
-          ]}
-        >
-          <Text style={[styles.sectionLabel, { color: C.accent }]}>
-            SUBCATEGORY
-          </Text>
-          <CustomScrollView horizontal showsHorizontalScrollIndicator={false}>
-            <View style={styles.chipRow}>
-              {subcategories.map((sub) => {
-                const active = sub.id === selectedSubId;
-                return (
-                  <TouchableOpacity
-                    key={sub.id}
-                    style={[
-                      styles.chip,
-                      { borderColor: active ? C.text : C.border },
-                      active && { backgroundColor: C.text },
-                    ]}
-                    onPress={() => {
-                      setSelectedSubId(sub.id);
-                      setPage(1);
-                      setSearch("");
-                    }}
-                  >
-                    <Text
-                      style={[
-                        styles.chipText,
-                        { color: active ? C.background : C.textMuted },
-                      ]}
-                    >
-                      {sub.subcategoryName}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          </CustomScrollView>
-        </View>
-
-        <View
-          style={[
-            styles.card,
-            { backgroundColor: C.card, borderColor: C.border },
-          ]}
-        >
-          <View
-            style={[
-              styles.searchWrap,
-              { backgroundColor: C.background, borderColor: C.border },
-            ]}
-          >
-            <Search size={14} color={C.textMuted} />
-            <TextInput
-              style={[styles.searchInput, { color: C.text }]}
-              placeholder="Search by ID, name, supplier…"
-              placeholderTextColor={C.textMuted}
-              value={search}
-              onChangeText={(v) => {
-                setSearch(v);
-                setPage(1);
-              }}
-            />
-          </View>
-          <View style={styles.filterRow}>
-            {filterLabels.map((f) => {
-              const active = stockFilter === f.key;
-              return (
-                <TouchableOpacity
-                  key={f.key}
-                  style={[
-                    styles.filterPill,
-                    { borderColor: C.border },
-                    active && { backgroundColor: C.text, borderColor: C.text },
-                  ]}
-                  onPress={() => {
-                    setStockFilter(f.key);
-                    setPage(1);
-                  }}
-                >
-                  <Text
-                    style={[
-                      styles.filterText,
-                      { color: active ? C.background : C.textMuted },
-                    ]}
-                  >
-                    {f.label}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </View>
-          <Text style={[styles.resultCount, { color: C.textMuted }]}>
-            {filtered.length} component{filtered.length !== 1 ? "s" : ""}
-          </Text>
-        </View>
-
-        {compsLoading ? (
-          <ActivityIndicator size="large" style={{ marginTop: 20 }} />
-        ) : paginated.length === 0 ? (
-          <Text style={[styles.emptyText, { color: C.textMuted }]}>
-            No components match your filters.
-          </Text>
-        ) : (
-          paginated.map((comp) => (
-            <ComponentCard
-              key={comp.id}
-              component={comp}
-              onEdit={setEditTarget}
-              onDelete={(id, name) => setDeleteTarget({ id, name })}
-            />
-          ))
+      {/* Main list with infinite scroll */}
+      <FlatList
+        data={filtered}
+        keyExtractor={(item) => item.id}
+        renderItem={({ item }) => (
+          <ComponentCard
+            component={item}
+            onEdit={setEditTarget}
+            onDelete={(id, name) => setDeleteTarget({ id, name })}
+          />
         )}
+        ListHeaderComponent={ListHeader}
+        ListFooterComponent={ListFooter}
+        onEndReached={loadMore}
+        onEndReachedThreshold={0.5}
+        refreshing={compsLoading && components.length === 0}
+        onRefresh={refresh}
+        contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 40 }}
+      />
 
-        {totalPages > 1 && (
-          <View style={styles.pagination}>
-            <Text style={[styles.pageInfo, { color: C.textMuted }]}>
-              Page {page} / {totalPages}
-            </Text>
-            <View style={styles.pageButtons}>
-              <TouchableOpacity
-                style={[
-                  styles.pageBtn,
-                  { borderColor: C.border, opacity: page === 1 ? 0.4 : 1 },
-                ]}
-                disabled={page === 1}
-                onPress={() => setPage((p) => p - 1)}
-              >
-                <Text style={[styles.pageBtnText, { color: C.textMuted }]}>
-                  PREV
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.pageBtn,
-                  {
-                    borderColor: C.border,
-                    opacity: page === totalPages ? 0.4 : 1,
-                  },
-                ]}
-                disabled={page === totalPages}
-                onPress={() => setPage((p) => p + 1)}
-              >
-                <Text style={[styles.pageBtnText, { color: C.textMuted }]}>
-                  NEXT
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
-        <View style={{ height: 40 }} />
-      </CustomScrollView>
-
+      {/* Modals */}
       {editTarget && (
         <EditComponentModal
           component={editTarget}
@@ -334,7 +293,6 @@ export default function IMSSubcategoryScreen({ category, onBack }: Props) {
           }}
         />
       )}
-
       <DeleteConfirmModal
         visible={!!deleteTarget}
         name={deleteTarget?.name ?? ""}
@@ -350,6 +308,7 @@ export default function IMSSubcategoryScreen({ category, onBack }: Props) {
   );
 }
 
+// Styles – keep exactly as you had them (no changes needed)
 const styles = StyleSheet.create({
   navbar: {
     flexDirection: "row",

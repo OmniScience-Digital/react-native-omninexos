@@ -1,4 +1,4 @@
-// app/index.tsx (corrected)
+// app/index.tsx
 import { ModuleCard, StatCard } from "@/components/ui/DashboardCards";
 import { Screen, ThemedText } from "@/components/ui/screen";
 import { CustomScrollView } from "@/components/ui/scrollView";
@@ -21,56 +21,81 @@ import {
   Truck,
 } from "lucide-react-native";
 import { useEffect, useState } from "react";
-import { ActivityIndicator, FlatList, Pressable, View } from "react-native";
+import {
+  ActivityIndicator,
+  FlatList,
+  Pressable,
+  RefreshControl,
+  View,
+} from "react-native";
 
 export default function HomeScreen() {
   const { theme } = useTheme();
   const currentDate = format(new Date(), "MMM d, yyyy");
 
   // Existing queries
-  const { data: vehicles = [], isLoading: vehiclesLoading } =
-    useListFleetsQuery();
-  const { data: categories = [], isLoading: categoriesLoading } =
-    useListCategoriesQuery();
+  const {
+    data: vehicles = [],
+    isLoading: vehiclesLoading,
+    refetch: refetchFleets,
+  } = useListFleetsQuery();
+  const {
+    data: categories = [],
+    isLoading: categoriesLoading,
+    refetch: refetchCategories,
+  } = useListCategoriesQuery();
   const [getInspections] = useLazyGetInspectionsByFleetQuery();
 
   // Inspections aggregated
   const [totalInspections, setTotalInspections] = useState(0);
+  const [refresh, setRefresh] = useState(false);
   const [recentInspections, setRecentInspections] = useState<Inspection[]>([]);
   const [isCalculatingInspections, setIsCalculatingInspections] =
     useState(false);
 
-  // Low stock count - placeholder until backend resolver is implemented
-  const lowStockCount = 0;
+  const calculateInspectionsSummary = async (
+    vehicles: Fleet[],
+    getInspections: ReturnType<typeof useLazyGetInspectionsByFleetQuery>[0],
+    setTotalInspections: React.Dispatch<React.SetStateAction<number>>,
+    setRecentInspections: React.Dispatch<React.SetStateAction<Inspection[]>>,
+    setIsCalculating: React.Dispatch<React.SetStateAction<boolean>>,
+  ) => {
+    if (!vehicles.length) return;
+    setIsCalculating(true);
+    let sum = 0;
+    const allRecent: Inspection[] = [];
 
-  // Calculate total inspections and recent list
-  useEffect(() => {
-    const calculateTotal = async () => {
-      if (!vehicles.length) return;
-      setIsCalculatingInspections(true);
-      let sum = 0;
-      const allRecent: Inspection[] = [];
-      for (const vehicle of vehicles) {
-        const result = await getInspections({
-          fleetId: vehicle.id,
-          limit: 1,
-        }).unwrap();
-        const latest = result?.[0];
-        if (latest) {
-          sum += latest.inspectionNo ?? 0;
-          allRecent.push(latest);
-        }
+    for (const vehicle of vehicles) {
+      const result = await getInspections({
+        fleetId: vehicle.id,
+        limit: 1,
+      }).unwrap();
+      const latest = result?.[0];
+      if (latest) {
+        sum += latest.inspectionNo ?? 0;
+        allRecent.push(latest);
       }
-      setTotalInspections(sum);
-      const sorted = allRecent.sort(
-        (a, b) =>
-          new Date(b.inspectionDate || 0).getTime() -
-          new Date(a.inspectionDate || 0).getTime(),
-      );
-      setRecentInspections(sorted.slice(0, 5));
-      setIsCalculatingInspections(false);
-    };
-    calculateTotal();
+    }
+
+    setTotalInspections(sum);
+    const sorted = allRecent.sort(
+      (a, b) =>
+        new Date(b.inspectionDate || 0).getTime() -
+        new Date(a.inspectionDate || 0).getTime(),
+    );
+    setRecentInspections(sorted.slice(0, 5));
+    setIsCalculating(false);
+  };
+
+  // Automatically recalc when vehicles change (including after refresh)
+  useEffect(() => {
+    calculateInspectionsSummary(
+      vehicles,
+      getInspections,
+      setTotalInspections,
+      setRecentInspections,
+      setIsCalculatingInspections,
+    );
   }, [vehicles, getInspections]);
 
   const totalVehicles = vehicles.length;
@@ -111,6 +136,13 @@ export default function HomeScreen() {
     },
   ];
 
+  const handleRefresh = async () => {
+    setRefresh(true);
+    await Promise.all([refetchFleets(), refetchCategories()]);
+    // The useEffect will automatically recalc when vehicles updates
+    setRefresh(false);
+  };
+
   const handleStockPress = () => router.push("/operations/ims");
   const handleInspectionPress = () => router.push("/operations/fms");
   const handleFormsPress = () => router.push("/forms");
@@ -118,7 +150,11 @@ export default function HomeScreen() {
 
   return (
     <Screen>
-      <CustomScrollView>
+      <CustomScrollView
+        refreshControl={
+          <RefreshControl refreshing={refresh} onRefresh={handleRefresh} />
+        }
+      >
         {/* Header */}
         <View className="mb-4">
           <View className="flex-row justify-end">

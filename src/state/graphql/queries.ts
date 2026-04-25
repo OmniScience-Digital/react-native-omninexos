@@ -191,25 +191,33 @@ export const LIST_CATEGORIES = /* GraphQL */ `
       items {
         id
         categoryName
+        createdAt
+        updatedAt
       }
     }
   }
 `;
 
-// Subcategories by categoryId
+// ----------------------------------------------------------------------
+// Subcategories
+// ----------------------------------------------------------------------
 export const LIST_SUBCATEGORIES_BY_CATEGORY = /* GraphQL */ `
-  query ListSubCategoriesByCategoryIdAndName($categoryId: String!) {
+  query ListSubCategoriesByCategoryId($categoryId: String!) {
     listSubCategoriesByCategoryIdAndName(categoryId: $categoryId) {
       items {
         id
         subcategoryName
         categoryId
+        createdAt
+        updatedAt
       }
     }
   }
 `;
 
-// Components by subcategoryId
+// ----------------------------------------------------------------------
+// Components – fetch ALL fields for edit modal
+// ----------------------------------------------------------------------
 export const LIST_COMPONENTS_BY_SUBCATEGORY = /* GraphQL */ `
   query ListComponentsBySubCategoryId($subcategoryId: String!) {
     listComponentsBySubCategoryId(subcategoryId: $subcategoryId) {
@@ -217,12 +225,22 @@ export const LIST_COMPONENTS_BY_SUBCATEGORY = /* GraphQL */ `
         id
         componentId
         componentName
+        description
+        primarySupplier
+        primarySupplierItemCode
+        secondarySupplier
+        secondarySupplierItemCode
+        currentStock
+        minimumStock
+        notes
         subcategoryId
       }
     }
   }
 `;
-
+// ----------------------------------------------------------------------
+// Create / Update / Delete Component
+// ----------------------------------------------------------------------
 export const UPDATE_COMPONENT = /* GraphQL */ `
   mutation UpdateComponent($input: UpdateComponentInput!) {
     updateComponent(input: $input) {
@@ -234,10 +252,92 @@ export const UPDATE_COMPONENT = /* GraphQL */ `
       primarySupplierItemCode
       secondarySupplier
       secondarySupplierItemCode
-      minimumStock
       currentStock
+      minimumStock
       notes
       subcategoryId
+    }
+  }
+`;
+
+// COMPONENTS paginated
+// ----------------------------------------------
+// COMPONENTS (paginated)
+// ----------------------------------------------
+export const LIST_COMPONENTS_BY_SUBCATEGORY_PAGINATED = /* GraphQL */ `
+  query ListComponentsBySubCategoryIdPaginated(
+    $subcategoryId: String!
+    $limit: Int
+    $nextToken: String
+  ) {
+    listComponentsBySubCategoryId(
+      subcategoryId: $subcategoryId
+      limit: $limit
+      nextToken: $nextToken
+    ) {
+      items {
+        id
+        componentId
+        componentName
+        description
+        primarySupplier
+        primarySupplierItemCode
+        secondarySupplier
+        secondarySupplierItemCode
+        currentStock
+        minimumStock
+        notes
+        subcategoryId
+      }
+      nextToken
+    }
+  }
+`;
+
+// ----------------------------------------------
+// INSPECTIONS (paginated)
+// ----------------------------------------------
+export const LIST_INSPECTIONS_BY_FLEET_PAGINATED = /* GraphQL */ `
+  query ListInspectionsByFleetPaginated(
+    $fleetId: String!
+    $limit: Int
+    $nextToken: String
+  ) {
+    inspectionsByFleetAndNumber(
+      fleetid: $fleetId
+      sortDirection: DESC
+      limit: $limit
+      nextToken: $nextToken
+    ) {
+      items {
+        id
+        inspectionNo
+        inspectionDate
+        inspectionTime
+        odometerStart
+        vehicleReg
+        inspectorOrDriver
+        oilAndCoolant
+        fuelLevel
+        seatbeltDoorsMirrors
+        handbrake
+        tyreCondition
+        spareTyre
+        numberPlate
+        licenseDisc
+        leaks
+        lights
+        defrosterAircon
+        emergencyKit
+        clean
+        warnings
+        windscreenWipers
+        serviceBook
+        siteKit
+        photo
+        history
+      }
+      nextToken
     }
   }
 `;
@@ -246,6 +346,27 @@ export const DELETE_COMPONENT = /* GraphQL */ `
   mutation DeleteComponent($input: DeleteComponentInput!) {
     deleteComponent(input: $input) {
       id
+    }
+  }
+`;
+
+// (Optional) If you need to create a component, add this mutation:
+export const CREATE_COMPONENT = /* GraphQL */ `
+  mutation CreateComponent($input: CreateComponentInput!) {
+    createComponent(input: $input) {
+      id
+      componentId
+      componentName
+      description
+      primarySupplier
+      primarySupplierItemCode
+      secondarySupplier
+      secondarySupplierItemCode
+      qtyExStock
+      currentStock
+      minimumStock
+      notes
+      subcategoryId
     }
   }
 `;

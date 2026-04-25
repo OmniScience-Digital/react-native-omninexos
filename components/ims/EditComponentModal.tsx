@@ -289,6 +289,8 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.7)",
   },
   modalSheet: {
+    marginTop: 3,
+    padding: 10,
     width: "100%",
     maxHeight: "90%",
     borderTopLeftRadius: 20,

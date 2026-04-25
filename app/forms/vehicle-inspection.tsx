@@ -28,8 +28,13 @@ import {
   useUpdateFleetKmMutation,
 } from "@/src/state/api";
 import { useAppDispatch, useAppSelector } from "@/src/state/redux";
-import { useEffect } from "react";
-import { ActivityIndicator, TouchableOpacity, View } from "react-native";
+import { useEffect, useState } from "react";
+import {
+  ActivityIndicator,
+  RefreshControl,
+  TouchableOpacity,
+  View,
+} from "react-native";
 
 export default function VehicleInspectionForm() {
   const { theme } = useTheme();
@@ -54,6 +59,13 @@ export default function VehicleInspectionForm() {
     { skip: !formState.selectedVehicleId },
   );
   const recentInspection = recentInspections?.[0];
+
+  const { refetch: refetchFleets } = useListFleetsQuery();
+  const { refetch: refetchRecentInspection } = useGetInspectionsByFleetQuery(
+    { fleetId: formState.selectedVehicleId, sortDirection: "DESC", limit: 1 },
+    { skip: !formState.selectedVehicleId },
+  );
+  const [refreshing, setRefreshing] = useState(false);
 
   // Auto-fill odometer & boolean answers from last inspection
   useEffect(() => {
@@ -86,6 +98,17 @@ export default function VehicleInspectionForm() {
       });
     }
   }, [recentInspection, dispatch]);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await Promise.all([
+      refetchFleets(),
+      formState.selectedVehicleId
+        ? refetchRecentInspection()
+        : Promise.resolve(),
+    ]);
+    setRefreshing(false);
+  };
 
   // Transform fleet data to match Vehicle type expected by VifForm
   const vehiclesForForm = vehicles
@@ -333,7 +356,11 @@ export default function VehicleInspectionForm() {
       showBack
       scrollable
     >
-      <CustomScrollView>
+      <CustomScrollView
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+      >
         <View style={styles.card(theme)}>
           <View style={styles.cardHeader(theme)}>
             <ThemedText style={styles.cardTitle}>

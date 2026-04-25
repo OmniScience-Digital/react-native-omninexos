@@ -21,6 +21,7 @@ import { Minus, Plus, PlusCircle } from "lucide-react-native";
 import { useState } from "react";
 import {
   ActivityIndicator,
+  RefreshControl,
   StyleSheet,
   Text,
   TouchableOpacity,
@@ -30,6 +31,16 @@ import {
 export default function StockControlForm() {
   const { theme } = useTheme();
   const { colors, radius, spacing, typography } = theme;
+  // Inside the component, after the existing state declarations
+  const [refreshing, setRefreshing] = useState(false);
+  const { refetch: refetchCategories } = useListCategoriesQuery();
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await refetchCategories();
+    setRefreshing(false);
+  };
+
   const dispatch = useAppDispatch();
   const { user } = useAuth();
 
@@ -141,7 +152,11 @@ export default function StockControlForm() {
       showBack
       scrollable
     >
-      <CustomScrollView>
+      <CustomScrollView
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+      >
         <View
           style={[
             s.card,

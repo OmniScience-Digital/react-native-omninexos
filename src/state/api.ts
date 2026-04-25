@@ -12,8 +12,10 @@ import {
   INSPECTIONS_BY_FLEET_AND_NUMBER,
   LIST_CATEGORIES,
   LIST_COMPONENTS_BY_SUBCATEGORY,
+  LIST_COMPONENTS_BY_SUBCATEGORY_PAGINATED,
   LIST_FLEETS,
   LIST_INSPECTIONS_BY_FLEET,
+  LIST_INSPECTIONS_BY_FLEET_PAGINATED,
   LIST_SUBCATEGORIES_BY_CATEGORY,
   Subcategory,
   UPDATE_COMPONENT,
@@ -197,6 +199,33 @@ export const api = createApi({
       ],
     }),
 
+    // Inspections Paginated
+    listInspectionsByFleetPaginated: build.query<
+      { items: Inspection[]; nextToken: string | null },
+      { fleetId: string; limit?: number; nextToken?: string | null }
+    >({
+      queryFn: async ({ fleetId, limit = 20, nextToken = null }) => {
+        try {
+          const { data, errors } = (await client.graphql({
+            query: LIST_INSPECTIONS_BY_FLEET_PAGINATED,
+            variables: { fleetId, limit, nextToken },
+            authMode: "apiKey",
+          })) as any;
+          if (errors) throw new Error(errors[0].message);
+          return {
+            data: {
+              items: data.inspectionsByFleetAndNumber.items as Inspection[],
+              nextToken: data.inspectionsByFleetAndNumber.nextToken ?? null,
+            },
+          };
+        } catch (e: any) {
+          return { error: e.message };
+        }
+      },
+      providesTags: (_result, _error, { fleetId }) => [
+        { type: "Inspection", id: fleetId },
+      ],
+    }),
     // ─── New stock control endpoints ──────────────────────────
     listCategories: build.query<Category[], void>({
       queryFn: async () => {
@@ -259,12 +288,12 @@ export const api = createApi({
     // For updateComponent
     updateComponent: build.mutation<
       Component,
-      Partial<Component> & { id: string; subcategoryId?: string }
+      Partial<Component> & { id: string }
     >({
       queryFn: async (input) => {
         try {
           const response: any = await client.graphql({
-            query: UPDATE_COMPONENT,
+            query: UPDATE_COMPONENT, // uses the full mutation above
             variables: { input },
             authMode: "apiKey",
           });
@@ -274,10 +303,38 @@ export const api = createApi({
           return { error: e.message };
         }
       },
-      invalidatesTags: (_result, _error, { subcategoryId }) => {
-        // Use a valid tag type and optionally include the subcategoryId
-        return [{ type: "Components" as const, id: subcategoryId }];
+      invalidatesTags: (_result, _error, { subcategoryId }) =>
+        subcategoryId
+          ? [{ type: "Components", id: subcategoryId }]
+          : ["Components"],
+    }),
+
+    // In your api.ts inside endpoints
+    listComponentsBySubcategoryPaginated: build.query<
+      { items: Component[]; nextToken: string | null },
+      { subcategoryId: string; limit?: number; nextToken?: string | null }
+    >({
+      queryFn: async ({ subcategoryId, limit = 20, nextToken = null }) => {
+        try {
+          const { data, errors } = (await client.graphql({
+            query: LIST_COMPONENTS_BY_SUBCATEGORY_PAGINATED,
+            variables: { subcategoryId, limit, nextToken },
+            authMode: "apiKey",
+          })) as any;
+          if (errors) throw new Error(errors[0].message);
+          return {
+            data: {
+              items: data.listComponentsBySubCategoryId.items as Component[],
+              nextToken: data.listComponentsBySubCategoryId.nextToken ?? null,
+            },
+          };
+        } catch (e: any) {
+          return { error: e.message };
+        }
       },
+      providesTags: (_result, _error, { subcategoryId }) => [
+        { type: "Components", id: subcategoryId },
+      ],
     }),
 
     // For deleteComponent
@@ -341,4 +398,10 @@ export const {
   useListComponentsBySubcategoryQuery,
   useUpdateComponentMutation,
   useDeleteComponentMutation,
+  useLazyListSubcategoriesByCategoryQuery,
+  useLazyListComponentsBySubcategoryQuery,
+  useListComponentsBySubcategoryPaginatedQuery,
+  useLazyListComponentsBySubcategoryPaginatedQuery,
+  useListInspectionsByFleetPaginatedQuery,
+  useLazyListInspectionsByFleetPaginatedQuery,
 } = api;
