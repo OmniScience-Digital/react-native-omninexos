@@ -1,7 +1,5 @@
 // app/_layout.tsx
 import outputs from "@/amplify_outputs.json";
-import logodark from "@/assets/images/icon.png";
-import logo from "@/assets/images/logo_dark.png";
 import ResponseModal from "@/components/responsemodal";
 import "@/global.css";
 import { AuthProvider, useAuth } from "@/src/contexts/auth-context";
@@ -20,7 +18,7 @@ import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import * as WebBrowser from "expo-web-browser";
 import React, { useEffect, useState } from "react";
-import { ActivityIndicator, Animated, Easing, Image, View } from "react-native";
+import { ActivityIndicator, Animated, Easing, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 Amplify.configure(outputs);
@@ -58,16 +56,6 @@ function LayoutInner() {
       return () => clearTimeout(timer);
     }
   }, [fontsLoaded, themeReady, splashHidden]);
-
-  // useEffect(() => {
-  //   if (fontsLoaded && themeReady && !authLoading && !splashHidden) {
-  //     const timer = setTimeout(async () => {
-  //       await SplashScreen.hideAsync();
-  //       setSplashHidden(true);
-  //     }, 50);
-  //     return () => clearTimeout(timer);
-  //   }
-  // }, [fontsLoaded, themeReady, authLoading, splashHidden]);
 
   // ✅ 2. Single source of truth for auth routing
   useEffect(() => {
@@ -110,27 +98,6 @@ function LayoutInner() {
     }
   }, [theme.colors.background, overlayOpacity]);
 
-  // useEffect(() => {
-  //   const newBg = theme.colors.background;
-  //   const oldBg = prevBgRef.current;
-  //   if (oldBg !== newBg) {
-  //     setOverlayBg(oldBg);
-  //     overlayOpacity.setValue(1);
-  //     const anim = Animated.timing(overlayOpacity, {
-  //       toValue: 0,
-  //       duration: 380,
-  //       easing: Easing.out(Easing.ease),
-  //       useNativeDriver: true,
-  //     });
-  //     // Only start if UI is ready (overlay is mounted)
-  //     if (isUIReady && splashHidden) {
-  //       anim.start();
-  //     }
-  //     prevBgRef.current = newBg;
-  //     return () => anim.stop();
-  //   }
-  // }, [theme.colors.background, overlayOpacity, isUIReady, splashHidden]);
-
   if (!isUIReady || !splashHidden || authLoading) {
     return (
       <View
@@ -142,7 +109,7 @@ function LayoutInner() {
           gap: 24,
         }}
       >
-        <View
+        {/* <View
           style={{
             width: 120,
             height: 100,
@@ -158,7 +125,7 @@ function LayoutInner() {
             style={{ width: 90, height: 100 }}
             resizeMode="contain"
           />
-        </View>
+        </View> */}
 
         <ActivityIndicator
           size="large"

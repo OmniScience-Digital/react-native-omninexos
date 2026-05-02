@@ -1,4 +1,4 @@
-// components/stockcontrol/ComponentItem.tsx
+// components/stockcontrolComponents/componentitem.tsx
 import { useTheme } from "@/src/contexts/theme-context";
 import {
   useListComponentsBySubcategoryQuery,
@@ -13,16 +13,20 @@ import {
 import { createSelector } from "@reduxjs/toolkit";
 import {
   ChevronDown,
+  Edit3,
   Plus,
   PlusCircle,
   Search,
   Trash2,
   X,
 } from "lucide-react-native";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
+  Animated,
+  Dimensions,
   FlatList,
   Modal,
+  PanResponder,
   StyleSheet,
   Text,
   TextInput,
@@ -33,8 +37,10 @@ import ResponseModal from "../responsemodal";
 import { ThemedText } from "../ui/screen";
 import ComponentLoading from "./Componentloading";
 
+const { height: SCREEN_HEIGHT } = Dimensions.get("window");
+
 // ------------------------------------------------------------------------
-// Helper components (same as in your RN version)
+// AddNewInput
 // ------------------------------------------------------------------------
 function AddNewInput({
   value,
@@ -108,6 +114,9 @@ const addStyles = StyleSheet.create({
   },
 });
 
+// ------------------------------------------------------------------------
+// DropdownModal
+// ------------------------------------------------------------------------
 function DropdownModal({
   visible,
   onClose,
@@ -274,6 +283,9 @@ const dmStyles = StyleSheet.create({
   addNewText: { fontSize: 14, fontWeight: "500" },
 });
 
+// ------------------------------------------------------------------------
+// SelectTrigger
+// ------------------------------------------------------------------------
 function SelectTrigger({
   label,
   placeholder,
@@ -322,9 +334,544 @@ const stStyles = StyleSheet.create({
 });
 
 // ------------------------------------------------------------------------
+// SubcomponentsBottomSheet
+// ------------------------------------------------------------------------
+function SubcomponentsBottomSheet({
+  visible,
+  onClose,
+  component,
+  onUpdate,
+  allComponents,
+  usedKeys,
+  dispatch,
+  colors,
+  radius,
+  spacing,
+}: any) {
+  const [keyOpenFor, setKeyOpenFor] = useState<string | null>(null);
+  const [keySearch, setKeySearch] = useState("");
+  const [addingKeyForSubId, setAddingKeyForSubId] = useState<string | null>(
+    null,
+  );
+  const [newSubcompName, setNewSubcompName] = useState("");
+  const [newSubcompModalVisible, setNewSubcompModalVisible] = useState(false);
+
+  const translateY = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, gestureState) => gestureState.dy > 5,
+      onPanResponderMove: (_, gestureState) => {
+        if (gestureState.dy > 0) {
+          translateY.setValue(gestureState.dy);
+        }
+      },
+      onPanResponderRelease: (_, gestureState) => {
+        if (gestureState.dy > 100) {
+          onClose();
+        } else {
+          Animated.spring(translateY, {
+            toValue: 0,
+            useNativeDriver: true,
+          }).start();
+        }
+      },
+    }),
+  ).current;
+
+  // Animate in/out
+  useMemo(() => {
+    if (visible) {
+      translateY.setValue(SCREEN_HEIGHT);
+      Animated.spring(translateY, {
+        toValue: 0,
+        useNativeDriver: true,
+        bounciness: 4,
+      }).start();
+    }
+  }, [visible]);
+
+  const availableKeys = allComponents
+    .map((c: any) => c.componentId || c.componentName)
+    .filter(Boolean);
+  const filteredKeys = availableKeys.filter((k: string) =>
+    k.toLowerCase().includes(keySearch.toLowerCase()),
+  );
+
+  const handleKeySelect = (subId: string, key: string) => {
+    onUpdate({
+      ...component,
+      subComponents: component.subComponents.map((s: any) =>
+        s.id === subId ? { ...s, key } : s,
+      ),
+    });
+    setKeyOpenFor(null);
+    setKeySearch("");
+  };
+
+  const updateValue = (subId: string, value: string) => {
+    onUpdate({
+      ...component,
+      subComponents: component.subComponents.map((s: any) =>
+        s.id === subId ? { ...s, value } : s,
+      ),
+    });
+  };
+
+  const addSubComponent = () => {
+    onUpdate({
+      ...component,
+      subComponents: [
+        ...component.subComponents,
+        {
+          id: `${component.id}-${Date.now()}`,
+          key: "",
+          value: "",
+          componentId: component.id,
+        },
+      ],
+    });
+  };
+
+  const removeSubComponent = (subId: string) => {
+    if (component.subComponents.length <= 1) return;
+    onUpdate({
+      ...component,
+      subComponents: component.subComponents.filter((s: any) => s.id !== subId),
+    });
+  };
+
+  if (!visible) return null;
+
+  return (
+    <Modal visible={visible} transparent animationType="none">
+      {/* Backdrop */}
+      <TouchableOpacity
+        style={bsStyles.backdrop}
+        activeOpacity={1}
+        onPress={onClose}
+      />
+
+      {/* Sheet */}
+      <Animated.View
+        style={[
+          bsStyles.sheet,
+          {
+            backgroundColor: colors.card,
+            transform: [{ translateY }],
+          },
+        ]}
+      >
+        {/* Drag handle */}
+        <View {...panResponder.panHandlers} style={bsStyles.handleArea}>
+          <View style={[bsStyles.handle, { backgroundColor: colors.border }]} />
+        </View>
+
+        {/* Header */}
+        <View
+          style={[bsStyles.sheetHeader, { borderBottomColor: colors.border }]}
+        >
+          <View style={{ flex: 1 }}>
+            <Text
+              style={[bsStyles.sheetTitle, { color: colors.text }]}
+              numberOfLines={1}
+            >
+              {component.subcategoryName ||
+                component.componentName ||
+                "Subcomponents"}
+            </Text>
+            <Text style={[bsStyles.sheetSubtitle, { color: colors.textMuted }]}>
+              {component.categoryName
+                ? `${component.categoryName} · Edit subcomponents`
+                : "Edit subcomponents"}
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={[
+              bsStyles.closeBtn,
+              {
+                borderColor: colors.border,
+                borderRadius: radius.md,
+                backgroundColor: colors.background,
+              },
+            ]}
+            onPress={onClose}
+          >
+            <X size={16} color={colors.textMuted} />
+          </TouchableOpacity>
+        </View>
+
+        {/* Subcomponent rows */}
+        <FlatList
+          data={component.subComponents}
+          keyExtractor={(sub: any) => sub.id}
+          style={{ maxHeight: SCREEN_HEIGHT * 0.45 }}
+          contentContainerStyle={{ padding: 16, gap: 10 }}
+          renderItem={({ item: sub }: any) => (
+            <View
+              style={[
+                bsStyles.subRow,
+                {
+                  backgroundColor: colors.background,
+                  borderColor: colors.border,
+                  borderRadius: radius.md,
+                },
+              ]}
+            >
+              <TouchableOpacity
+                style={[
+                  bsStyles.keySelect,
+                  {
+                    borderColor: colors.border,
+                    backgroundColor: colors.card,
+                    borderRadius: radius.md,
+                  },
+                ]}
+                onPress={() => {
+                  setKeyOpenFor(sub.id);
+                  setKeySearch("");
+                }}
+              >
+                <Text
+                  style={[
+                    bsStyles.keyText,
+                    { color: sub.key ? colors.text : colors.textMuted },
+                  ]}
+                  numberOfLines={1}
+                >
+                  {sub.key || "Select subcomponent"}
+                </Text>
+                <ChevronDown size={13} color={colors.textMuted} />
+              </TouchableOpacity>
+
+              <TextInput
+                style={[
+                  bsStyles.valueInput,
+                  {
+                    color: colors.text,
+                    borderColor: colors.border,
+                    backgroundColor: colors.card,
+                    borderRadius: radius.md,
+                  },
+                ]}
+                value={sub.value}
+                onChangeText={(v) => updateValue(sub.id, v)}
+                placeholder="Value"
+                keyboardType="numeric"
+                placeholderTextColor={colors.textMuted}
+              />
+
+              <TouchableOpacity
+                style={[
+                  bsStyles.trashBtn,
+                  {
+                    borderColor: colors.border,
+                    borderRadius: radius.md,
+                    opacity: component.subComponents.length === 1 ? 0.3 : 1,
+                  },
+                ]}
+                onPress={() => removeSubComponent(sub.id)}
+                disabled={component.subComponents.length === 1}
+              >
+                <Trash2 size={14} color={colors.textMuted} />
+              </TouchableOpacity>
+            </View>
+          )}
+          ListFooterComponent={
+            <TouchableOpacity
+              style={[
+                bsStyles.addSubBtn,
+                { borderColor: colors.border, borderRadius: radius.md },
+              ]}
+              onPress={addSubComponent}
+            >
+              <PlusCircle size={15} color={colors.textMuted} />
+              <Text style={[bsStyles.addSubText, { color: colors.textMuted }]}>
+                Add subcomponent
+              </Text>
+            </TouchableOpacity>
+          }
+        />
+
+        {/* Done button */}
+        <View
+          style={[
+            bsStyles.doneArea,
+            { borderTopColor: colors.border, backgroundColor: colors.card },
+          ]}
+        >
+          <TouchableOpacity
+            style={[
+              bsStyles.doneBtn,
+              { backgroundColor: colors.accent, borderRadius: radius.md },
+            ]}
+            onPress={onClose}
+          >
+            <Text style={bsStyles.doneBtnText}>Done</Text>
+          </TouchableOpacity>
+        </View>
+      </Animated.View>
+
+      {/* Key dropdown */}
+      {keyOpenFor && (
+        <DropdownModal
+          visible={!!keyOpenFor}
+          onClose={() => {
+            setKeyOpenFor(null);
+            setKeySearch("");
+          }}
+          items={filteredKeys.map((k: string) => ({ id: k, label: k }))}
+          selectedId={
+            component.subComponents.find((s: any) => s.id === keyOpenFor)
+              ?.key ?? ""
+          }
+          onSelect={(key: string) => handleKeySelect(keyOpenFor, key)}
+          getLabel={(item: any) => item.label}
+          getId={(item: any) => item.id}
+          isDisabled={(item: any) =>
+            usedKeys.includes(item.id) &&
+            item.id !==
+              component.subComponents.find((s: any) => s.id === keyOpenFor)?.key
+          }
+          disabledLabel="already used"
+          searchTerm={keySearch}
+          onSearchChange={setKeySearch}
+          searchPlaceholder="Search subcomponents…"
+          emptyText="No subcomponents available"
+          addNewLabel="Add new subcomponent…"
+          onAddNew={() => {
+            setKeyOpenFor(null);
+            setAddingKeyForSubId(keyOpenFor);
+            setNewSubcompName("");
+            setNewSubcompModalVisible(true);
+          }}
+          colors={colors}
+          radius={radius}
+        />
+      )}
+
+      {/* New subcomponent name modal */}
+      <Modal
+        visible={newSubcompModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setNewSubcompModalVisible(false)}
+      >
+        <View style={modalStyles.overlay}>
+          <View
+            style={[
+              modalStyles.container,
+              { backgroundColor: colors.card, borderRadius: radius.xl },
+            ]}
+          >
+            <Text style={[modalStyles.title, { color: colors.text }]}>
+              New subcomponent
+            </Text>
+            <TextInput
+              style={[
+                modalStyles.input,
+                {
+                  color: colors.text,
+                  borderColor: colors.border,
+                  backgroundColor: colors.background,
+                  borderRadius: radius.md,
+                },
+              ]}
+              placeholder="Enter subcomponent name"
+              placeholderTextColor={colors.textMuted}
+              value={newSubcompName}
+              onChangeText={setNewSubcompName}
+              autoFocus
+            />
+            <View style={modalStyles.buttons}>
+              <TouchableOpacity
+                style={[
+                  modalStyles.button,
+                  {
+                    borderColor: colors.border,
+                    borderRadius: radius.md,
+                  },
+                ]}
+                onPress={() => setNewSubcompModalVisible(false)}
+              >
+                <ThemedText style={modalStyles.buttonText}>Cancel</ThemedText>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  modalStyles.button,
+                  {
+                    backgroundColor: colors.accent,
+                    borderRadius: radius.md,
+                    borderColor: colors.accent,
+                  },
+                ]}
+                onPress={() => {
+                  if (addingKeyForSubId && newSubcompName.trim()) {
+                    const tempId = `temp-comp-${Date.now()}`;
+                    dispatch(
+                      addTempComponent({
+                        id: tempId,
+                        componentId: newSubcompName.trim(),
+                        componentName: newSubcompName.trim(),
+                        subcategoryId: component.subcategoryId,
+                      }),
+                    );
+                    onUpdate({
+                      ...component,
+                      subComponents: component.subComponents.map((s: any) =>
+                        s.id === addingKeyForSubId
+                          ? { ...s, key: newSubcompName.trim() }
+                          : s,
+                      ),
+                    });
+                    setNewSubcompModalVisible(false);
+                    setAddingKeyForSubId(null);
+                    setNewSubcompName("");
+                  }
+                }}
+                disabled={!newSubcompName.trim()}
+              >
+                <ThemedText style={[modalStyles.buttonText, { color: "#fff" }]}>
+                  Add
+                </ThemedText>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </Modal>
+  );
+}
+
+const bsStyles = StyleSheet.create({
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.4)",
+  },
+  sheet: {
+    position: "absolute",
+    bottom: 0,
+    left: 0,
+    right: 0,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingBottom: 34,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: -4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 16,
+    elevation: 20,
+  },
+  handleArea: {
+    alignItems: "center",
+    paddingVertical: 12,
+  },
+  handle: {
+    width: 36,
+    height: 4,
+    borderRadius: 4,
+  },
+  sheetHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingBottom: 14,
+    borderBottomWidth: 0.5,
+    gap: 12,
+  },
+  sheetTitle: { fontSize: 16, fontWeight: "600" },
+  sheetSubtitle: { fontSize: 12, marginTop: 2 },
+  closeBtn: {
+    width: 34,
+    height: 34,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  subRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    padding: 10,
+    borderWidth: 0.5,
+  },
+  keySelect: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+  },
+  keyText: { flex: 1, fontSize: 13, marginRight: 4 },
+  valueInput: {
+    width: 80,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    fontSize: 14,
+    textAlign: "center",
+  },
+  trashBtn: {
+    width: 36,
+    height: 36,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  addSubBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    borderWidth: 1,
+    borderStyle: "dashed",
+    paddingVertical: 11,
+    marginTop: 4,
+  },
+  addSubText: { fontSize: 13 },
+  doneArea: {
+    padding: 16,
+    borderTopWidth: 0.5,
+  },
+  doneBtn: {
+    paddingVertical: 13,
+    alignItems: "center",
+  },
+  doneBtnText: { color: "#fff", fontWeight: "600", fontSize: 15 },
+});
+
+const modalStyles = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  container: { width: "80%", padding: 20, gap: 16 },
+  title: { fontSize: 18, fontWeight: "600", textAlign: "center" },
+  input: {
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 16,
+  },
+  buttons: { flexDirection: "row", justifyContent: "space-between", gap: 12 },
+  button: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: "center",
+    borderWidth: 1,
+  },
+  buttonText: { fontSize: 16, fontWeight: "500" },
+});
+
+// ------------------------------------------------------------------------
 // Main ComponentItem
 // ------------------------------------------------------------------------
-export interface ComponentItemProps {
+interface ComponentItemProps {
   component: any;
   selectedCategoryId: string;
   onCategoryChange: (categoryId: string, categoryName: string) => void;
@@ -348,13 +895,10 @@ export default function ComponentItem({
   usedSubcategoryIds,
 }: ComponentItemProps) {
   const { theme } = useTheme();
-  const { colors, radius } = theme;
+  const { colors, radius, spacing } = theme;
   const dispatch = useAppDispatch();
-  const [newSubcompModalVisible, setNewSubcompModalVisible] = useState(false);
-  const [newSubcompName, setNewSubcompName] = useState("");
-  const [addingKeyForSubId, setAddingKeyForSubId] = useState<string | null>(
-    null,
-  );
+
+  const [sheetVisible, setSheetVisible] = useState(false);
 
   // Fetch real data
   const { data: subcategories = [], isLoading: subcatsLoading } =
@@ -395,8 +939,8 @@ export default function ComponentItem({
       [component.subcategoryId],
     ),
   );
-  const allCategories = [...categories, ...tempCategories];
 
+  const allCategories = [...categories, ...tempCategories];
   const allSubcategories = [...subcategories, ...tempSubcategories];
   const allComponents = [...realComponents, ...tempComponents];
 
@@ -409,12 +953,8 @@ export default function ComponentItem({
   const [newCategoryInput, setNewCategoryInput] = useState("");
   const [addingSubcat, setAddingSubcat] = useState(false);
   const [newSubcatInput, setNewSubcatInput] = useState("");
-  const [keyOpenFor, setKeyOpenFor] = useState<string | null>(null);
-  const [keySearch, setKeySearch] = useState("");
-  const [addingKeyFor, setAddingKeyFor] = useState<string | null>(null);
-  const [newKeyInput, setNewKeyInput] = useState("");
-  const [permMsg, setPermMsg] = useState("");
   const [showPerm, setShowPerm] = useState(false);
+  const [permMsg, setPermMsg] = useState("");
 
   const selectedCategory = allCategories.find(
     (c) => c.id === selectedCategoryId,
@@ -428,12 +968,6 @@ export default function ComponentItem({
   );
   const filteredSubcats = allSubcategories.filter((s) =>
     s.subcategoryName.toLowerCase().includes(subcatSearch.toLowerCase()),
-  );
-  const availableKeys = allComponents
-    .map((c) => c.componentId || c.componentName)
-    .filter(Boolean);
-  const filteredKeys = availableKeys.filter((k) =>
-    k.toLowerCase().includes(keySearch.toLowerCase()),
   );
 
   const handleCategorySelect = (id: string) => {
@@ -484,69 +1018,11 @@ export default function ComponentItem({
     setNewSubcatInput("");
   };
 
-  const handleKeySelect = (subId: string, key: string) => {
-    onUpdate({
-      ...component,
-      subComponents: component.subComponents.map((s: any) =>
-        s.id === subId ? { ...s, key } : s,
-      ),
-    });
-    setKeyOpenFor(null);
-    setKeySearch("");
-  };
-
-  const confirmNewKey = (subId: string) => {
-    if (!newKeyInput.trim()) return;
-    const tempId = `temp-comp-${Date.now()}`;
-    dispatch(
-      addTempComponent({
-        id: tempId,
-        componentId: newKeyInput.trim(),
-        componentName: newKeyInput.trim(),
-        subcategoryId: component.subcategoryId,
-      }),
-    );
-    onUpdate({
-      ...component,
-      subComponents: component.subComponents.map((s: any) =>
-        s.id === subId ? { ...s, key: newKeyInput.trim() } : s,
-      ),
-    });
-    setAddingKeyFor(null);
-    setNewKeyInput("");
-  };
-
-  const updateValue = (subId: string, value: string) => {
-    onUpdate({
-      ...component,
-      subComponents: component.subComponents.map((s: any) =>
-        s.id === subId ? { ...s, value } : s,
-      ),
-    });
-  };
-
-  const addSubComponent = () => {
-    onUpdate({
-      ...component,
-      subComponents: [
-        ...component.subComponents,
-        {
-          id: `${component.id}-${Date.now()}`,
-          key: "",
-          value: "",
-          componentId: component.id,
-        },
-      ],
-    });
-  };
-
-  const removeSubComponent = (subId: string) => {
-    if (component.subComponents.length <= 1) return;
-    onUpdate({
-      ...component,
-      subComponents: component.subComponents.filter((s: any) => s.id !== subId),
-    });
-  };
+  // Count of filled subcomponents
+  const filledCount = component.subComponents.filter((s: any) =>
+    s.key.trim(),
+  ).length;
+  const totalCount = component.subComponents.length;
 
   return (
     <View
@@ -559,8 +1035,8 @@ export default function ComponentItem({
         },
       ]}
     >
-      {/* Category row */}
-      <View style={sCard.row}>
+      {/* Top row: category + trash */}
+      <View style={sCard.topRow}>
         <View style={{ flex: 1, gap: 5 }}>
           <Text style={[sCard.label, { color: colors.text }]}>Category</Text>
           {addingCategory ? (
@@ -632,122 +1108,103 @@ export default function ComponentItem({
         )}
       </View>
 
-      {/* Subcomponents section */}
-      <View style={[sCard.subSection, { borderLeftColor: colors.info + "60" }]}>
-        <View style={sCard.subHeader}>
-          <Text style={[sCard.subTitle, { color: colors.textMuted }]}>
+      {/* Subcomponents summary row */}
+      <TouchableOpacity
+        style={[
+          sCard.subSummaryRow,
+          {
+            backgroundColor: colors.background,
+            borderColor: colors.border,
+            borderRadius: radius.md,
+          },
+        ]}
+        onPress={() => setSheetVisible(true)}
+        activeOpacity={0.7}
+      >
+        <View style={{ flex: 1 }}>
+          <Text style={[sCard.subSummaryLabel, { color: colors.text }]}>
             Subcomponents
           </Text>
+          {/* Preview of filled keys */}
+          {filledCount > 0 ? (
+            <View style={sCard.previewRow}>
+              {component.subComponents
+                .filter((s: any) => s.key.trim())
+                .slice(0, 3)
+                .map((s: any) => (
+                  <View
+                    key={s.id}
+                    style={[
+                      sCard.previewChip,
+                      {
+                        backgroundColor: colors.card,
+                        borderColor: colors.border,
+                        borderRadius: radius.md,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        sCard.previewChipKey,
+                        { color: colors.textMuted },
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {s.key}
+                    </Text>
+                    {s.value ? (
+                      <Text
+                        style={[sCard.previewChipValue, { color: colors.text }]}
+                      >
+                        {s.value}
+                      </Text>
+                    ) : null}
+                  </View>
+                ))}
+              {filledCount > 3 && (
+                <Text style={[sCard.moreText, { color: colors.textMuted }]}>
+                  +{filledCount - 3} more
+                </Text>
+              )}
+            </View>
+          ) : (
+            <Text style={[sCard.subSummaryHint, { color: colors.textMuted }]}>
+              Tap to add subcomponents
+            </Text>
+          )}
+        </View>
+
+        <View style={{ alignItems: "flex-end", gap: 6 }}>
+          {/* Count badge */}
           <View
             style={[
               sCard.countBadge,
-              { backgroundColor: colors.background, borderRadius: radius.md },
-            ]}
-          >
-            <Text style={[sCard.countText, { color: colors.textMuted }]}>
-              {component.subComponents.length}
-            </Text>
-          </View>
-        </View>
-
-        {component.subComponents.map((sub: any) => (
-          <View
-            key={sub.id}
-            style={[
-              sCard.subRow,
               {
-                backgroundColor: colors.background,
-                borderColor: colors.border,
+                backgroundColor:
+                  filledCount > 0 ? colors.accent + "20" : colors.background,
                 borderRadius: radius.md,
+                borderColor:
+                  filledCount > 0 ? colors.accent + "40" : colors.border,
               },
             ]}
           >
-            <View style={{ flex: 1 }}>
-              {/* {addingKeyFor === sub.id ? (
-                <AddNewInput
-                  value={newKeyInput}
-                  onChange={setNewKeyInput}
-                  onConfirm={() => confirmNewKey(sub.id)}
-                  onCancel={() => {
-                    setAddingKeyFor(null);
-                    setNewKeyInput("");
-                  }}
-                  placeholder="New subcomponent name…"
-                  confirmDisabled={!newKeyInput.trim()}
-                  colors={colors}
-                  radius={radius}
-                />
-              ) : (
-                <SelectTrigger
-                  label={sub.key}
-                  placeholder="Select subcomponent"
-                  onPress={() => {
-                    setKeyOpenFor(sub.id);
-                    setKeySearch("");
-                  }}
-                  colors={colors}
-                  radius={radius}
-                />
-              )} */}
-
-              <SelectTrigger
-                label={sub.key}
-                placeholder="Select subcomponent"
-                onPress={() => {
-                  setKeyOpenFor(sub.id);
-                  setKeySearch("");
-                }}
-                colors={colors}
-                radius={radius}
-              />
-            </View>
-            <TextInput
+            <Text
               style={[
-                sCard.valueInput,
+                sCard.countText,
                 {
-                  color: colors.text,
-                  borderColor: colors.border,
-                  backgroundColor: colors.card,
-                  borderRadius: radius.md,
+                  color: filledCount > 0 ? colors.accent : colors.textMuted,
                 },
               ]}
-              value={sub.value}
-              onChangeText={(v) => updateValue(sub.id, v)}
-              placeholder="Value"
-              keyboardType="numeric"
-            />
-            <TouchableOpacity
-              style={[
-                sCard.trashBtnSm,
-                {
-                  borderColor: colors.border,
-                  borderRadius: radius.md,
-                  opacity: component.subComponents.length === 1 ? 0.3 : 1,
-                },
-              ]}
-              onPress={() => removeSubComponent(sub.id)}
-              disabled={component.subComponents.length === 1}
             >
-              <Trash2 size={14} color={colors.textMuted} />
-            </TouchableOpacity>
+              {filledCount}/{totalCount}
+            </Text>
           </View>
-        ))}
+          {/* Edit icon */}
+          <Edit3 size={15} color={colors.textMuted} />
+        </View>
+      </TouchableOpacity>
 
-        <TouchableOpacity
-          style={[
-            sCard.addSubBtn,
-            { borderColor: colors.border, borderRadius: radius.md },
-          ]}
-          onPress={addSubComponent}
-        >
-          <PlusCircle size={15} color={colors.textMuted} />
-          <Text style={[sCard.addSubText, { color: colors.textMuted }]}>
-            Add Subcomponent
-          </Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Dropdown modals */}
+      {/* Category dropdown */}
       <DropdownModal
         visible={catOpen}
         onClose={() => {
@@ -763,7 +1220,7 @@ export default function ComponentItem({
         onSearchChange={setCatSearch}
         searchPlaceholder="Search categories…"
         emptyText="No categories found"
-        addNewLabel="Add New Category…"
+        addNewLabel="Add new category…"
         onAddNew={() => {
           setCatOpen(false);
           setAddingCategory(true);
@@ -772,6 +1229,7 @@ export default function ComponentItem({
         radius={radius}
       />
 
+      {/* Subcategory dropdown */}
       <DropdownModal
         visible={subcatOpen}
         onClose={() => {
@@ -795,7 +1253,7 @@ export default function ComponentItem({
             ? "No subcategories available"
             : "Select a category first"
         }
-        addNewLabel="Add New Subcategory…"
+        addNewLabel="Add new subcategory…"
         onAddNew={() => {
           setSubcatOpen(false);
           setAddingSubcat(true);
@@ -804,125 +1262,20 @@ export default function ComponentItem({
         radius={radius}
       />
 
-      {keyOpenFor && (
-        <DropdownModal
-          visible={!!keyOpenFor}
-          onClose={() => {
-            setKeyOpenFor(null);
-            setKeySearch("");
-          }}
-          items={filteredKeys.map((k) => ({ id: k, label: k }))}
-          selectedId={
-            component.subComponents.find((s: any) => s.id === keyOpenFor)
-              ?.key ?? ""
-          }
-          onSelect={(key: string) => handleKeySelect(keyOpenFor, key)}
-          getLabel={(item: any) => item.label}
-          getId={(item: any) => item.id}
-          isDisabled={(item: any) =>
-            usedKeys.includes(item.id) &&
-            item.id !==
-              component.subComponents.find((s: any) => s.id === keyOpenFor)?.key
-          }
-          disabledLabel="already used"
-          searchTerm={keySearch}
-          onSearchChange={setKeySearch}
-          searchPlaceholder="Search subcomponents…"
-          emptyText="No subcomponents available"
-          addNewLabel="Add New Subcomponent…"
-          // onAddNew={() => {
-          //   setKeyOpenFor(null);
-          //   setAddingKeyFor(keyOpenFor);
-          //   setNewKeyInput("");
-          // }}
-          onAddNew={() => {
-            setKeyOpenFor(null);
-            setAddingKeyForSubId(keyOpenFor);
-            setNewSubcompName("");
-            setNewSubcompModalVisible(true);
-          }}
-          colors={colors}
-          radius={radius}
-        />
-      )}
+      {/* Subcomponents bottom sheet */}
+      <SubcomponentsBottomSheet
+        visible={sheetVisible}
+        onClose={() => setSheetVisible(false)}
+        component={component}
+        onUpdate={onUpdate}
+        allComponents={allComponents}
+        usedKeys={usedKeys}
+        dispatch={dispatch}
+        colors={colors}
+        radius={radius}
+        spacing={spacing}
+      />
 
-      <Modal
-        visible={newSubcompModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setNewSubcompModalVisible(false)}
-      >
-        <View style={modalStyles.overlay}>
-          <View
-            style={[
-              modalStyles.container,
-              { backgroundColor: colors.card, borderRadius: radius.xl },
-            ]}
-          >
-            <Text style={[modalStyles.title, { color: colors.text }]}>
-              New Subcomponent
-            </Text>
-            <TextInput
-              style={[
-                modalStyles.input,
-                {
-                  color: colors.text,
-                  borderColor: colors.border,
-                  backgroundColor: colors.background,
-                  borderRadius: radius.md,
-                },
-              ]}
-              placeholder="Enter subcomponent name"
-              placeholderTextColor={colors.textMuted}
-              value={newSubcompName}
-              onChangeText={setNewSubcompName}
-              autoFocus
-            />
-            <View style={modalStyles.buttons}>
-              <TouchableOpacity
-                style={[modalStyles.button]}
-                onPress={() => setNewSubcompModalVisible(false)}
-              >
-                <ThemedText style={[modalStyles.buttonText]}>Cancel</ThemedText>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  modalStyles.button,
-                  { backgroundColor: colors.accent, borderRadius: radius.md },
-                ]}
-                onPress={() => {
-                  if (addingKeyForSubId && newSubcompName.trim()) {
-                    const tempId = `temp-comp-${Date.now()}`;
-                    dispatch(
-                      addTempComponent({
-                        id: tempId,
-                        componentId: newSubcompName.trim(),
-                        componentName: newSubcompName.trim(),
-                        subcategoryId: component.subcategoryId,
-                      }),
-                    );
-                    // Update the specific subcomponent's key
-                    onUpdate({
-                      ...component,
-                      subComponents: component.subComponents.map((s: any) =>
-                        s.id === addingKeyForSubId
-                          ? { ...s, key: newSubcompName.trim() }
-                          : s,
-                      ),
-                    });
-                    setNewSubcompModalVisible(false);
-                    setAddingKeyForSubId(null);
-                    setNewSubcompName("");
-                  }
-                }}
-                disabled={!newSubcompName.trim()}
-              >
-                <ThemedText style={[modalStyles.buttonText]}>Add</ThemedText>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
       <ResponseModal
         visible={showPerm}
         successful={false}
@@ -934,8 +1287,8 @@ export default function ComponentItem({
 }
 
 const sCard = StyleSheet.create({
-  card: { borderWidth: 0.5, padding: 16, gap: 16 },
-  row: { flexDirection: "row", alignItems: "flex-end", gap: 10 },
+  card: { borderWidth: 0.5, padding: 16, gap: 14 },
+  topRow: { flexDirection: "row", alignItems: "flex-end", gap: 10 },
   label: { fontSize: 13, fontWeight: "500" },
   trashBtn: {
     width: 42,
@@ -945,86 +1298,36 @@ const sCard = StyleSheet.create({
     justifyContent: "center",
     marginBottom: 1,
   },
-  subSection: { borderLeftWidth: 2, paddingLeft: 12, gap: 10 },
-  subHeader: {
+  subSummaryRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-  },
-  subTitle: { fontSize: 13, fontWeight: "500" },
-  countBadge: { paddingHorizontal: 8, paddingVertical: 3 },
-  countText: { fontSize: 12 },
-  subRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    padding: 10,
     borderWidth: 0.5,
-  },
-  valueInput: {
-    width: 90,
-    borderWidth: 1,
-    paddingHorizontal: 10,
-    paddingVertical: 9,
-    fontSize: 14,
-  },
-  trashBtnSm: {
-    width: 36,
-    height: 36,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  addSubBtn: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 6,
-    borderWidth: 1,
-    borderStyle: "dashed",
-    paddingVertical: 11,
-  },
-  addSubText: { fontSize: 13 },
-});
-
-const modalStyles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 20,
-  },
-  container: {
-    width: "80%",
-    padding: 20,
-    gap: 16,
-  },
-  title: {
-    fontSize: 18,
-    fontWeight: "600",
-    textAlign: "center",
-  },
-  input: {
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 16,
-  },
-  buttons: {
-    flexDirection: "row",
-    justifyContent: "space-between",
+    padding: 12,
     gap: 12,
   },
-  button: {
-    flex: 1,
-    paddingVertical: 10,
+  subSummaryLabel: { fontSize: 13, fontWeight: "500", marginBottom: 5 },
+  subSummaryHint: { fontSize: 12 },
+  previewRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    marginTop: 2,
+  },
+  previewChip: {
+    flexDirection: "row",
     alignItems: "center",
-    borderWidth: 1,
+    gap: 4,
+    borderWidth: 0.5,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
   },
-  buttonText: {
-    fontSize: 16,
-    fontWeight: "500",
-    borderRadius: 18,
+  previewChipKey: { fontSize: 11, maxWidth: 80 },
+  previewChipValue: { fontSize: 11, fontWeight: "600" },
+  moreText: { fontSize: 11, alignSelf: "center" },
+  countBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderWidth: 0.5,
   },
+  countText: { fontSize: 12, fontWeight: "500" },
 });

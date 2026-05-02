@@ -3,21 +3,25 @@ import { useTheme } from "@/src/contexts/theme-context";
 import {
   addPhoto,
   clearAllPhotos,
-  incrementUploadProgress,
   removePhoto,
-  resetUploadProgress,
-  setUploadProgress,
   updatePhotoStatus,
 } from "@/src/state";
 import { useAppDispatch, useAppSelector } from "@/src/state/redux";
 import { uploadData } from "aws-amplify/storage";
+import Constants from "expo-constants";
 import * as ImagePicker from "expo-image-picker";
-import { AlertCircle, CheckCircle, Upload, X } from "lucide-react-native";
-import React from "react";
+import {
+  AlertCircle,
+  Camera,
+  CheckCircle,
+  Images,
+  X,
+} from "lucide-react-native";
 import {
   ActivityIndicator,
   Alert,
   Image,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -31,17 +35,13 @@ interface PhotoUploadProps {
   disabled?: boolean;
 }
 
-// Helper: clean vehicle registration for S3 path
-const cleanVehicleReg = (reg: string): string => {
-  return reg.replace(/[^a-zA-Z0-9]/g, "-");
-};
+const cleanVehicleReg = (reg: string): string =>
+  reg.replace(/[^a-zA-Z0-9]/g, "-");
 
-// Helper: generate random string for uniqueness
-const randomString = (length: number = 8): string => {
-  return Math.random()
+const randomString = (length: number = 8): string =>
+  Math.random()
     .toString(36)
     .substring(2, 2 + length);
-};
 
 export default function PhotoUpload({
   vehicleReg,
@@ -51,133 +51,32 @@ export default function PhotoUpload({
   const { theme } = useTheme();
   const dispatch = useAppDispatch();
   const photos = useAppSelector((state) => state.global.vifForm.photos);
-  const uploadProgress = useAppSelector((state) => state.global.uploadProgress);
 
-  const generateS3Key = (index: number): string => {
-    const timestamp = Date.now();
-    const cleanReg = cleanVehicleReg(vehicleReg);
-    const random = randomString();
-    return `inspections/${cleanReg}/${inspectionNumber}/${timestamp}-${index}-${random}.jpg`;
-  };
+  const uploading = photos.some((p) => p.status === "uploading");
+  const allUploaded =
+    photos.length > 0 && photos.every((p) => p.status === "success");
+  const hasErrors = photos.some((p) => p.status === "error");
+  const isDisabled =
+    !vehicleReg || !inspectionNumber || photos.length >= 20 || disabled;
 
+  const isSimulator =
+    Platform.OS === "ios" && Constants.executionEnvironment === "storeClient"
+      ? false
+      : __DEV__ && !Constants.isDevice;
+
+  // ─── S3 key ──────────────────────────────────────────────
+  const generateS3Key = (index: number): string =>
+    `inspections/${cleanVehicleReg(vehicleReg)}/${inspectionNumber}/${Date.now()}-${index}-${randomString()}.jpg`;
+
+  // ─── Upload one photo ─────────────────────────────────────
   const uploadSinglePhoto = async (
-    photo: any,
+    photo: { id: string; uri: string },
     index: number,
-    total: number,
   ) => {
     try {
-      // Update progress before starting this upload
-      dispatch(incrementUploadProgress());
-
-      // Convert URI to blob
       const response = await fetch(photo.uri);
       const blob = await response.blob();
-
-      // Generate correct S3 key
       const s3Key = generateS3Key(index);
-
-      // Upload to S3
-      await uploadData({
-        path: s3Key,
-        data: blob,
-        options: {
-          contentType: "image/jpeg",
-        },
-      }).result;
-
-      // Success
-      dispatch(
-        updatePhotoStatus({
-          id: photo.id,
-          status: "success",
-          s3Key: s3Key, // store only the key, not s3://bucket/
-          error: undefined,
-        }),
-      );
-    } catch (error) {
-      console.error("S3 upload failed:", error);
-      dispatch(
-        updatePhotoStatus({
-          id: photo.id,
-          status: "error",
-          error: error instanceof Error ? error.message : "Upload failed",
-        }),
-      );
-    }
-  };
-
-  const pickImages = async () => {
-    if (disabled) return;
-    if (!vehicleReg || !inspectionNumber) {
-      Alert.alert("Cannot Upload", "Please select a vehicle first");
-      return;
-    }
-    if (photos.length >= 20) {
-      Alert.alert("Limit Reached", "Maximum 20 photos allowed");
-      return;
-    }
-
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== "granted") {
-      Alert.alert("Permission needed", "Please grant photo library access");
-      return;
-    }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"],
-      allowsMultipleSelection: true,
-      quality: 0.8,
-    });
-
-    if (!result.canceled && result.assets) {
-      const remaining = 20 - photos.length;
-      const newAssets = result.assets.slice(0, remaining);
-
-      // Create photo objects with temporary IDs and 'uploading' status
-      const newPhotos = newAssets.map((asset, idx) => ({
-        id: `${Date.now()}_${idx}_${randomString()}`,
-        uri: asset.uri,
-        status: "uploading" as const,
-        s3Key: "",
-      }));
-
-      // Add to Redux
-      newPhotos.forEach((photo) => dispatch(addPhoto(photo)));
-
-      // Set overall upload progress
-      const totalImages = photos.length + newPhotos.length;
-      dispatch(
-        setUploadProgress({
-          isUploading: true,
-          currentImage: 0,
-          totalImages,
-        }),
-      );
-
-      // Upload each photo sequentially
-      for (let i = 0; i < newPhotos.length; i++) {
-        await uploadSinglePhoto(newPhotos[i], i, totalImages);
-      }
-
-      // All done
-      dispatch(resetUploadProgress());
-    }
-  };
-
-  const retryUpload = async (photoId: string) => {
-    const photo = photos.find((p) => p.id === photoId);
-    if (!photo) return;
-
-    // Reset status to uploading
-    dispatch(
-      updatePhotoStatus({ id: photoId, status: "uploading", error: undefined }),
-    );
-
-    // Re-upload
-    try {
-      const response = await fetch(photo.uri);
-      const blob = await response.blob();
-      const s3Key = generateS3Key(photos.findIndex((p) => p.id === photoId));
       await uploadData({
         path: s3Key,
         data: blob,
@@ -185,7 +84,7 @@ export default function PhotoUpload({
       }).result;
       dispatch(
         updatePhotoStatus({
-          id: photoId,
+          id: photo.id,
           status: "success",
           s3Key,
           error: undefined,
@@ -194,7 +93,7 @@ export default function PhotoUpload({
     } catch (error) {
       dispatch(
         updatePhotoStatus({
-          id: photoId,
+          id: photo.id,
           status: "error",
           error: error instanceof Error ? error.message : "Upload failed",
         }),
@@ -202,25 +101,102 @@ export default function PhotoUpload({
     }
   };
 
-  const removePhotoHandler = (id: string) => {
-    dispatch(removePhoto(id));
+  // ─── Process assets: add to Redux instantly, upload in parallel ──
+  const processAssets = async (assets: ImagePicker.ImagePickerAsset[]) => {
+    const remaining = 20 - photos.length;
+    const newAssets = assets.slice(0, remaining);
+
+    // Build photo objects and dispatch immediately so thumbnails appear at once
+    const newPhotos = newAssets.map((asset, idx) => ({
+      id: `${Date.now()}_${idx}_${randomString()}`,
+      uri: asset.uri,
+      status: "uploading" as const,
+      s3Key: "",
+    }));
+
+    newPhotos.forEach((p) => dispatch(addPhoto(p)));
+
+    // Upload ALL photos in parallel — much faster than sequential
+    await Promise.all(
+      newPhotos.map((photo, idx) =>
+        uploadSinglePhoto(photo, photos.length + idx),
+      ),
+    );
   };
 
-  const removeAllPhotos = () => {
-    Alert.alert("Remove All Photos", "Are you sure?", [
+  // ─── Camera ──────────────────────────────────────────────
+  const openCamera = async () => {
+    if (isDisabled || uploading) return;
+    if (isSimulator) {
+      await openGallery();
+      return;
+    }
+
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert(
+        "Camera permission needed",
+        "Please grant camera access in settings.",
+      );
+      return;
+    }
+
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ["images"],
+      quality: 0.5, // optimized for speed
+      allowsEditing: false,
+      exif: false, // skip metadata — saves time on Android
+      base64: false,
+    });
+
+    if (!result.canceled && result.assets) await processAssets(result.assets);
+  };
+
+  // ─── Gallery ─────────────────────────────────────────────
+  const openGallery = async () => {
+    if (isDisabled || uploading) return;
+
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== "granted") {
+      Alert.alert("Permission needed", "Please grant photo library access.");
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      allowsMultipleSelection: true,
+      quality: 0.5,
+      exif: false,
+      base64: false,
+    });
+
+    if (!result.canceled && result.assets) await processAssets(result.assets);
+  };
+
+  // ─── Retry ───────────────────────────────────────────────
+  const retryUpload = async (photoId: string) => {
+    const photo = photos.find((p) => p.id === photoId);
+    if (!photo) return;
+    dispatch(
+      updatePhotoStatus({ id: photoId, status: "uploading", error: undefined }),
+    );
+    await uploadSinglePhoto(
+      photo,
+      photos.findIndex((p) => p.id === photoId),
+    );
+  };
+
+  const removePhotoHandler = (id: string) => dispatch(removePhoto(id));
+
+  const removeAllPhotos = () =>
+    Alert.alert("Remove all photos", "Are you sure?", [
       { text: "Cancel", style: "cancel" },
       {
-        text: "Remove All",
+        text: "Remove all",
         style: "destructive",
         onPress: () => dispatch(clearAllPhotos()),
       },
     ]);
-  };
-
-  const allUploaded =
-    photos.length > 0 && photos.every((p) => p.status === "success");
-  const uploading = photos.some((p) => p.status === "uploading");
-  const hasErrors = photos.some((p) => p.status === "error");
 
   const styles = StyleSheet.create({
     container: { gap: 12 },
@@ -231,28 +207,43 @@ export default function PhotoUpload({
       flexWrap: "wrap",
       gap: 8,
     },
-    toolbarLeft: { flexDirection: "row", gap: 8, alignItems: "center" },
-    uploadBtn: {
+    toolbarLeft: {
+      flexDirection: "row",
+      gap: 8,
+      alignItems: "center",
+      flexWrap: "wrap",
+    },
+
+    cameraBtn: {
       flexDirection: "row",
       alignItems: "center",
-      gap: 6,
+      gap: 7,
       paddingHorizontal: 14,
-      paddingVertical: 8,
+      paddingVertical: 9,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: isDisabled ? theme.colors.border : theme.colors.accent,
+      backgroundColor: isDisabled
+        ? theme.colors.background
+        : theme.colors.accent + "14",
+    },
+    cameraBtnText: {
+      fontSize: 13,
+      fontWeight: "600",
+      color: isDisabled ? theme.colors.textMuted : theme.colors.accent,
+    },
+    galleryBtn: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 5,
+      paddingHorizontal: 10,
+      paddingVertical: 9,
       borderRadius: 8,
       borderWidth: 1,
       borderColor: theme.colors.border,
       backgroundColor: theme.colors.card,
     },
-    uploadBtnDisabled: {
-      borderColor: theme.colors.border,
-      backgroundColor: theme.colors.background,
-    },
-    uploadBtnText: {
-      fontSize: 13,
-      fontWeight: "500",
-      color: theme.colors.text,
-    },
-    uploadBtnTextDisabled: { color: theme.colors.textMuted },
+    galleryBtnText: { fontSize: 12, color: theme.colors.textMuted },
     removeAllBtn: {
       flexDirection: "row",
       alignItems: "center",
@@ -264,14 +255,16 @@ export default function PhotoUpload({
       borderColor: "#fecaca",
       backgroundColor: "#fff5f5",
     },
-    removeAllText: { fontSize: 13, color: "#ef4444", fontWeight: "500" },
+    removeAllText: { fontSize: 12, color: "#ef4444", fontWeight: "500" },
+    badgeRow: { flexDirection: "row", alignItems: "center", gap: 6 },
     allUploadedBadge: { flexDirection: "row", alignItems: "center", gap: 4 },
     allUploadedText: { fontSize: 12, color: theme.colors.success },
+    countHint: { fontSize: 12, color: theme.colors.textMuted },
     warning: { fontSize: 12, color: theme.colors.warning },
     photoList: { paddingVertical: 4, gap: 8, flexDirection: "row" },
     photoItem: {
-      width: 100,
-      height: 100,
+      width: 90,
+      height: 90,
       borderRadius: 8,
       borderWidth: 1,
       borderColor: theme.colors.border,
@@ -314,79 +307,66 @@ export default function PhotoUpload({
     <View style={styles.container}>
       <View style={styles.toolbar}>
         <View style={styles.toolbarLeft}>
+          {/* Camera */}
           <TouchableOpacity
-            style={[
-              styles.uploadBtn,
-              (!vehicleReg ||
-                !inspectionNumber ||
-                photos.length >= 20 ||
-                uploading ||
-                disabled) &&
-                styles.uploadBtnDisabled,
-            ]}
-            onPress={pickImages}
-            disabled={
-              !vehicleReg ||
-              !inspectionNumber ||
-              photos.length >= 20 ||
-              uploading ||
-              disabled
-            }
+            style={styles.cameraBtn}
+            onPress={openCamera}
+            disabled={isDisabled || uploading}
           >
-            <Upload
+            <Camera
               size={15}
-              color={
-                !vehicleReg ||
-                !inspectionNumber ||
-                photos.length >= 20 ||
-                uploading ||
-                disabled
-                  ? "#94a3b8"
-                  : "#1e293b"
-              }
+              color={isDisabled ? theme.colors.textMuted : theme.colors.accent}
             />
-            <Text
-              style={[
-                styles.uploadBtnText,
-                (!vehicleReg ||
-                  !inspectionNumber ||
-                  photos.length >= 20 ||
-                  uploading ||
-                  disabled) &&
-                  styles.uploadBtnTextDisabled,
-              ]}
-            >
-              {uploading ? "Uploading…" : `Upload photos (${photos.length}/20)`}
+            <Text style={styles.cameraBtnText}>
+              {uploading ? "Uploading…" : "Take photo"}
             </Text>
           </TouchableOpacity>
-          {photos.length > 0 && (
+
+          {/* Gallery */}
+          <TouchableOpacity
+            style={styles.galleryBtn}
+            onPress={openGallery}
+            disabled={isDisabled || uploading}
+          >
+            <Images size={13} color={theme.colors.textMuted} />
+            <Text style={styles.galleryBtnText}>Gallery</Text>
+          </TouchableOpacity>
+
+          {/* Remove all */}
+          {photos.length > 0 && !uploading && (
             <TouchableOpacity
               style={styles.removeAllBtn}
               onPress={removeAllPhotos}
-              disabled={uploading || disabled}
+              disabled={disabled}
             >
               <X size={10} color="#ef4444" />
               <Text style={styles.removeAllText}>Remove all</Text>
             </TouchableOpacity>
           )}
         </View>
-        {allUploaded && (
-          <View style={styles.allUploadedBadge}>
-            <CheckCircle size={13} color="#16a34a" />
-            <Text style={styles.allUploadedText}>All uploaded</Text>
-          </View>
-        )}
+
+        <View style={styles.badgeRow}>
+          {allUploaded && (
+            <View style={styles.allUploadedBadge}>
+              <CheckCircle size={13} color="#16a34a" />
+              <Text style={styles.allUploadedText}>All uploaded</Text>
+            </View>
+          )}
+          <Text style={styles.countHint}>{photos.length}/20</Text>
+        </View>
       </View>
 
+      {/* Hints */}
       {!vehicleReg && (
         <Text style={styles.warning}>
-          Select a vehicle first to upload photos
+          Select a vehicle first to capture photos
         </Text>
       )}
       {vehicleReg && !inspectionNumber && (
         <Text style={styles.warning}>Select an inspection number first</Text>
       )}
 
+      {/* Photo strip */}
       {photos.length > 0 && (
         <>
           <ScrollView
@@ -394,7 +374,7 @@ export default function PhotoUpload({
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.photoList}
           >
-            {photos.map((photo, index) => (
+            {photos.map((photo) => (
               <View key={photo.id} style={styles.photoItem}>
                 <Image source={{ uri: photo.uri }} style={styles.photo} />
                 <View style={styles.statusIcon}>
@@ -428,11 +408,11 @@ export default function PhotoUpload({
             ))}
           </ScrollView>
           <Text style={styles.summary}>
-            {photos.length} photo(s) ·{" "}
+            {photos.length} photo{photos.length !== 1 ? "s" : ""} ·{" "}
             {photos.filter((p) => p.status === "success").length} uploaded ·{" "}
             {photos.filter((p) => p.status === "uploading").length} uploading ·{" "}
-            {photos.filter((p) => p.status === "error").length} failed{" "}
-            {hasErrors && "· Fix errors before submitting"}
+            {photos.filter((p) => p.status === "error").length} failed
+            {hasErrors ? " · Fix errors before submitting" : ""}
           </Text>
         </>
       )}
