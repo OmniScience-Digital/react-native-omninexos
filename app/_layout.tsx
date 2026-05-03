@@ -2,6 +2,7 @@
 import outputs from "@/amplify_outputs.json";
 import ResponseModal from "@/components/responsemodal";
 import "@/global.css";
+import { useSyncEngine } from "@/hooks/useSyncEngine";
 import { AuthProvider, useAuth } from "@/src/contexts/auth-context";
 import { ThemeProvider, useTheme } from "@/src/contexts/theme-context";
 import { hideResponseModal } from "@/src/state";
@@ -106,7 +107,7 @@ function LayoutInner() {
           backgroundColor: theme.colors.background,
           alignItems: "center",
           justifyContent: "center",
-          gap: 24,
+          // gap: 24,
         }}
       >
         {/* <View
@@ -174,6 +175,7 @@ function LayoutInner() {
 }
 
 export default function RootLayout() {
+  useSyncEngine();
   return (
     <StoreProvider>
       <ThemeProvider>

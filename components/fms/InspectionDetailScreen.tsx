@@ -78,7 +78,7 @@ export default function InspectionDetailScreen({
           justifyContent: "space-between",
           alignItems: "center",
           paddingHorizontal: 16,
-          paddingTop: 50,
+          paddingTop: 10,
           paddingBottom: 12,
           backgroundColor: theme.colors.card,
           borderBottomWidth: 1,
@@ -86,11 +86,11 @@ export default function InspectionDetailScreen({
         }}
       >
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-          <TouchableOpacity onPress={onBack} style={{ padding: 8 }}>
+          <TouchableOpacity onPress={onBack} style={{ padding: 4 }}>
             <ArrowLeft size={22} color={theme.colors.text} />
           </TouchableOpacity>
           <ClipboardList size={18} color={theme.colors.primary} />
-          <ThemedText style={{ fontSize: 16, fontWeight: "700" }}>
+          <ThemedText style={{ fontSize: 15, fontWeight: "600" }}>
             Inspection #{inspection.inspectionNo}
           </ThemedText>
         </View>

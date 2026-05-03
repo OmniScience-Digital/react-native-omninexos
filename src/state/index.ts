@@ -14,7 +14,7 @@ export interface PhotoState {
   id: string;
   uri: string;
   s3Key: string;
-  status: "uploading" | "success" | "error" | "deleting";
+  status: "uploading" | "success" | "error" | "deleting" | "local";
   error?: string;
 }
 
