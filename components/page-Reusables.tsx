@@ -1,7 +1,7 @@
 import { ThemedText } from "@/components/ui/screen";
 import { useTheme } from "@/src/contexts/theme-context";
 import React from "react";
-import { Alert, Pressable, View } from "react-native";
+import { Pressable, View } from "react-native";
 
 /** Card style helper */
 export const getCardStyle = (theme: any) => ({
@@ -43,20 +43,4 @@ export const AppCard = ({
       {children}
     </Pressable>
   );
-};
-
-/** Confirmation Alert */
-export const showConfirmationAlert = (
-  title: string,
-  message: string,
-  onConfirm: () => void,
-) => {
-  Alert.alert(title, message, [
-    { text: "Cancel", style: "cancel" },
-    {
-      text: "Confirm",
-      style: "destructive",
-      onPress: onConfirm,
-    },
-  ]);
 };

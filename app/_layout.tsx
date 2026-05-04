@@ -27,6 +27,7 @@ cognitoUserPoolsTokenProvider.setKeyValueStorage(AsyncStorage);
 
 SplashScreen.preventAutoHideAsync();
 WebBrowser.maybeCompleteAuthSession();
+
 // Inner component that has access to Redux and theme
 function LayoutInner() {
   const { theme, isReady: themeReady } = useTheme();
@@ -107,32 +108,9 @@ function LayoutInner() {
           backgroundColor: theme.colors.background,
           alignItems: "center",
           justifyContent: "center",
-          // gap: 24,
         }}
       >
-        {/* <View
-          style={{
-            width: 120,
-            height: 100,
-            borderRadius: 20,
-            backgroundColor: theme.colors.accent,
-            alignItems: "center",
-            justifyContent: "center",
-            marginBottom: 20,
-          }}
-        >
-          <Image
-            source={theme.name === "light" ? logodark : logo}
-            style={{ width: 90, height: 100 }}
-            resizeMode="contain"
-          />
-        </View> */}
-
-        <ActivityIndicator
-          size="large"
-          color={theme.colors.accent}
-          style={{ marginTop: 90 }}
-        />
+        <ActivityIndicator size="large" color={theme.colors.accent} />
       </View>
     );
   }
