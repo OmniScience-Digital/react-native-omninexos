@@ -1,15 +1,13 @@
 // components/stockcontrolComponents/componentitem.tsx
+import { useComponents, useSubcategories } from "@/hooks/useCategoryCache";
 import { useTheme } from "@/src/contexts/theme-context";
-import {
-  useListComponentsBySubcategoryQuery,
-  useListSubcategoriesByCategoryQuery,
-} from "@/src/state/api";
 import { RootState, useAppDispatch, useAppSelector } from "@/src/state/redux";
 import {
   addTempCategory,
   addTempComponent,
   addTempSubcategory,
 } from "@/src/state/stockSlice";
+import NetInfo from "@react-native-community/netinfo";
 import { createSelector } from "@reduxjs/toolkit";
 import {
   ChevronDown,
@@ -20,7 +18,7 @@ import {
   Trash2,
   X,
 } from "lucide-react-native";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Animated,
   Dimensions,
@@ -900,15 +898,29 @@ export default function ComponentItem({
 
   const [sheetVisible, setSheetVisible] = useState(false);
 
-  // Fetch real data
-  const { data: subcategories = [], isLoading: subcatsLoading } =
-    useListSubcategoriesByCategoryQuery(selectedCategoryId, {
-      skip: !selectedCategoryId,
+  // ─── Track network state ──────────────────────────────────
+  const [isOnline, setIsOnline] = useState(true);
+  useEffect(() => {
+    NetInfo.fetch().then((state) => {
+      setIsOnline(!!(state.isConnected && state.isInternetReachable !== false));
     });
-  const { data: realComponents = [], isLoading: compsLoading } =
-    useListComponentsBySubcategoryQuery(component.subcategoryId, {
-      skip: !component.subcategoryId,
+    const unsub = NetInfo.addEventListener((state) => {
+      setIsOnline(!!(state.isConnected && state.isInternetReachable !== false));
     });
+    return () => unsub();
+  }, []);
+
+  // ─── Offline-aware data fetching ──────────────────────────
+  // Online  → fetches from Amplify + seeds SQLite cache
+  // Offline → reads from SQLite cache
+  const { data: subcategories = [] } = useSubcategories(
+    selectedCategoryId,
+    isOnline,
+  );
+  const { data: realComponents = [] } = useComponents(
+    component.subcategoryId,
+    isOnline,
+  );
 
   const tempCategories = useAppSelector((state) => state.stock.tempCategories);
 

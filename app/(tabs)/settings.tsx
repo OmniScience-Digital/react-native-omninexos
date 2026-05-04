@@ -1,23 +1,33 @@
 import { Screen, ThemedText } from "@/components/ui/screen";
 import "@/global.css";
 import { useTheme } from "@/src/contexts/theme-context";
-import React from "react";
 import { Pressable, View } from "react-native";
 
 import {
   AppCard,
   getCardStyle,
   SectionHeader,
-  showConfirmationAlert,
 } from "@/components/page-Reusables";
 
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { CustomHeader } from "@/components/ui/customHeader";
 import { CustomScrollView } from "@/components/ui/scrollView";
 import { getCopyright } from "@/lib/utils";
 import { useAuth } from "@/src/contexts/auth-context";
 import { showResponseModal } from "@/src/state";
 import { useAppDispatch } from "@/src/state/redux";
-import { Info, LogOut, Moon, Sun, Trash2, User } from "lucide-react-native";
+import {
+  Settings as Appsettings,
+  Info,
+  LogOut,
+  LucideIcon,
+  Moon,
+  RotateCcw,
+  Sun,
+  Trash2,
+  User,
+} from "lucide-react-native";
+import { useState } from "react";
 
 /** Theme Toggle */
 const ThemeToggle = () => {
@@ -46,6 +56,16 @@ export default function Settings() {
   const { user, logout } = useAuth();
   const dispatch = useAppDispatch();
   const { theme, preference, setPreference } = useTheme();
+  // Add state for dialog configuration
+  const [dialogConfig, setDialogConfig] = useState<{
+    visible: boolean;
+    title: string;
+    message: string;
+    variant?: "danger" | "warning" | "info";
+    icon?: LucideIcon;
+    onConfirm: () => void;
+  } | null>(null);
+
   const getThemeLabel = () =>
     preference === "light"
       ? "Light"
@@ -54,20 +74,35 @@ export default function Settings() {
         : "System";
 
   const handleClearCache = () => {
-    showConfirmationAlert(
-      "Clear Cache",
-      "This will clear temporary app data.",
-      () =>
+    setDialogConfig({
+      visible: true,
+      title: "Clear Cache",
+      message:
+        "This will clear temporary app data. This action cannot be undone.",
+      variant: "warning",
+      icon: RotateCcw,
+      onConfirm: () => {
         dispatch(
           showResponseModal({ successful: true, message: "Cache cleared" }),
-        ),
-    );
+        );
+        setDialogConfig(null);
+      },
+    });
   };
 
   const handleReset = () => {
-    showConfirmationAlert("Reset Settings", "Reset all preferences?", () =>
-      setPreference("system"),
-    );
+    setDialogConfig({
+      visible: true,
+      title: "Reset Settings",
+      message:
+        "Reset all preferences? This will restore all settings to their default values.",
+      variant: "danger",
+      icon: Appsettings,
+      onConfirm: () => {
+        setPreference("system");
+        setDialogConfig(null);
+      },
+    });
   };
 
   const handleLogout = async () => {
@@ -175,6 +210,17 @@ export default function Settings() {
             <Info size={18} color={theme.colors.textMuted} />
           </AppCard>
         </View>
+        {dialogConfig && (
+          <ConfirmDialog
+            visible={dialogConfig.visible}
+            title={dialogConfig.title}
+            message={dialogConfig.message}
+            variant={dialogConfig.variant}
+            icon={dialogConfig.icon}
+            onConfirm={dialogConfig.onConfirm}
+            onCancel={() => setDialogConfig(null)}
+          />
+        )}
 
         {/* Logout Button – using AppCard style but full width */}
         <Pressable
