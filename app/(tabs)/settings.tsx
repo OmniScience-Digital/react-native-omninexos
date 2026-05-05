@@ -1,20 +1,18 @@
-import { Screen, ThemedText } from "@/components/ui/screen";
-import "@/global.css";
-import { useTheme } from "@/src/contexts/theme-context";
-import { Pressable, View } from "react-native";
-
 import {
   AppCard,
   getCardStyle,
   SectionHeader,
 } from "@/components/page-Reusables";
-
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { CustomHeader } from "@/components/ui/customHeader";
+import { Screen, ThemedText } from "@/components/ui/screen";
 import { CustomScrollView } from "@/components/ui/scrollView";
+import "@/global.css";
 import { getCopyright } from "@/lib/utils";
 import { useAuth } from "@/src/contexts/auth-context";
-import { showResponseModal } from "@/src/state";
+import { useTheme } from "@/src/contexts/theme-context";
+import { resetVifForm, showResponseModal } from "@/src/state";
+import { api } from "@/src/state/api";
 import { useAppDispatch } from "@/src/state/redux";
 import {
   Settings as Appsettings,
@@ -28,6 +26,7 @@ import {
   User,
 } from "lucide-react-native";
 import { useState } from "react";
+import { Pressable, View } from "react-native";
 
 /** Theme Toggle */
 const ThemeToggle = () => {
@@ -82,6 +81,7 @@ export default function Settings() {
       variant: "warning",
       icon: RotateCcw,
       onConfirm: () => {
+        dispatch(api.util.resetApiState());
         dispatch(
           showResponseModal({ successful: true, message: "Cache cleared" }),
         );
@@ -100,6 +100,8 @@ export default function Settings() {
       icon: Appsettings,
       onConfirm: () => {
         setPreference("system");
+        dispatch(resetVifForm());
+        dispatch(api.util.resetApiState());
         setDialogConfig(null);
       },
     });

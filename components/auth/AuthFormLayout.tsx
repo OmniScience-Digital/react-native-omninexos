@@ -1,6 +1,6 @@
 // components/auth/AuthFormLayout.tsx
-import logodark from "@/assets/images/icon.png";
-import logo from "@/assets/images/logo_dark.png";
+import logodark from "@/assets/images/OMINI_White.png";
+import logo from "@/assets/images/OMNI_Black.png";
 import { Screen, ThemedText } from "@/components/ui/screen";
 import { CustomScrollView } from "@/components/ui/scrollView";
 import { useTheme } from "@/src/contexts/theme-context";
@@ -53,7 +53,7 @@ export const AuthFormLayout = ({
             }}
           >
             {/* Logo & Brand */}
-            <View style={{ alignItems: "center", marginBottom: 32 }}>
+            <View style={{ alignItems: "center", marginBottom: 25 }}>
               <View
                 style={{
                   width: 120,
@@ -62,26 +62,26 @@ export const AuthFormLayout = ({
                   backgroundColor: theme.colors.accent,
                   alignItems: "center",
                   justifyContent: "center",
-                  marginBottom: 5,
+                  marginBottom: 3,
                 }}
               >
                 <Image
                   source={theme.name === "light" ? logodark : logo}
-                  style={{ width: 90, height: 100 }}
+                  style={{ width: 100, height: 125 }}
                   resizeMode="contain"
                 />
               </View>
             </View>
 
             {/* Title & Subtitle */}
-            <View style={{ marginBottom: 32 }}>
+            <View style={{ marginBottom: 25 }}>
               <ThemedText
                 weight="600"
                 style={{
                   fontSize: 24,
                   color: theme.colors.text,
                   textAlign: "center",
-                  marginBottom: 8,
+                  marginBottom: 4,
                 }}
               >
                 {title}

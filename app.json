@@ -15,7 +15,7 @@
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#0D0D0D",
-        "foregroundImage": "./assets/images/play_store_512.png",
+        "foregroundImage": "./assets/images/androidplay_store_512.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
@@ -24,15 +24,15 @@
     },
     "web": {
       "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/play_store_512.png"
     },
     "plugins": [
       "expo-router",
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/OMINI_White.png",
-          "imageWidth": 200,
+          "image": "./assets/images/SplashScreen.png",
+          "imageWidth": 140,
           "resizeMode": "contain",
           "backgroundColor": "#0D0D0D",
           "dark": {
