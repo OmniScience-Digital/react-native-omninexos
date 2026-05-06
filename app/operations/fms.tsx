@@ -2,7 +2,7 @@
 import FleetDetailScreen from "@/components/fms/FleetDetailScreen";
 import FleetListScreen from "@/components/fms/FleetListScreen";
 import InspectionDetailScreen from "@/components/fms/InspectionDetailScreen";
-import { NonTabScreen } from "@/components/ui/non-tab-screen";
+import { NonTabScreen } from "@/components/screens/non-tab-screen";
 import { useTheme } from "@/src/contexts/theme-context";
 import { useState } from "react";
 import { StatusBar } from "react-native";

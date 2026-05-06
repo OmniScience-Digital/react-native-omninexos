@@ -1,4 +1,5 @@
-import { ThemedText } from "@/components/ui/screen";
+//components/screens/non-tab-screen
+import { ThemedText } from "@/components/screens/screen";
 import { useTheme } from "@/src/contexts/theme-context";
 import { router } from "expo-router";
 import { ArrowLeft } from "lucide-react-native";

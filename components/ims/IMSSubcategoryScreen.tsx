@@ -1,24 +1,24 @@
 // src/screens/IMSSubcategoryScreen.tsx (updated)
-import { NonTabScreen } from "@/components/ui/non-tab-screen";
+import { NonTabScreen } from "@/components/screens/non-tab-screen";
 import { CustomScrollView } from "@/components/ui/scrollView";
 import { usePaginatedComponents } from "@/hooks/usePaginatedComponents";
 import { useTheme } from "@/src/contexts/theme-context";
 import {
-  useDeleteComponentMutation,
-  useListSubcategoriesByCategoryQuery,
-  useUpdateComponentMutation,
+    useDeleteComponentMutation,
+    useListSubcategoriesByCategoryQuery,
+    useUpdateComponentMutation,
 } from "@/src/state/api";
 import { ArrowLeft, Search } from "lucide-react-native";
 import { useState } from "react";
 import {
-  ActivityIndicator,
-  FlatList,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    FlatList,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from "react-native";
 import ComponentCard from "./ComponentCard";
 import DeleteConfirmModal from "./DeleteConfirmModal";

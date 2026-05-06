@@ -1,4 +1,4 @@
-import { ThemedText } from "@/components/ui/screen";
+import { ThemedText } from "@/components/screens/screen";
 import { useAuth } from "@/src/contexts/auth-context";
 import { useTheme } from "@/src/contexts/theme-context";
 import { signIn } from "aws-amplify/auth";
@@ -85,7 +85,7 @@ const SignIn = () => {
           style={getInputStyle(emailTouched && !emailValid)}
           autoCapitalize="none"
           value={emailAddress}
-          placeholder="name@example.com"
+          placeholder=" name@example.com"
           placeholderTextColor={theme.colors.textMuted}
           onChangeText={setEmailAddress}
           onBlur={() => setEmailTouched(true)}
@@ -121,7 +121,7 @@ const SignIn = () => {
           className="rounded-2xl border px-4 py-4 text-base font-sans-medium"
           style={getInputStyle(passwordTouched && !passwordValid)}
           value={password}
-          placeholder="Enter your password"
+          placeholder=" Enter your password"
           placeholderTextColor={theme.colors.textMuted}
           secureTextEntry
           onChangeText={setPassword}

@@ -1,32 +1,31 @@
 // src/screens/FleetListScreen.tsx
-import { ThemedText } from "@/components/ui/screen";
+import { ThemedText } from "@/components/screens/screen";
 import { CustomScrollView } from "@/components/ui/scrollView";
 import { useTheme } from "@/src/contexts/theme-context";
 import {
-    useCreateFleetMutation,
-    useDeleteFleetMutation,
-    useListFleetsQuery,
-    useUpdateFleetMutation,
+  useCreateFleetMutation,
+  useDeleteFleetMutation,
+  useListFleetsQuery,
+  useUpdateFleetMutation,
 } from "@/src/state/api";
 import {
-    Car,
-    ChevronRight,
-    Pencil,
-    Plus,
-    Save,
-    Search,
-    X,
+  Car,
+  ChevronRight,
+  Pencil,
+  Plus,
+  Save,
+  Search,
+  X,
 } from "lucide-react-native";
 import { useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    Modal,
-    ScrollView,
-    StyleSheet,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  Modal,
+  StyleSheet,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 // ---------- Helpers ----------
@@ -464,7 +463,218 @@ export default function FleetListScreen({
   );
 }
 
-// ---------- AddVehicleModal (styled with getStyles) ----------
+const modalStyles = (colors: any) =>
+  StyleSheet.create({
+    overlay: {
+      flex: 1,
+      backgroundColor: "rgba(0,0,0,0.45)",
+      justifyContent: "flex-end",
+    },
+    sheet: {
+      backgroundColor: colors.card,
+      borderTopLeftRadius: 20,
+      borderTopRightRadius: 20,
+      maxHeight: "92%",
+    },
+    handle: {
+      width: 36,
+      height: 4,
+      borderRadius: 2,
+      backgroundColor: colors.border,
+      alignSelf: "center",
+      marginTop: 12,
+    },
+    header: {
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      padding: 16,
+      paddingTop: 14,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    title: { fontSize: 17, fontWeight: "600", color: colors.text },
+    subtitle: { fontSize: 12, color: colors.textMuted, marginTop: 2 },
+    closeBtn: {
+      width: 32,
+      height: 32,
+      borderRadius: 16,
+      backgroundColor: colors.border + "60",
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    body: { paddingHorizontal: 16, paddingTop: 18 },
+    sectionLabel: {
+      fontSize: 11,
+      fontWeight: "600",
+      color: colors.textMuted,
+      letterSpacing: 0.6,
+      textTransform: "uppercase",
+      marginBottom: 8,
+      marginLeft: 2,
+    },
+    fieldGroup: {
+      backgroundColor: colors.background ?? colors.card,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: colors.border,
+      overflow: "hidden",
+      marginBottom: 18,
+    },
+    fieldDivider: { height: 1, backgroundColor: colors.border, marginLeft: 52 },
+    fieldInput: {
+      fontSize: 14,
+      color: colors.text,
+      textAlign: "right",
+      minWidth: 80,
+    },
+    chip: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 99 },
+    chipActive: { backgroundColor: colors.success + "20" },
+    chipInactive: { backgroundColor: colors.warning + "20" },
+    chipText: { fontSize: 11, fontWeight: "700" },
+    btnRow: { flexDirection: "row", gap: 10 },
+    btnPrimary: {
+      flex: 1,
+      backgroundColor: colors.primary,
+      borderRadius: 14,
+      paddingVertical: 14,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: 8,
+    },
+    btnPrimaryText: {
+      color: colors.primaryText,
+      fontSize: 15,
+      fontWeight: "600",
+    },
+    btnSecondary: {
+      flex: 1,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 14,
+      paddingVertical: 14,
+      alignItems: "center",
+      justifyContent: "center",
+    },
+    btnSecondaryText: { color: colors.textMuted, fontSize: 15 },
+    divider: { height: 1, backgroundColor: colors.border, marginVertical: 14 },
+    btnDanger: {
+      backgroundColor: colors.warning + "18",
+      borderWidth: 1,
+      borderColor: colors.warning + "40",
+      borderRadius: 14,
+      paddingVertical: 13,
+      alignItems: "center",
+    },
+    btnDangerText: { color: colors.warning, fontSize: 14, fontWeight: "600" },
+  });
+
+const FieldRow = ({
+  icon,
+  iconBg,
+  label,
+  required,
+  children,
+}: {
+  icon: string;
+  iconBg: string;
+  label: string;
+  required?: boolean;
+  children: React.ReactNode;
+}) => (
+  <View
+    style={{
+      flexDirection: "row",
+      alignItems: "center",
+      paddingHorizontal: 14,
+      paddingVertical: 11,
+      gap: 10,
+    }}
+  >
+    <View
+      style={{
+        width: 28,
+        height: 28,
+        borderRadius: 8,
+        backgroundColor: iconBg,
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <ThemedText style={{ fontSize: 13 }}>{icon}</ThemedText>
+    </View>
+    <ThemedText style={{ fontSize: 12, color: "gray", minWidth: 68 }}>
+      {label}
+      {required && <ThemedText style={{ color: "#E24B4A" }}> *</ThemedText>}
+    </ThemedText>
+    <View style={{ flex: 1, alignItems: "flex-end" }}>{children}</View>
+  </View>
+);
+
+const ToggleRow = ({
+  colors,
+  label,
+  subtitle,
+  value,
+  onToggle,
+}: {
+  colors: any;
+  label: string;
+  subtitle: string;
+  value: boolean;
+  onToggle: (v: boolean) => void;
+}) => (
+  <TouchableOpacity
+    style={{
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      backgroundColor: colors.card,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: 14,
+      marginBottom: 16,
+    }}
+    onPress={() => onToggle(!value)}
+    activeOpacity={0.8}
+  >
+    <View>
+      <ThemedText
+        style={{ fontSize: 14, fontWeight: "500", color: colors.text }}
+      >
+        {label}
+      </ThemedText>
+      <ThemedText
+        style={{ fontSize: 11, color: colors.textMuted, marginTop: 2 }}
+      >
+        {subtitle}
+      </ThemedText>
+    </View>
+    <View
+      style={{
+        width: 44,
+        height: 26,
+        borderRadius: 13,
+        backgroundColor: value ? colors.success : colors.border,
+        justifyContent: "center",
+        paddingHorizontal: 3,
+        alignItems: value ? "flex-end" : "flex-start",
+      }}
+    >
+      <View
+        style={{
+          width: 20,
+          height: 20,
+          borderRadius: 10,
+          backgroundColor: "#fff",
+        }}
+      />
+    </View>
+  </TouchableOpacity>
+);
+
 const AddVehicleModal = ({
   visible,
   onClose,
@@ -475,7 +685,8 @@ const AddVehicleModal = ({
   onAdd: (fleet: Omit<Fleet, "id">) => void;
 }) => {
   const { theme } = useTheme();
-  const styles = getStyles(theme.colors);
+  const colors = theme.colors;
+  const s = modalStyles(colors);
   const [form, setForm] = useState<Partial<Fleet>>({
     fleetNumber: "",
     vehicleReg: "",
@@ -497,67 +708,137 @@ const AddVehicleModal = ({
   };
 
   return (
-    <Modal transparent visible={visible} onRequestClose={onClose}>
-      <TouchableOpacity
-        style={styles.overlay}
-        activeOpacity={1}
-        onPress={onClose}
-      >
-        <View style={styles.bottomSheet}>
-          <View style={styles.sheetHandle} />
-          <View style={styles.sheetHeader}>
-            <ThemedText style={styles.sheetTitle}>Add New Vehicle</ThemedText>
-            <TouchableOpacity onPress={onClose}>
-              <X size={20} color={theme.colors.textMuted} />
+    <Modal
+      transparent
+      visible={visible}
+      animationType="slide"
+      onRequestClose={onClose}
+    >
+      <TouchableOpacity style={s.overlay} activeOpacity={1} onPress={onClose}>
+        <TouchableOpacity
+          style={s.sheet}
+          activeOpacity={1}
+          onPress={(e) => e.stopPropagation()}
+        >
+          <View style={s.handle} />
+          <View style={s.header}>
+            <View>
+              <ThemedText style={s.title}>Add vehicle</ThemedText>
+              <ThemedText style={s.subtitle}>
+                Fill in the details below
+              </ThemedText>
+            </View>
+            <TouchableOpacity style={s.closeBtn} onPress={onClose}>
+              <X size={16} color={colors.textMuted} />
             </TouchableOpacity>
           </View>
-          <ScrollView style={{ padding: 20 }}>
-            <TextInput
-              style={styles.formInput}
-              placeholder="Fleet Number *"
-              value={form.fleetNumber ?? ""}
-              onChangeText={(v) => setForm({ ...form, fleetNumber: v })}
-              placeholderTextColor={theme.colors.textMuted}
+          <CustomScrollView className="p-2">
+            <ThemedText style={s.sectionLabel}>Identity</ThemedText>
+            <View style={s.fieldGroup}>
+              <FieldRow
+                icon="🚗"
+                iconBg={colors.primary + "18"}
+                label="Fleet no."
+                required
+              >
+                <TextInput
+                  style={s.fieldInput}
+                  placeholder="e.g. F-042"
+                  value={form.fleetNumber ?? ""}
+                  onChangeText={(v) => setForm({ ...form, fleetNumber: v })}
+                  placeholderTextColor={colors.textMuted}
+                />
+              </FieldRow>
+              <View style={s.fieldDivider} />
+              <FieldRow
+                icon="🔢"
+                iconBg={colors.primary + "18"}
+                label="Reg."
+                required
+              >
+                <TextInput
+                  style={s.fieldInput}
+                  placeholder="e.g. ABC 123 GP"
+                  value={form.vehicleReg ?? ""}
+                  onChangeText={(v) => setForm({ ...form, vehicleReg: v })}
+                  placeholderTextColor={colors.textMuted}
+                  autoCapitalize="characters"
+                />
+              </FieldRow>
+            </View>
+
+            <ThemedText style={s.sectionLabel}>Vehicle</ThemedText>
+            <View style={s.fieldGroup}>
+              <FieldRow icon="🏷" iconBg={colors.primary + "10"} label="Make">
+                <TextInput
+                  style={s.fieldInput}
+                  placeholder="e.g. Toyota"
+                  value={form.vehicleMake ?? ""}
+                  onChangeText={(v) => setForm({ ...form, vehicleMake: v })}
+                  placeholderTextColor={colors.textMuted}
+                />
+              </FieldRow>
+              <View style={s.fieldDivider} />
+              <FieldRow icon="📋" iconBg={colors.primary + "10"} label="Model">
+                <TextInput
+                  style={s.fieldInput}
+                  placeholder="e.g. Hilux"
+                  value={form.vehicleModel ?? ""}
+                  onChangeText={(v) => setForm({ ...form, vehicleModel: v })}
+                  placeholderTextColor={colors.textMuted}
+                />
+              </FieldRow>
+              <View style={s.fieldDivider} />
+              <FieldRow icon="📍" iconBg={colors.success + "15"} label="KM">
+                <TextInput
+                  style={[s.fieldInput, { width: 90 }]}
+                  placeholder="0"
+                  keyboardType="numeric"
+                  value={form.currentkm ? String(form.currentkm) : ""}
+                  onChangeText={(v) =>
+                    setForm({ ...form, currentkm: parseInt(v) || 0 })
+                  }
+                  placeholderTextColor={colors.textMuted}
+                />
+              </FieldRow>
+            </View>
+
+            <ThemedText style={s.sectionLabel}>Assignment</ThemedText>
+            <View style={s.fieldGroup}>
+              <FieldRow icon="👤" iconBg={colors.success + "15"} label="Driver">
+                <TextInput
+                  style={s.fieldInput}
+                  placeholder="Assign later"
+                  value={form.currentDriver ?? ""}
+                  onChangeText={(v) => setForm({ ...form, currentDriver: v })}
+                  placeholderTextColor={colors.textMuted}
+                />
+              </FieldRow>
+            </View>
+
+            <ToggleRow
+              colors={colors}
+              label="Service plan active"
+              subtitle="Is this vehicle on a plan?"
+              value={!!form.servicePlanStatus}
+              onToggle={(v) => setForm({ ...form, servicePlanStatus: v })}
             />
-            <TextInput
-              style={styles.formInput}
-              placeholder="Registration *"
-              value={form.vehicleReg ?? ""}
-              onChangeText={(v) => setForm({ ...form, vehicleReg: v })}
-              placeholderTextColor={theme.colors.textMuted}
-            />
-            <TextInput
-              style={styles.formInput}
-              placeholder="Make"
-              value={form.vehicleMake ?? ""}
-              onChangeText={(v) => setForm({ ...form, vehicleMake: v })}
-              placeholderTextColor={theme.colors.textMuted}
-            />
-            <TextInput
-              style={styles.formInput}
-              placeholder="Model"
-              value={form.vehicleModel ?? ""}
-              onChangeText={(v) => setForm({ ...form, vehicleModel: v })}
-              placeholderTextColor={theme.colors.textMuted}
-            />
-            <TextInput
-              style={styles.formInput}
-              placeholder="Current Driver"
-              value={form.currentDriver ?? ""}
-              onChangeText={(v) => setForm({ ...form, currentDriver: v })}
-              placeholderTextColor={theme.colors.textMuted}
-            />
-            <TouchableOpacity style={styles.btnPrimary} onPress={handleSubmit}>
-              <ThemedText style={styles.btnPrimaryText}>Add Vehicle</ThemedText>
+
+            <TouchableOpacity
+              style={[s.btnPrimary, { marginTop: 4 }]}
+              onPress={handleSubmit}
+            >
+              <Plus size={16} color="#fff" />
+              <ThemedText style={s.btnPrimaryText}>Add vehicle</ThemedText>
             </TouchableOpacity>
-          </ScrollView>
-        </View>
+            <View style={{ height: 24 }} />
+          </CustomScrollView>
+        </TouchableOpacity>
       </TouchableOpacity>
     </Modal>
   );
 };
 
-// ---------- EditVehicleModal (styled with getStyles) ----------
 const EditVehicleModal = ({
   fleet,
   onClose,
@@ -570,91 +851,165 @@ const EditVehicleModal = ({
   onDelete: (id: string) => void;
 }) => {
   const { theme } = useTheme();
-  const styles = getStyles(theme.colors);
+  const colors = theme.colors;
+  const s = modalStyles(colors);
   const [form, setForm] = useState<Fleet>({ ...fleet });
 
   return (
-    <Modal transparent visible onRequestClose={onClose}>
-      <TouchableOpacity
-        style={styles.overlay}
-        activeOpacity={1}
-        onPress={onClose}
-      >
-        <View style={styles.bottomSheet}>
-          <View style={styles.sheetHandle} />
-          <View style={styles.sheetHeader}>
-            <ThemedText style={styles.sheetTitle}>
-              Edit {fleet.vehicleReg}
-            </ThemedText>
-            <TouchableOpacity onPress={onClose}>
-              <X size={20} color={theme.colors.textMuted} />
+    <Modal transparent visible animationType="slide" onRequestClose={onClose}>
+      <TouchableOpacity style={s.overlay} activeOpacity={1} onPress={onClose}>
+        <TouchableOpacity
+          style={s.sheet}
+          activeOpacity={1}
+          onPress={(e) => e.stopPropagation()}
+        >
+          <View style={s.handle} />
+          <View style={s.header}>
+            <View style={{ flex: 1, marginRight: 12 }}>
+              <ThemedText style={s.title}>{fleet.vehicleReg}</ThemedText>
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 6,
+                  marginTop: 3,
+                }}
+              >
+                <ThemedText style={s.subtitle}>
+                  {fleet.fleetNumber} · {fleet.vehicleMake} {fleet.vehicleModel}
+                </ThemedText>
+                <View
+                  style={[
+                    s.chip,
+                    fleet.servicePlanStatus ? s.chipActive : s.chipInactive,
+                  ]}
+                >
+                  <ThemedText
+                    style={[
+                      s.chipText,
+                      {
+                        color: fleet.servicePlanStatus
+                          ? colors.success
+                          : colors.warning,
+                      },
+                    ]}
+                  >
+                    {fleet.servicePlanStatus ? "Active" : "Inactive"}
+                  </ThemedText>
+                </View>
+              </View>
+            </View>
+            <TouchableOpacity style={s.closeBtn} onPress={onClose}>
+              <X size={16} color={colors.textMuted} />
             </TouchableOpacity>
           </View>
-          <ScrollView style={{ padding: 20 }}>
-            <TextInput
-              style={styles.formInput}
-              value={form.fleetNumber ?? ""}
-              onChangeText={(v) => setForm({ ...form, fleetNumber: v })}
-              placeholder="Fleet Number"
+          <CustomScrollView className="p-2">
+            <ThemedText style={s.sectionLabel}>Identity</ThemedText>
+            <View style={s.fieldGroup}>
+              <FieldRow
+                icon="🚗"
+                iconBg={colors.primary + "18"}
+                label="Fleet no."
+              >
+                <TextInput
+                  style={s.fieldInput}
+                  value={form.fleetNumber ?? ""}
+                  onChangeText={(v) => setForm({ ...form, fleetNumber: v })}
+                  placeholderTextColor={colors.textMuted}
+                />
+              </FieldRow>
+              <View style={s.fieldDivider} />
+              <FieldRow icon="🔢" iconBg={colors.primary + "18"} label="Reg.">
+                <TextInput
+                  style={s.fieldInput}
+                  value={form.vehicleReg ?? ""}
+                  onChangeText={(v) => setForm({ ...form, vehicleReg: v })}
+                  placeholderTextColor={colors.textMuted}
+                  autoCapitalize="characters"
+                />
+              </FieldRow>
+            </View>
+
+            <ThemedText style={s.sectionLabel}>Vehicle</ThemedText>
+            <View style={s.fieldGroup}>
+              <FieldRow icon="🏷" iconBg={colors.primary + "10"} label="Make">
+                <TextInput
+                  style={s.fieldInput}
+                  value={form.vehicleMake ?? ""}
+                  onChangeText={(v) => setForm({ ...form, vehicleMake: v })}
+                  placeholderTextColor={colors.textMuted}
+                />
+              </FieldRow>
+              <View style={s.fieldDivider} />
+              <FieldRow icon="📋" iconBg={colors.primary + "10"} label="Model">
+                <TextInput
+                  style={s.fieldInput}
+                  value={form.vehicleModel ?? ""}
+                  onChangeText={(v) => setForm({ ...form, vehicleModel: v })}
+                  placeholderTextColor={colors.textMuted}
+                />
+              </FieldRow>
+              <View style={s.fieldDivider} />
+              <FieldRow icon="📍" iconBg={colors.success + "15"} label="KM">
+                <TextInput
+                  style={[s.fieldInput, { width: 100 }]}
+                  keyboardType="numeric"
+                  value={String(form.currentkm ?? "")}
+                  onChangeText={(v) =>
+                    setForm({ ...form, currentkm: parseInt(v) || 0 })
+                  }
+                  placeholderTextColor={colors.textMuted}
+                />
+              </FieldRow>
+            </View>
+
+            <ThemedText style={s.sectionLabel}>Assignment</ThemedText>
+            <View style={s.fieldGroup}>
+              <FieldRow icon="👤" iconBg={colors.success + "15"} label="Driver">
+                <TextInput
+                  style={s.fieldInput}
+                  value={form.currentDriver ?? ""}
+                  onChangeText={(v) => setForm({ ...form, currentDriver: v })}
+                  placeholderTextColor={colors.textMuted}
+                />
+              </FieldRow>
+            </View>
+
+            <ToggleRow
+              colors={colors}
+              label="Service plan active"
+              subtitle="Currently on a plan"
+              value={!!form.servicePlanStatus}
+              onToggle={(v) => setForm({ ...form, servicePlanStatus: v })}
             />
-            <TextInput
-              style={styles.formInput}
-              value={form.vehicleReg ?? ""}
-              onChangeText={(v) => setForm({ ...form, vehicleReg: v })}
-              placeholder="Registration"
-            />
-            <TextInput
-              style={styles.formInput}
-              value={form.vehicleMake ?? ""}
-              onChangeText={(v) => setForm({ ...form, vehicleMake: v })}
-              placeholder="Make"
-            />
-            <TextInput
-              style={styles.formInput}
-              value={form.vehicleModel ?? ""}
-              onChangeText={(v) => setForm({ ...form, vehicleModel: v })}
-              placeholder="Model"
-            />
-            <TextInput
-              style={styles.formInput}
-              value={form.currentDriver ?? ""}
-              onChangeText={(v) => setForm({ ...form, currentDriver: v })}
-              placeholder="Current Driver"
-            />
-            <TextInput
-              style={styles.formInput}
-              keyboardType="numeric"
-              value={String(form.currentkm ?? "")}
-              onChangeText={(v) =>
-                setForm({ ...form, currentkm: parseInt(v) || 0 })
-              }
-              placeholder="Current KM"
-            />
-            <View style={{ flexDirection: "row", gap: 10, marginTop: 8 }}>
+
+            <View style={s.btnRow}>
               <TouchableOpacity
-                style={styles.btnPrimary}
+                style={s.btnPrimary}
                 onPress={() => {
                   onSave(form);
                   onClose();
                 }}
               >
-                <Save size={16} color={theme.colors.primaryText} />
-                <ThemedText style={styles.btnPrimaryText}>Save</ThemedText>
+                <Save size={15} color="#fff" />
+                <ThemedText style={s.btnPrimaryText}>Save changes</ThemedText>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.btnSecondary} onPress={onClose}>
-                <ThemedText style={styles.btnSecondaryText}>Cancel</ThemedText>
+              <TouchableOpacity style={s.btnSecondary} onPress={onClose}>
+                <ThemedText style={s.btnSecondaryText}>Cancel</ThemedText>
               </TouchableOpacity>
             </View>
+
+            <View style={s.divider} />
+
             <TouchableOpacity
-              style={styles.btnDanger}
+              style={s.btnDanger}
               onPress={() => onDelete(fleet.id)}
             >
-              <ThemedText style={styles.btnDangerText}>
-                Delete Vehicle
-              </ThemedText>
+              <ThemedText style={s.btnDangerText}>Remove vehicle</ThemedText>
             </TouchableOpacity>
-          </ScrollView>
-        </View>
+            <View style={{ height: 24 }} />
+          </CustomScrollView>
+        </TouchableOpacity>
       </TouchableOpacity>
     </Modal>
   );

@@ -1,4 +1,4 @@
-import { ThemedText } from "@/components/ui/screen";
+import { ThemedText } from "@/components/screens/screen";
 import { useTheme } from "@/src/contexts/theme-context";
 import { confirmSignUp, resendSignUpCode, signUp } from "aws-amplify/auth";
 import { useRouter } from "expo-router";
@@ -179,7 +179,7 @@ const SignUp = () => {
           style={getInputStyle(emailTouched && !emailValid)}
           autoCapitalize="none"
           value={emailAddress}
-          placeholder="name@example.com"
+          placeholder=" name@example.com"
           placeholderTextColor={theme.colors.textMuted}
           onChangeText={setEmailAddress}
           onBlur={() => setEmailTouched(true)}
@@ -219,7 +219,7 @@ const SignUp = () => {
           className="rounded-2xl border px-4 py-4 text-base font-sans-medium"
           style={getInputStyle(fullNameTouched && !fullNameValid)}
           value={fullName}
-          placeholder="e.g., John Cross"
+          placeholder=" e.g., John Cross"
           placeholderTextColor={theme.colors.textMuted}
           onChangeText={setFullName}
           onBlur={() => setFullNameTouched(true)}
@@ -246,7 +246,7 @@ const SignUp = () => {
           className="rounded-2xl border px-4 py-4 text-base font-sans-medium"
           style={getInputStyle(passwordTouched && !passwordValid)}
           value={password}
-          placeholder="Create a strong password"
+          placeholder=" Create a strong password"
           placeholderTextColor={theme.colors.textMuted}
           secureTextEntry
           onChangeText={setPassword}
@@ -279,7 +279,7 @@ const SignUp = () => {
           className="rounded-2xl border px-4 py-4 text-base font-sans-medium"
           style={getInputStyle(confirmPasswordTouched && !passwordsMatch)}
           value={confirmPassword}
-          placeholder="Re-enter your password"
+          placeholder=" Re-enter your password"
           placeholderTextColor={theme.colors.textMuted}
           secureTextEntry
           onChangeText={setConfirmPassword}

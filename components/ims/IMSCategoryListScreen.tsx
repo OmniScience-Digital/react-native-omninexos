@@ -281,24 +281,24 @@
 // });
 
 // components/ims/IMSCategoryListScreen.tsx
-import { NonTabScreen } from "@/components/ui/non-tab-screen";
+import { NonTabScreen } from "@/components/screens/non-tab-screen";
 import { CustomScrollView } from "@/components/ui/scrollView";
 import { useTheme } from "@/src/contexts/theme-context";
 import {
-  useLazyListComponentsBySubcategoryQuery,
-  useLazyListSubcategoriesByCategoryQuery,
-  useListCategoriesQuery,
+    useLazyListComponentsBySubcategoryQuery,
+    useLazyListSubcategoriesByCategoryQuery,
+    useListCategoriesQuery,
 } from "@/src/state/api";
 import { ChevronRight, Package } from "lucide-react-native";
 import { useCallback, useEffect, useState } from "react";
 import {
-  ActivityIndicator,
-  RefreshControl,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    RefreshControl,
+    StatusBar,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View,
 } from "react-native";
 
 interface CategoryWithCounts extends Category {

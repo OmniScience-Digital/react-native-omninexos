@@ -1,4 +1,4 @@
-import { ThemedText } from "@/components/ui/screen";
+import { ThemedText } from "@/components/screens/screen";
 import { useTheme } from "@/src/contexts/theme-context";
 import { resetPassword } from "aws-amplify/auth";
 import { useRouter } from "expo-router";

@@ -1,13 +1,13 @@
 // components/auth/VerificationScreen.tsx
-import { Screen, ThemedText } from "@/components/ui/screen";
+import { Screen, ThemedText } from "@/components/screens/screen";
 import { CustomScrollView } from "@/components/ui/scrollView";
 import { useTheme } from "@/src/contexts/theme-context";
 import {
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  TextInput,
-  View,
+    KeyboardAvoidingView,
+    Platform,
+    Pressable,
+    TextInput,
+    View,
 } from "react-native";
 
 interface VerificationScreenProps {

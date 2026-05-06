@@ -1,17 +1,17 @@
 // components/auth/AuthFormLayout.tsx
 import logodark from "@/assets/images/OMINI_White.png";
 import logo from "@/assets/images/OMNI_Black.png";
-import { Screen, ThemedText } from "@/components/ui/screen";
+import { Screen, ThemedText } from "@/components/screens/screen";
 import { CustomScrollView } from "@/components/ui/scrollView";
 import { useTheme } from "@/src/contexts/theme-context";
 import { Link } from "expo-router";
 import {
-  ActivityIndicator,
-  Image,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  View,
+    ActivityIndicator,
+    Image,
+    KeyboardAvoidingView,
+    Platform,
+    Pressable,
+    View,
 } from "react-native";
 
 export const AuthFormLayout = ({

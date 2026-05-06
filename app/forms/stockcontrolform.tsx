@@ -1,8 +1,8 @@
 //forms/StockControlForm.tsx
 import ResponseModal from "@/components/responsemodal";
+import { NonTabScreen } from "@/components/screens/non-tab-screen";
 import ComponentItem from "@/components/stockcontrolComponents/componentitem";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
-import { NonTabScreen } from "@/components/ui/non-tab-screen";
 import { CustomScrollView } from "@/components/ui/scrollView";
 import { useSeedCategoryCache } from "@/hooks/useCategoryCache";
 import { SCF_clickUpService } from "@/services/scf.clickUp.service";
@@ -29,7 +29,7 @@ import {
   StyleSheet,
   Text,
   TouchableOpacity,
-  View
+  View,
 } from "react-native";
 
 export default function StockControlForm() {

@@ -1,7 +1,8 @@
 // app/index.tsx
+import { Screen, ThemedText } from "@/components/screens/screen";
 import { ModuleCard, StatCard } from "@/components/ui/DashboardCards";
-import { Screen, ThemedText } from "@/components/ui/screen";
 import { CustomScrollView } from "@/components/ui/scrollView";
+import { useTabBar } from "@/src/contexts/tabbar-context";
 import { useTheme } from "@/src/contexts/theme-context";
 import {
   useLazyGetInspectionsByFleetQuery,
@@ -31,6 +32,7 @@ import {
 
 export default function HomeScreen() {
   const { theme } = useTheme();
+  const { onScroll } = useTabBar();
   const currentDate = format(new Date(), "MMM d, yyyy");
 
   // Existing queries
@@ -149,7 +151,7 @@ export default function HomeScreen() {
   const handleSettingsPress = () => router.push("/settings");
 
   return (
-    <Screen>
+    <Screen scrollable onScroll={onScroll}>
       <CustomScrollView
         refreshControl={
           <RefreshControl refreshing={refresh} onRefresh={handleRefresh} />

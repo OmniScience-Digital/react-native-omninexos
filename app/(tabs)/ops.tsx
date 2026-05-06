@@ -1,11 +1,13 @@
+import { Screen } from "@/components/screens/screen";
 import { CustomHeader } from "@/components/ui/customHeader";
 import { ModuleCard } from "@/components/ui/DashboardCards";
-import { Screen } from "@/components/ui/screen";
+import { useTabBar } from "@/src/contexts/tabbar-context";
 import { TabOperations } from "@/src/dashboardLists";
 import { router } from "expo-router";
 import { View } from "react-native";
 
 export default function Operations() {
+  const { onScroll } = useTabBar();
   const InventoryPress = () => {
     router.push("/operations/ims");
   };
@@ -14,7 +16,7 @@ export default function Operations() {
   };
 
   return (
-    <Screen>
+    <Screen scrollable onScroll={onScroll}>
       {/* Modules */}
       <View className="mb-1">
         {/* Custom Header without back button */}

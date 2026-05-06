@@ -1,15 +1,16 @@
+// app/(tabs)/_layout.tsx
 import { cn } from "@/lib/utils";
+import { TabBarProvider, useTabBar } from "@/src/contexts/tabbar-context";
 import { useTheme } from "@/src/contexts/theme-context";
+import { tabs } from "@/src/tabs";
 import { Tabs } from "expo-router";
 import { Text, View } from "react-native";
-
-import { tabs } from "@/src/tabs";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 interface TabIconProps {
   focused: boolean;
   icon: any;
-  badgeCount?: number; // optional badge number
+  badgeCount?: number;
 }
 
 const TabIcon = ({ focused, icon: Icon, badgeCount }: TabIconProps) => {
@@ -54,24 +55,20 @@ const TabIcon = ({ focused, icon: Icon, badgeCount }: TabIconProps) => {
   );
 };
 
-export default function TabLayout() {
-  // const { isAuthenticated, isLoading } = useAuth();
+function TabLayoutInner() {
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
   const tabBar = theme.components.tabBar;
+  const { scrollY } = useTabBar();
 
-  // // Redirect to sign-in if user is not authenticated
-  // if (!isAuthenticated) {
-  //   return <Redirect href="/(auth)/sign-in" />;
-  // }
+  const tabBarHeight =
+    tabBar.height + Math.max(insets.bottom, tabBar.horizontalInset) + 20;
 
-  // if (isLoading) {
-  //   return (
-  //     <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-  //       <ActivityIndicator />
-  //     </View>
-  //   );
-  // }
+  const translateY = scrollY.interpolate({
+    inputRange: [0, 80],
+    outputRange: [0, tabBarHeight],
+    extrapolate: "clamp",
+  });
 
   return (
     <Tabs
@@ -91,6 +88,7 @@ export default function TabLayout() {
           shadowOpacity: 1,
           shadowRadius: 12,
           shadowOffset: { width: 0, height: 4 },
+          transform: [{ translateY }],
         },
         tabBarItemStyle: {
           paddingVertical: tabBar.height / 2 - tabBar.iconFrame / 1.6,
@@ -119,5 +117,13 @@ export default function TabLayout() {
         />
       ))}
     </Tabs>
+  );
+}
+
+export default function TabLayout() {
+  return (
+    <TabBarProvider>
+      <TabLayoutInner />
+    </TabBarProvider>
   );
 }

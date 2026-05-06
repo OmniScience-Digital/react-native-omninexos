@@ -1,4 +1,4 @@
-import { ThemedText } from "@/components/ui/screen";
+import { ThemedText } from "@/components/screens/screen";
 import { useTheme } from "@/src/contexts/theme-context";
 import React from "react";
 import { Pressable, View } from "react-native";

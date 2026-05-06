@@ -1,18 +1,20 @@
-// components/ui/screen.tsx
+// components/screens/tabs-screen.tsx
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/src/contexts/theme-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { ReactNode } from "react";
-import { Text, View, ViewProps } from "react-native";
+import { Animated, Text, View, ViewProps } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 interface ScreenProps extends ViewProps {
   children: ReactNode;
   className?: string;
+  scrollable?: boolean;
+  onScroll?: (...args: any[]) => void;
 }
+
 const AccentedBackground = () => {
   const { theme } = useTheme();
-
   return (
     <View
       pointerEvents="none"
@@ -33,7 +35,6 @@ const AccentedBackground = () => {
           transform: [{ rotate: "25deg" }],
         }}
       />
-
       <LinearGradient
         colors={["#8B5CF6", "transparent"]}
         start={{ x: 0.2, y: 0.2 }}
@@ -53,8 +54,24 @@ const AccentedBackground = () => {
   );
 };
 
-export function Screen({ children, className, ...props }: ScreenProps) {
+export function Screen({
+  children,
+  className,
+  scrollable = false,
+  onScroll,
+  ...props
+}: ScreenProps) {
   const { theme } = useTheme();
+
+  const content = (
+    <View
+      style={{ flex: 1, padding: theme.spacing.sm }}
+      className={cn("flex-1", className)}
+      {...props}
+    >
+      {children}
+    </View>
+  );
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.colors.background }}>
@@ -63,13 +80,18 @@ export function Screen({ children, className, ...props }: ScreenProps) {
         style={{ flex: 1, backgroundColor: "transparent" }}
       >
         <AccentedBackground />
-        <View
-          style={{ flex: 1, padding: theme.spacing.sm }}
-          className={cn("flex-1", className)}
-          {...props}
-        >
-          {children}
-        </View>
+        {scrollable ? (
+          <Animated.ScrollView
+            onScroll={onScroll}
+            scrollEventThrottle={16}
+            contentContainerStyle={{ padding: theme.spacing.sm }}
+            className={cn(className)}
+          >
+            {children}
+          </Animated.ScrollView>
+        ) : (
+          content
+        )}
       </SafeAreaView>
     </View>
   );

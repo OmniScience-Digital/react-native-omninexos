@@ -1,23 +1,23 @@
 // src/screens/InspectionDetailScreen.tsx
-import { ThemedText } from "@/components/ui/screen";
+import { ThemedText } from "@/components/screens/screen";
 import { useS3Urls } from "@/hooks/useS3Urls";
 import { useTheme } from "@/src/contexts/theme-context";
 import {
-  ArrowLeft,
-  Check,
-  ClipboardList,
-  X,
-  XCircle,
+    ArrowLeft,
+    Check,
+    ClipboardList,
+    X,
+    XCircle,
 } from "lucide-react-native";
 import { useState } from "react";
 import {
-  Dimensions,
-  FlatList,
-  Image,
-  Modal,
-  ScrollView,
-  TouchableOpacity,
-  View,
+    Dimensions,
+    FlatList,
+    Image,
+    Modal,
+    ScrollView,
+    TouchableOpacity,
+    View,
 } from "react-native";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");

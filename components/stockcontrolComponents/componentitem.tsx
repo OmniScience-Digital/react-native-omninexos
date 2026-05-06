@@ -32,7 +32,7 @@ import {
   View,
 } from "react-native";
 import ResponseModal from "../responsemodal";
-import { ThemedText } from "../ui/screen";
+import { ThemedText } from "../screens/screen";
 import ComponentLoading from "./Componentloading";
 
 const { height: SCREEN_HEIGHT } = Dimensions.get("window");
@@ -1333,7 +1333,7 @@ const sCard = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
   },
-  previewChipKey: { fontSize: 11, maxWidth: 80 },
+  previewChipKey: { fontSize: 10, maxWidth: 120 },
   previewChipValue: { fontSize: 11, fontWeight: "600" },
   moreText: { fontSize: 11, alignSelf: "center" },
   countBadge: {

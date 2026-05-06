@@ -3,13 +3,14 @@ import {
   getCardStyle,
   SectionHeader,
 } from "@/components/page-Reusables";
+import { Screen, ThemedText } from "@/components/screens/screen";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { CustomHeader } from "@/components/ui/customHeader";
-import { Screen, ThemedText } from "@/components/ui/screen";
 import { CustomScrollView } from "@/components/ui/scrollView";
 import "@/global.css";
 import { getCopyright } from "@/lib/utils";
 import { useAuth } from "@/src/contexts/auth-context";
+import { useTabBar } from "@/src/contexts/tabbar-context";
 import { useTheme } from "@/src/contexts/theme-context";
 import { resetVifForm, showResponseModal } from "@/src/state";
 import { api } from "@/src/state/api";
@@ -53,6 +54,7 @@ const ThemeToggle = () => {
 
 export default function Settings() {
   const { user, logout } = useAuth();
+  const { onScroll } = useTabBar();
   const dispatch = useAppDispatch();
   const { theme, preference, setPreference } = useTheme();
   // Add state for dialog configuration
@@ -116,7 +118,7 @@ export default function Settings() {
   };
 
   return (
-    <Screen>
+    <Screen scrollable onScroll={onScroll}>
       <CustomScrollView>
         {/* Custom Header without back button */}
         <CustomHeader

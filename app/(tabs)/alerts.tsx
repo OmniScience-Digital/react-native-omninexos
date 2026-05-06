@@ -1,9 +1,11 @@
+import { Screen } from "@/components/screens/screen";
 import { CustomHeader } from "@/components/ui/customHeader";
-import { Screen } from "@/components/ui/screen";
+import { useTabBar } from "@/src/contexts/tabbar-context";
 
 export default function Alerts() {
+  const { onScroll } = useTabBar();
   return (
-    <Screen>
+    <Screen scrollable onScroll={onScroll}>
       <CustomHeader
         title="Alerts"
         subtitle="Stay updated with your latest alerts"

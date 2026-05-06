@@ -1,41 +1,41 @@
 // forms/VehicleInspectionForm.tsx
-import { NonTabScreen } from "@/components/ui/non-tab-screen";
-import { ThemedText } from "@/components/ui/screen";
+import { NonTabScreen } from "@/components/screens/non-tab-screen";
+import { ThemedText } from "@/components/screens/screen";
 import { CustomScrollView } from "@/components/ui/scrollView";
 import ResponseModal from "@/components/viFComponents/ResponseModal";
 import VifForm from "@/components/viFComponents/VifForm";
 import { calculateCustomFields, getJhbTimestamp } from "@/lib/utils";
 import { enqueue } from "@/services/submissionQueue";
 import {
-  Vif_clickUpService,
-  uploadPhoto,
+    Vif_clickUpService,
+    uploadPhoto,
 } from "@/services/vif.clickUp.service";
 import { useAuth } from "@/src/contexts/auth-context";
 import { useTheme } from "@/src/contexts/theme-context";
 import {
-  hideResponseModal,
-  resetVifForm,
-  setBooleanAnswer,
-  setOdometer,
-  showResponseModal,
-  updatePhotoStatus,
+    hideResponseModal,
+    resetVifForm,
+    setBooleanAnswer,
+    setOdometer,
+    showResponseModal,
+    updatePhotoStatus,
 } from "@/src/state";
 import {
-  useCreateInspectionMutation,
-  useGetInspectionsByFleetQuery,
-  useListFleetsQuery,
-  useUpdateFleetKmMutation,
+    useCreateInspectionMutation,
+    useGetInspectionsByFleetQuery,
+    useListFleetsQuery,
+    useUpdateFleetKmMutation,
 } from "@/src/state/api";
 import { useAppDispatch, useAppSelector } from "@/src/state/redux";
 import NetInfo from "@react-native-community/netinfo";
 import { uploadData } from "aws-amplify/storage";
 import { useEffect, useState } from "react";
 import {
-  ActivityIndicator,
-  RefreshControl,
-  StyleSheet,
-  TouchableOpacity,
-  View,
+    ActivityIndicator,
+    RefreshControl,
+    StyleSheet,
+    TouchableOpacity,
+    View,
 } from "react-native";
 
 // ─── S3 helpers ───────────────────────────────────────────────

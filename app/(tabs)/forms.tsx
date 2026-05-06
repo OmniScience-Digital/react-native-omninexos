@@ -1,10 +1,12 @@
+import { Screen } from "@/components/screens/screen";
 import { CustomHeader } from "@/components/ui/customHeader";
 import { ModuleCard } from "@/components/ui/DashboardCards";
-import { Screen } from "@/components/ui/screen";
+import { useTabBar } from "@/src/contexts/tabbar-context";
 import { Tabforms } from "@/src/dashboardLists";
 import { router } from "expo-router";
 
 export default function Forms() {
+  const { onScroll } = useTabBar();
   const handleStockformPress = () => {
     router.push("/forms/stockcontrolform");
   };
@@ -13,7 +15,7 @@ export default function Forms() {
   };
 
   return (
-    <Screen>
+    <Screen scrollable onScroll={onScroll}>
       {/* Custom Header without back button */}
       <CustomHeader title="Forms" subtitle="Select a form to fill out" />
       {/* Modules */}

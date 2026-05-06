@@ -1,5 +1,5 @@
 // src/screens/FleetDetailScreen.tsx
-import { ThemedText } from "@/components/ui/screen";
+import { ThemedText } from "@/components/screens/screen";
 import { usePaginatedInspections } from "@/hooks/usePaginatedInspections";
 import { useTheme } from "@/src/contexts/theme-context";
 import {
