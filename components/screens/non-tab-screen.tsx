@@ -3,7 +3,13 @@ import { ThemedText } from "@/components/screens/screen";
 import { useTheme } from "@/src/contexts/theme-context";
 import { router } from "expo-router";
 import { ArrowLeft } from "lucide-react-native";
-import { Pressable, StyleSheet, View } from "react-native";
+import {
+  Animated,
+  Pressable,
+  RefreshControl,
+  StyleSheet,
+  View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 interface NonTabScreenProps {
@@ -13,6 +19,9 @@ interface NonTabScreenProps {
   showBack?: boolean;
   scrollable?: boolean;
   footerText?: string;
+  refreshControl?: React.ReactElement<
+    React.ComponentProps<typeof RefreshControl>
+  >;
 }
 
 export function NonTabScreen({
@@ -22,6 +31,7 @@ export function NonTabScreen({
   showBack = true,
   scrollable = true,
   footerText = `Omninexos © ${new Date().getFullYear()}`,
+  refreshControl,
 }: NonTabScreenProps) {
   const { theme } = useTheme();
 
@@ -67,11 +77,23 @@ export function NonTabScreen({
               </ThemedText>
             )}
           </View>
-          {/* Spacer to keep title left-aligned when back button exists */}
           {showBack && <View style={{ width: 40 }} />}
         </View>
 
-        <View style={{ flex: 1, padding: theme.spacing.sm }}>{children}</View>
+        {scrollable ? (
+          <Animated.ScrollView
+            refreshControl={refreshControl}
+            contentContainerStyle={{
+              padding: theme.spacing.sm,
+              paddingBottom: 140,
+            }}
+            style={{ flex: 1 }}
+          >
+            {children}
+          </Animated.ScrollView>
+        ) : (
+          <View style={{ flex: 1, padding: theme.spacing.sm }}>{children}</View>
+        )}
 
         {/* Footer */}
         <View style={[styles.footer, { borderTopColor: theme.colors.border }]}>
@@ -119,7 +141,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     marginTop: 2,
   },
-
   footer: {
     paddingVertical: 12,
     alignItems: "center",

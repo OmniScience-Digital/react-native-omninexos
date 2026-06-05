@@ -191,12 +191,11 @@ export default function StockControlForm() {
       subtitle="Complete all sections"
       showBack
       scrollable
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+      }
     >
-      <CustomScrollView
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
-      >
+      <CustomScrollView>
         <View
           style={[
             s.card,

@@ -5,7 +5,8 @@
     "jsx": "react-jsx",
     "paths": {
       "@/*": ["./*"]
-    }
+    },
+    "types": ["jest"]
   },
   "include": [
     "**/*.ts",

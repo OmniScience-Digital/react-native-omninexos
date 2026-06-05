@@ -25,7 +25,7 @@ export const StatCard = ({
 
   return (
     <View
-      className="flex-1 p-4 rounded-2xl border mr-3"
+      className="flex-1 p-4 rounded-2xl border mr-1"
       style={{
         backgroundColor: theme.colors.card,
         borderColor: theme.colors.border,

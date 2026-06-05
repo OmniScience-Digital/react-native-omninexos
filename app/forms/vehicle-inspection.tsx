@@ -1,4 +1,3 @@
-// forms/VehicleInspectionForm.tsx
 import { NonTabScreen } from "@/components/screens/non-tab-screen";
 import { ThemedText } from "@/components/screens/screen";
 import { CustomScrollView } from "@/components/ui/scrollView";
@@ -7,35 +6,40 @@ import VifForm from "@/components/viFComponents/VifForm";
 import { calculateCustomFields, getJhbTimestamp } from "@/lib/utils";
 import { enqueue } from "@/services/submissionQueue";
 import {
-    Vif_clickUpService,
-    uploadPhoto,
+  Vif_clickUpService,
+  uploadPhoto,
 } from "@/services/vif.clickUp.service";
 import { useAuth } from "@/src/contexts/auth-context";
 import { useTheme } from "@/src/contexts/theme-context";
 import {
-    hideResponseModal,
-    resetVifForm,
-    setBooleanAnswer,
-    setOdometer,
-    showResponseModal,
-    updatePhotoStatus,
+  hideResponseModal,
+  resetVifForm,
+  setBooleanAnswer,
+  setOdometer,
+  showResponseModal,
+  updatePhotoStatus,
 } from "@/src/state";
 import {
-    useCreateInspectionMutation,
-    useGetInspectionsByFleetQuery,
-    useListFleetsQuery,
-    useUpdateFleetKmMutation,
+  useCreateInspectionMutation,
+  useGetInspectionsByFleetQuery,
+  useListFleetsQuery,
+  useUpdateFleetKmMutation,
 } from "@/src/state/api";
 import { useAppDispatch, useAppSelector } from "@/src/state/redux";
 import NetInfo from "@react-native-community/netinfo";
 import { uploadData } from "aws-amplify/storage";
+import {
+  copyAsync,
+  documentDirectory,
+  makeDirectoryAsync,
+} from "expo-file-system/legacy";
 import { useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    RefreshControl,
-    StyleSheet,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  RefreshControl,
+  StyleSheet,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 // ─── S3 helpers ───────────────────────────────────────────────
@@ -53,6 +57,18 @@ const generateS3Key = (
   index: number,
 ): string =>
   `inspections/${cleanVehicleReg(vehicleReg)}/${inspectionNo}/${Date.now()}-${index}-${randomString()}.jpg`;
+
+const persistPhotoLocally = async (
+  uri: string,
+  photoId: string,
+): Promise<string> => {
+  const dir = `${documentDirectory}offline_photos/`;
+  await makeDirectoryAsync(dir, { intermediates: true });
+  const dest = `${dir}${photoId}.jpg`;
+  if (uri === dest) return dest;
+  await copyAsync({ from: uri, to: dest });
+  return dest;
+};
 
 export default function VehicleInspectionForm() {
   const { theme } = useTheme();
@@ -85,20 +101,15 @@ export default function VehicleInspectionForm() {
 
   // ─── Track network reactively ─────────────────────────────
   useEffect(() => {
-    // Fetch immediately on mount so banner reflects real state right away
     NetInfo.fetch().then((state) => {
-      const online = !!(
-        state.isConnected && state.isInternetReachable !== false
-      );
+      const online = !!state.isConnected;
       console.log(
         `[VIF] Initial — connected: ${state.isConnected}, reachable: ${state.isInternetReachable}, isOnline: ${online}`,
       );
       setIsOnline(online);
     });
     const unsub = NetInfo.addEventListener((state) => {
-      const online = !!(
-        state.isConnected && state.isInternetReachable !== false
-      );
+      const online = !!state.isConnected;
       console.log(
         `[VIF] Change — connected: ${state.isConnected}, reachable: ${state.isInternetReachable}, isOnline: ${online}`,
       );
@@ -139,15 +150,19 @@ export default function VehicleInspectionForm() {
     }
   }, [recentInspection, dispatch]);
 
+  // ─── Pull-to-refresh — just refetch data, sync engine handles queue ──
   const onRefresh = async () => {
     setRefreshing(true);
-    await Promise.all([
-      refetchFleets(),
-      formState.selectedVehicleId
-        ? refetchRecentInspection()
-        : Promise.resolve(),
-    ]);
-    setRefreshing(false);
+    try {
+      await Promise.all([
+        refetchFleets(),
+        formState.selectedVehicleId
+          ? refetchRecentInspection()
+          : Promise.resolve(),
+      ]);
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   const vehiclesForForm = vehicles
@@ -158,9 +173,6 @@ export default function VehicleInspectionForm() {
       vehicleVin: v.vehicleVin as string,
     }));
 
-  // ─── canSubmit ────────────────────────────────────────────
-  // Online:  need photos, none uploading
-  // Offline: photos optional — inspectors may have no signal at all
   const photosReady = isOnline
     ? formState.photos.length > 0 &&
       !formState.photos.some((p) => p.status === "uploading")
@@ -172,19 +184,15 @@ export default function VehicleInspectionForm() {
     photosReady &&
     !formState.booleanQuestions.some((q) => q.value === null);
 
-  // ─── Upload any "local" photos to S3 before submitting ────
-  // Called only when online and submitting
   const uploadLocalPhotos = async (inspectionNo: number): Promise<string[]> => {
     const s3Keys: string[] = [];
     for (let i = 0; i < formState.photos.length; i++) {
       const photo = formState.photos[i];
       if (photo.status === "success" && photo.s3Key) {
-        // Already uploaded
         s3Keys.push(photo.s3Key);
         continue;
       }
       if ((photo.status as string) === "local" || photo.status === "error") {
-        // Upload now
         dispatch(
           updatePhotoStatus({
             id: photo.id,
@@ -222,14 +230,12 @@ export default function VehicleInspectionForm() {
               error: err instanceof Error ? err.message : "Upload failed",
             }),
           );
-          // Don't throw — skip this photo and continue with the rest
         }
       }
     }
     return s3Keys;
   };
 
-  // ─── Build payload ────────────────────────────────────────
   const buildPayload = (s3PhotoKeys: string[]) => {
     const inspectionNo = (recentInspection?.inspectionNo ?? 0) + 1;
     const timestamp = getJhbTimestamp();
@@ -287,7 +293,6 @@ export default function VehicleInspectionForm() {
       photoCount: s3PhotoKeys.length,
     };
 
-    // Photos for ClickUp attachment
     const clickUpPhotos = formState.photos
       .filter((p) => p.status === "success")
       .map((p, i) => ({
@@ -308,23 +313,14 @@ export default function VehicleInspectionForm() {
     };
   };
 
-  // ─── Online submission ────────────────────────────────────
   const submitOnline = async () => {
     const inspectionNo = (recentInspection?.inspectionNo ?? 0) + 1;
-
-    // Step 1: Upload any local/error photos to S3
     const s3PhotoKeys = await uploadLocalPhotos(inspectionNo);
-
-    // Step 2: Build payload with real S3 keys
     const payload = buildPayload(s3PhotoKeys);
 
-    // Step 3: Update fleet km
     await updateFleetKm(payload.fleetKmUpdate).unwrap();
-
-    // Step 4: Save inspection record
     await createInspection({ input: payload.inspectionData }).unwrap();
 
-    // Step 5: Create ClickUp task
     const taskResponse = await Vif_clickUpService.createTask(
       payload.clickUpPayload,
     );
@@ -332,7 +328,6 @@ export default function VehicleInspectionForm() {
       throw new Error(taskResponse.message || "Failed to create ClickUp task");
     }
 
-    // Step 6: Attach photos to ClickUp task
     const taskId = String(taskResponse.taskId);
     for (let i = 0; i < payload.clickUpPhotos.length; i++) {
       const result = await uploadPhoto({
@@ -343,32 +338,60 @@ export default function VehicleInspectionForm() {
     }
   };
 
-  // ─── Offline: queue everything in SQLite ─────────────────
   const queueOffline = async () => {
     const inspectionNo = (recentInspection?.inspectionNo ?? 0) + 1;
 
-    // Store local URIs — sync engine will upload to S3 when online
-    const photoUris = formState.photos.map((p, i) => ({
-      uri: p.uri,
-      name: `photo_${i + 1}.jpg`,
-      type: "image/jpeg",
-      s3Key: p.s3Key || "", // may already have key if uploaded before going offline
-      status: p.status,
-    }));
+    const photoUris: Array<{
+      uri: string;
+      name: string;
+      type: string;
+      s3Key: string;
+      status: string;
+    }> = [];
+
+    for (let i = 0; i < formState.photos.length; i++) {
+      const p = formState.photos[i];
+      let persistedUri = p.uri;
+      try {
+        persistedUri = await persistPhotoLocally(p.uri, p.id);
+      } catch (err) {
+        console.warn(
+          `[VIF] Could not persist photo ${i + 1} locally, using original URI:`,
+          err,
+        );
+      }
+      photoUris.push({
+        uri: persistedUri,
+        name: `photo_${i + 1}.jpg`,
+        type: "image/jpeg",
+        s3Key: p.s3Key || "",
+        status: p.status,
+      });
+    }
 
     const payload = buildPayload(
       formState.photos.filter((p) => p.s3Key).map((p) => p.s3Key),
     );
 
-    await enqueue("vif", {
-      ...payload,
-      photoUris, // raw URIs for sync engine to upload
-      vehicleReg: formState.selectedVehicleReg,
-      inspectionNo,
-    });
+    try {
+      await enqueue("vif", {
+        ...payload,
+        photoUris,
+        vehicleReg: formState.selectedVehicleReg,
+        inspectionNo,
+      });
+    } catch (err) {
+      console.error("Failed to queue offline submission", err);
+      dispatch(
+        showResponseModal({
+          successful: false,
+          message: "Could not save offline data. Please try again.",
+        }),
+      );
+      throw err;
+    }
   };
 
-  // ─── handleSubmit ─────────────────────────────────────────
   const handleSubmit = async () => {
     setSubmitting(true);
     try {
@@ -386,7 +409,7 @@ export default function VehicleInspectionForm() {
       }
 
       const net = await NetInfo.fetch();
-      const online = !!(net.isConnected && net.isInternetReachable);
+      const online = !!net.isConnected;
 
       if (online) {
         if (formState.photos.some((p) => p.status === "uploading")) {
@@ -498,12 +521,11 @@ export default function VehicleInspectionForm() {
       subtitle="Complete all sections"
       showBack
       scrollable
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+      }
     >
-      <CustomScrollView
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
-      >
+      <CustomScrollView>
         <View style={styles.card}>
           <View style={styles.cardHeader}>
             <ThemedText style={styles.cardTitle}>
@@ -511,7 +533,6 @@ export default function VehicleInspectionForm() {
             </ThemedText>
           </View>
           <View style={styles.cardContent}>
-            {/* Offline indicator */}
             {!isOnline && (
               <View style={styles.offlineBadge}>
                 <ThemedText style={styles.offlineBadgeText}>

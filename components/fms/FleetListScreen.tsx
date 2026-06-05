@@ -732,7 +732,11 @@ const AddVehicleModal = ({
               <X size={16} color={colors.textMuted} />
             </TouchableOpacity>
           </View>
-          <CustomScrollView className="p-2">
+
+          <CustomScrollView
+            className="p-2"
+            contentContainerStyle={{ paddingBottom: 16 }}
+          >
             <ThemedText style={s.sectionLabel}>Identity</ThemedText>
             <View style={s.fieldGroup}>
               <FieldRow
@@ -823,16 +827,15 @@ const AddVehicleModal = ({
               value={!!form.servicePlanStatus}
               onToggle={(v) => setForm({ ...form, servicePlanStatus: v })}
             />
+          </CustomScrollView>
 
-            <TouchableOpacity
-              style={[s.btnPrimary, { marginTop: 4 }]}
-              onPress={handleSubmit}
-            >
+          {/* Pinned submit button — always visible */}
+          <View style={{ padding: 16, paddingBottom: 32 }}>
+            <TouchableOpacity style={s.btnPrimary} onPress={handleSubmit}>
               <Plus size={16} color="#fff" />
               <ThemedText style={s.btnPrimaryText}>Add vehicle</ThemedText>
             </TouchableOpacity>
-            <View style={{ height: 24 }} />
-          </CustomScrollView>
+          </View>
         </TouchableOpacity>
       </TouchableOpacity>
     </Modal>
@@ -903,7 +906,11 @@ const EditVehicleModal = ({
               <X size={16} color={colors.textMuted} />
             </TouchableOpacity>
           </View>
-          <CustomScrollView className="p-2">
+
+          <CustomScrollView
+            className="p-2"
+            contentContainerStyle={{ paddingBottom: 16 }}
+          >
             <ThemedText style={s.sectionLabel}>Identity</ThemedText>
             <View style={s.fieldGroup}>
               <FieldRow
@@ -982,7 +989,10 @@ const EditVehicleModal = ({
               value={!!form.servicePlanStatus}
               onToggle={(v) => setForm({ ...form, servicePlanStatus: v })}
             />
+          </CustomScrollView>
 
+          {/* Pinned footer buttons — always visible */}
+          <View style={{ padding: 16, paddingBottom: 32, gap: 10 }}>
             <View style={s.btnRow}>
               <TouchableOpacity
                 style={s.btnPrimary}
@@ -998,17 +1008,13 @@ const EditVehicleModal = ({
                 <ThemedText style={s.btnSecondaryText}>Cancel</ThemedText>
               </TouchableOpacity>
             </View>
-
-            <View style={s.divider} />
-
             <TouchableOpacity
               style={s.btnDanger}
               onPress={() => onDelete(fleet.id)}
             >
               <ThemedText style={s.btnDangerText}>Remove vehicle</ThemedText>
             </TouchableOpacity>
-            <View style={{ height: 24 }} />
-          </CustomScrollView>
+          </View>
         </TouchableOpacity>
       </TouchableOpacity>
     </Modal>

@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 import { useTheme } from "@/src/contexts/theme-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { ReactNode } from "react";
-import { Animated, Text, View, ViewProps } from "react-native";
+import { Animated, RefreshControl, Text, View, ViewProps } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 interface ScreenProps extends ViewProps {
@@ -11,6 +11,9 @@ interface ScreenProps extends ViewProps {
   className?: string;
   scrollable?: boolean;
   onScroll?: (...args: any[]) => void;
+  refreshControl?: React.ReactElement<
+    React.ComponentProps<typeof RefreshControl>
+  >;
 }
 
 const AccentedBackground = () => {
@@ -59,6 +62,7 @@ export function Screen({
   className,
   scrollable = false,
   onScroll,
+  refreshControl,
   ...props
 }: ScreenProps) {
   const { theme } = useTheme();
@@ -84,6 +88,7 @@ export function Screen({
           <Animated.ScrollView
             onScroll={onScroll}
             scrollEventThrottle={16}
+            refreshControl={refreshControl}
             contentContainerStyle={{ padding: theme.spacing.sm }}
             className={cn(className)}
           >

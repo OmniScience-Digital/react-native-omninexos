@@ -1,25 +1,29 @@
-// // services/syncEngine.ts
-// // Silent background service. Never shows modals. Just logs.
-// // Start once in root _layout.tsx via useSyncEngine hook.
-
 // import { SCF_clickUpService } from "@/services/scf.clickUp.service";
 // import {
-//   uploadPhoto,
 //   Vif_clickUpService,
+//   uploadPhoto,
 // } from "@/services/vif.clickUp.service";
 // import { client } from "@/src/amplify";
 // import NetInfo from "@react-native-community/netinfo";
 // import { uploadData } from "aws-amplify/storage";
+// import { File } from "expo-file-system";
 // import {
+//   QueuedSubmission,
 //   getPending,
 //   markCompleted,
 //   markFailed,
 //   markSyncing,
 //   pruneCompleted,
-//   QueuedSubmission,
+//   resetStuckSyncing,
 // } from "./submissionQueue";
 
-// // ─── Inline GraphQL (same as queries.ts, duplicated to avoid circular imports)
+// export type SyncCallbacks = {
+//   onSyncStart?: () => void;
+//   onSyncSuccess?: (count: number) => void;
+//   onSyncError?: (error: string) => void;
+// };
+
+// // ─── GraphQL ──────────────────────────────────────────────────
 // const UPDATE_FLEET = /* GraphQL */ `
 //   mutation UpdateFleet($input: UpdateFleetInput!) {
 //     updateFleet(input: $input) {
@@ -39,63 +43,6 @@
 //   }
 // `;
 
-// // ─── S3 helpers ───────────────────────────────────────────────
-// const cleanVehicleReg = (reg: string): string =>
-//   reg.replace(/[^a-zA-Z0-9]/g, "-");
-
-// const randomString = (length = 8): string =>
-//   Math.random()
-//     .toString(36)
-//     .substring(2, 2 + length);
-
-// const generateS3Key = (
-//   vehicleReg: string,
-//   inspectionNo: number,
-//   index: number,
-// ): string =>
-//   `inspections/${cleanVehicleReg(vehicleReg)}/${inspectionNo}/${Date.now()}-${index}-${randomString()}.jpg`;
-
-// // ─── Upload local photos to S3, return keys ───────────────────
-// const uploadLocalPhotos = async (
-//   photoUris: Array<{
-//     uri: string;
-//     name: string;
-//     type: string;
-//     s3Key: string;
-//     status: string;
-//   }>,
-//   vehicleReg: string,
-//   inspectionNo: number,
-// ): Promise<string[]> => {
-//   const keys: string[] = [];
-//   for (let i = 0; i < photoUris.length; i++) {
-//     const photo = photoUris[i];
-
-//     // Already uploaded — reuse existing key
-//     if (photo.s3Key && photo.status === "success") {
-//       keys.push(photo.s3Key);
-//       continue;
-//     }
-
-//     // Upload local photo
-//     try {
-//       const response = await fetch(photo.uri);
-//       const blob = await response.blob();
-//       const s3Key = generateS3Key(vehicleReg, inspectionNo, i);
-//       await uploadData({
-//         path: s3Key,
-//         data: blob,
-//         options: { contentType: "image/jpeg" },
-//       }).result;
-//       keys.push(s3Key);
-//     } catch (err) {
-//       console.warn(`[SyncEngine] Failed to upload photo ${i + 1}:`, err);
-//       // Skip this photo — don't fail the whole submission over one photo
-//     }
-//   }
-//   return keys;
-// };
-
 // const INSPECTIONS_BY_FLEET_LATEST = /* GraphQL */ `
 //   query InspectionsByFleetAndNumber(
 //     $fleetid: String!
@@ -114,8 +61,22 @@
 //   }
 // `;
 
-// // ─── Fetch the real latest inspection number from Amplify ─────
-// const getLatestInspectionNo = async (fleetId: string): Promise<number> => {
+// // ─── S3 helpers ───────────────────────────────────────────────
+// const cleanVehicleReg = (reg: string) => reg.replace(/[^a-zA-Z0-9]/g, "-");
+// const randomString = (length = 8) =>
+//   Math.random()
+//     .toString(36)
+//     .substring(2, 2 + length);
+// const generateS3Key = (
+//   vehicleReg: string,
+//   inspectionNo: number,
+//   index: number,
+// ) =>
+//   `inspections/${cleanVehicleReg(vehicleReg)}/${inspectionNo}/${Date.now()}-${index}-${randomString()}.jpg`;
+
+// const getLatestInspectionNo = async (
+//   fleetId: string,
+// ): Promise<number | null> => {
 //   try {
 //     const result = (await client.graphql({
 //       query: INSPECTIONS_BY_FLEET_LATEST,
@@ -125,33 +86,89 @@
 //     const items = result?.data?.inspectionsByFleetAndNumber?.items ?? [];
 //     return (items[0]?.inspectionNo ?? 0) + 1;
 //   } catch {
-//     // Fall back to stored number if query fails
-//     return null as any;
+//     return null;
 //   }
 // };
+
+// const uploadLocalPhotos = async (
+//   photoUris: Array<{
+//     uri: string;
+//     name: string;
+//     type: string;
+//     s3Key: string;
+//     status: string;
+//   }>,
+//   vehicleReg: string,
+//   inspectionNo: number,
+// ): Promise<string[]> => {
+//   const keys: string[] = [];
+//   for (let i = 0; i < photoUris.length; i++) {
+//     const photo = photoUris[i];
+//     if (photo.s3Key && photo.status === "success") {
+//       keys.push(photo.s3Key);
+//       continue;
+//     }
+//     try {
+//       const response = await fetch(photo.uri);
+//       const blob = await response.blob();
+//       const s3Key = generateS3Key(vehicleReg, inspectionNo, i);
+//       await uploadData({
+//         path: s3Key,
+//         data: blob,
+//         options: { contentType: "image/jpeg" },
+//       }).result;
+//       keys.push(s3Key);
+//     } catch (err) {
+//       console.warn(`[SyncEngine] Failed to upload photo ${i + 1}:`, err);
+//     }
+//   }
+//   return keys;
+// };
+
+// const cleanupPersistedPhotos = async (
+//   photoUris: Array<{ uri: string }>,
+// ): Promise<void> => {
+//   for (const photo of photoUris) {
+//     if (photo.uri.includes("offline_photos")) {
+//       try {
+//         const file = new File(photo.uri);
+
+//         if (file.exists) {
+//           file.delete();
+//         }
+//       } catch {
+//         console.warn(
+//           "[SyncEngine] Could not delete persisted photo:",
+//           photo.uri,
+//         );
+//       }
+//     }
+//   }
+// };
+
 // // ─── VIF submission ───────────────────────────────────────────
 // const submitVif = async (payload: any): Promise<void> => {
 //   const { photoUris = [], vehicleReg, inspectionData, fleetKmUpdate } = payload;
 //   const fleetId = fleetKmUpdate.id;
 
-//   // Always fetch fresh inspection number — the queued number may be stale
-//   // if other inspections were submitted between queue time and sync time
 //   const freshInspectionNo = await getLatestInspectionNo(fleetId);
-//   const inspectionNo = freshInspectionNo ?? payload.inspectionNo;
+//   if (freshInspectionNo === null) {
+//     throw new Error(
+//       "Could not determine next inspection number – network or server issue",
+//     );
+//   }
+//   const inspectionNo = freshInspectionNo;
 //   console.log(
 //     `[SyncEngine] Inspection number: ${inspectionNo} (queued was: ${payload.inspectionNo})`,
 //   );
 
-//   // Step 1: Upload any local photos to S3 using the correct inspection number
 //   const s3PhotoKeys = await uploadLocalPhotos(
 //     photoUris,
 //     vehicleReg,
 //     inspectionNo,
 //   );
 
-//   // Step 2: Update fleet km in Amplify
 //   try {
-//     console.log("[SyncEngine] Updating fleet km:", fleetKmUpdate);
 //     const result = (await client.graphql({
 //       query: UPDATE_FLEET,
 //       variables: { input: fleetKmUpdate },
@@ -163,16 +180,17 @@
 //     throw new Error(`Fleet km update failed: ${err.message}`);
 //   }
 
-//   // Step 3: Create inspection record with fresh inspection number and real S3 keys
+//   const freshHistory = inspectionData.history.replace(
+//     /Inspection #\d+/,
+//     `Inspection #${inspectionNo}`,
+//   );
 //   const fullInspectionData = {
 //     ...inspectionData,
 //     inspectionNo,
 //     photo: s3PhotoKeys,
+//     history: freshHistory,
 //   };
-//   console.log(
-//     "[SyncEngine] Creating inspection:",
-//     JSON.stringify(fullInspectionData, null, 2),
-//   );
+
 //   try {
 //     const result = (await client.graphql({
 //       query: CREATE_INSPECTION,
@@ -188,7 +206,6 @@
 //     throw new Error(`Inspection save failed: ${err.message}`);
 //   }
 
-//   // Step 4: Create ClickUp task with fresh inspection number and real S3 keys
 //   const clickUpPayload = {
 //     ...payload.clickUpPayload,
 //     inspectionNo: String(inspectionNo),
@@ -200,19 +217,23 @@
 //     throw new Error(taskResponse.message || "ClickUp task creation failed");
 //   }
 
-//   // Step 5: Attach photos to ClickUp task
 //   const taskId = String(taskResponse.taskId);
 //   for (let i = 0; i < photoUris.length; i++) {
-//     const photo = photoUris[i];
 //     try {
 //       await uploadPhoto({
-//         photo: { uri: photo.uri, name: photo.name, type: photo.type },
+//         photo: {
+//           uri: photoUris[i].uri,
+//           name: photoUris[i].name,
+//           type: photoUris[i].type,
+//         },
 //         taskId,
 //       });
 //     } catch {
 //       console.warn(`[SyncEngine] Failed to attach photo ${i + 1} to ClickUp`);
 //     }
 //   }
+
+//   await cleanupPersistedPhotos(photoUris);
 // };
 
 // // ─── Stock submission ─────────────────────────────────────────
@@ -227,10 +248,9 @@
 //   }
 // };
 
-// // ─── Process one queued row ───────────────────────────────────
+// // ─── Process one row ──────────────────────────────────────────
 // const processRow = async (row: QueuedSubmission): Promise<void> => {
 //   await markSyncing(row.id);
-
 //   let parsed: any;
 //   try {
 //     parsed = JSON.parse(row.payload);
@@ -238,63 +258,84 @@
 //     await markFailed(row.id, "Payload JSON parse error — cannot recover");
 //     return;
 //   }
-
 //   try {
-//     if (row.type === "vif") {
-//       await submitVif(parsed);
-//     } else if (row.type === "stock") {
-//       await submitStock(parsed);
-//     }
+//     if (row.type === "vif") await submitVif(parsed);
+//     else if (row.type === "stock") await submitStock(parsed);
 //     await markCompleted(row.id);
 //     console.log(`[SyncEngine] ✓ Row ${row.id} (${row.type}) completed`);
 //   } catch (error: any) {
 //     const msg = error?.message ?? "Unknown error";
 //     await markFailed(row.id, msg);
-//     console.warn(`[SyncEngine] ✗ Row ${row.id} failed: ${msg}`);
+//     console.warn(`[SyncEngine] ✗ Row ${row.id} (${row.type}) failed: ${msg}`);
 //   }
 // };
 
-// // ─── Drain the full queue ─────────────────────────────────────
-// const drainQueue = async (): Promise<void> => {
-//   const rows = await getPending();
-//   if (rows.length === 0) return;
+// // ─── Drain ────────────────────────────────────────────────────
+// let isDraining = false;
 
-//   console.log(`[SyncEngine] Draining ${rows.length} pending submission(s)`);
+// const drainQueue = async (callbacks: SyncCallbacks = {}): Promise<void> => {
+//   if (isDraining) return;
+//   isDraining = true;
+//   try {
+//     const rows = await getPending();
+//     console.log(
+//       `[SyncEngine] Pending rows: ${rows.length}`,
+//       rows.map((r) => `${r.id}:${r.type}`),
+//     );
+//     if (rows.length === 0) return;
 
-//   for (const row of rows) {
-//     // Re-check network before each row
-//     const net = await NetInfo.fetch();
-//     if (!net.isConnected) {
-//       console.log("[SyncEngine] Lost network mid-drain, stopping");
-//       break;
+//     callbacks.onSyncStart?.();
+//     console.log(`[SyncEngine] Draining ${rows.length} submission(s)`);
+
+//     let syncedCount = 0;
+//     for (const row of rows) {
+//       const net = await NetInfo.fetch();
+//       if (!net.isConnected) {
+//         console.log("[SyncEngine] Lost network mid-drain, stopping");
+//         break;
+//       }
+//       await processRow(row);
+//       syncedCount++;
 //     }
-//     await processRow(row);
-//   }
 
-//   await pruneCompleted();
+//     await pruneCompleted();
+//     callbacks.onSyncSuccess?.(syncedCount);
+//   } catch (e: any) {
+//     callbacks.onSyncError?.(e.message ?? "Unknown error");
+//   } finally {
+//     isDraining = false;
+//   }
 // };
 
 // // ─── Start / stop ─────────────────────────────────────────────
 // let unsubscribe: (() => void) | null = null;
+// let wasOnline = false;
 
-// export const startSyncEngine = (): void => {
+// export const startSyncEngine = (callbacks: SyncCallbacks = {}): void => {
 //   if (unsubscribe) return;
 
-//   // On startup: prune old completed rows first, then drain pending
 //   NetInfo.fetch().then(async (state) => {
-//     await pruneCompleted(); // always prune on startup
-//     if (state.isConnected && state.isInternetReachable) {
-//       drainQueue().catch((e) =>
+//     await resetStuckSyncing();
+//     await pruneCompleted();
+//     if (state.isConnected) {
+//       wasOnline = true;
+//       drainQueue(callbacks).catch((e) =>
 //         console.warn("[SyncEngine] Startup drain error:", e),
 //       );
 //     }
 //   });
 
-//   // Listen for connectivity restored
 //   unsubscribe = NetInfo.addEventListener((state) => {
-//     if (state.isConnected && state.isInternetReachable) {
-//       drainQueue().catch((e) => console.warn("[SyncEngine] Drain error:", e));
+//     const online = !!state.isConnected;
+//     if (online && !wasOnline) {
+//       console.log("[SyncEngine] Network restored — draining queue");
+//       setTimeout(() => {
+//         drainQueue(callbacks).catch((e) =>
+//           console.warn("[SyncEngine] Drain error:", e),
+//         );
+//       }, 2000);
 //     }
+//     wasOnline = online;
 //   });
 
 //   console.log("[SyncEngine] Started");
@@ -308,34 +349,40 @@
 //   }
 // };
 
-// export const triggerSync = async (): Promise<void> => {
+// export const triggerSync = async (
+//   callbacks: SyncCallbacks = {},
+// ): Promise<void> => {
 //   const net = await NetInfo.fetch();
 //   if (!net.isConnected) throw new Error("No network connection");
-//   await drainQueue();
+//   await drainQueue(callbacks);
 // };
-
-// services/syncEngine.ts
-// Silent background service. Never shows modals. Just logs.
-// Start once in root _layout.tsx via useSyncEngine hook.
 
 import { SCF_clickUpService } from "@/services/scf.clickUp.service";
 import {
-  uploadPhoto,
   Vif_clickUpService,
+  uploadPhoto,
 } from "@/services/vif.clickUp.service";
 import { client } from "@/src/amplify";
 import NetInfo from "@react-native-community/netinfo";
 import { uploadData } from "aws-amplify/storage";
+import { deleteAsync } from "expo-file-system/legacy";
 import {
+  QueuedSubmission,
   getPending,
   markCompleted,
   markFailed,
   markSyncing,
   pruneCompleted,
-  QueuedSubmission,
+  resetStuckSyncing,
 } from "./submissionQueue";
 
-// ─── Inline GraphQL (same as queries.ts, duplicated to avoid circular imports)
+export type SyncCallbacks = {
+  onSyncStart?: () => void;
+  onSyncSuccess?: (count: number) => void;
+  onSyncError?: (error: string) => void;
+};
+
+// ─── GraphQL ──────────────────────────────────────────────────
 const UPDATE_FLEET = /* GraphQL */ `
   mutation UpdateFleet($input: UpdateFleetInput!) {
     updateFleet(input: $input) {
@@ -355,63 +402,6 @@ const CREATE_INSPECTION = /* GraphQL */ `
   }
 `;
 
-// ─── S3 helpers ───────────────────────────────────────────────
-const cleanVehicleReg = (reg: string): string =>
-  reg.replace(/[^a-zA-Z0-9]/g, "-");
-
-const randomString = (length = 8): string =>
-  Math.random()
-    .toString(36)
-    .substring(2, 2 + length);
-
-const generateS3Key = (
-  vehicleReg: string,
-  inspectionNo: number,
-  index: number,
-): string =>
-  `inspections/${cleanVehicleReg(vehicleReg)}/${inspectionNo}/${Date.now()}-${index}-${randomString()}.jpg`;
-
-// ─── Upload local photos to S3, return keys ───────────────────
-const uploadLocalPhotos = async (
-  photoUris: Array<{
-    uri: string;
-    name: string;
-    type: string;
-    s3Key: string;
-    status: string;
-  }>,
-  vehicleReg: string,
-  inspectionNo: number,
-): Promise<string[]> => {
-  const keys: string[] = [];
-  for (let i = 0; i < photoUris.length; i++) {
-    const photo = photoUris[i];
-
-    // Already uploaded — reuse existing key
-    if (photo.s3Key && photo.status === "success") {
-      keys.push(photo.s3Key);
-      continue;
-    }
-
-    // Upload local photo
-    try {
-      const response = await fetch(photo.uri);
-      const blob = await response.blob();
-      const s3Key = generateS3Key(vehicleReg, inspectionNo, i);
-      await uploadData({
-        path: s3Key,
-        data: blob,
-        options: { contentType: "image/jpeg" },
-      }).result;
-      keys.push(s3Key);
-    } catch (err) {
-      console.warn(`[SyncEngine] Failed to upload photo ${i + 1}:`, err);
-      // Skip this photo — don't fail the whole submission over one photo
-    }
-  }
-  return keys;
-};
-
 const INSPECTIONS_BY_FLEET_LATEST = /* GraphQL */ `
   query InspectionsByFleetAndNumber(
     $fleetid: String!
@@ -430,8 +420,22 @@ const INSPECTIONS_BY_FLEET_LATEST = /* GraphQL */ `
   }
 `;
 
-// ─── Fetch the real latest inspection number from Amplify ─────
-const getLatestInspectionNo = async (fleetId: string): Promise<number> => {
+// ─── S3 helpers ───────────────────────────────────────────────
+const cleanVehicleReg = (reg: string) => reg.replace(/[^a-zA-Z0-9]/g, "-");
+const randomString = (length = 8) =>
+  Math.random()
+    .toString(36)
+    .substring(2, 2 + length);
+const generateS3Key = (
+  vehicleReg: string,
+  inspectionNo: number,
+  index: number,
+) =>
+  `inspections/${cleanVehicleReg(vehicleReg)}/${inspectionNo}/${Date.now()}-${index}-${randomString()}.jpg`;
+
+const getLatestInspectionNo = async (
+  fleetId: string,
+): Promise<number | null> => {
   try {
     const result = (await client.graphql({
       query: INSPECTIONS_BY_FLEET_LATEST,
@@ -441,33 +445,85 @@ const getLatestInspectionNo = async (fleetId: string): Promise<number> => {
     const items = result?.data?.inspectionsByFleetAndNumber?.items ?? [];
     return (items[0]?.inspectionNo ?? 0) + 1;
   } catch {
-    // Fall back to stored number if query fails
-    return null as any;
+    return null;
   }
 };
+
+const uploadLocalPhotos = async (
+  photoUris: Array<{
+    uri: string;
+    name: string;
+    type: string;
+    s3Key: string;
+    status: string;
+  }>,
+  vehicleReg: string,
+  inspectionNo: number,
+): Promise<string[]> => {
+  const keys: string[] = [];
+  for (let i = 0; i < photoUris.length; i++) {
+    const photo = photoUris[i];
+    if (photo.s3Key && photo.status === "success") {
+      keys.push(photo.s3Key);
+      continue;
+    }
+    try {
+      const response = await fetch(photo.uri);
+      const blob = await response.blob();
+      const s3Key = generateS3Key(vehicleReg, inspectionNo, i);
+      await uploadData({
+        path: s3Key,
+        data: blob,
+        options: { contentType: "image/jpeg" },
+      }).result;
+      keys.push(s3Key);
+    } catch (err) {
+      console.warn(`[SyncEngine] Failed to upload photo ${i + 1}:`, err);
+    }
+  }
+  return keys;
+};
+
+const cleanupPersistedPhotos = async (
+  photoUris: Array<{ uri: string }>,
+): Promise<void> => {
+  for (const photo of photoUris) {
+    if (photo.uri.includes("offline_photos")) {
+      try {
+        await deleteAsync(photo.uri, { idempotent: true });
+      } catch {
+        console.warn(
+          "[SyncEngine] Could not delete persisted photo:",
+          photo.uri,
+        );
+      }
+    }
+  }
+};
+
 // ─── VIF submission ───────────────────────────────────────────
 const submitVif = async (payload: any): Promise<void> => {
   const { photoUris = [], vehicleReg, inspectionData, fleetKmUpdate } = payload;
   const fleetId = fleetKmUpdate.id;
 
-  // Always fetch fresh inspection number — the queued number may be stale
-  // if other inspections were submitted between queue time and sync time
   const freshInspectionNo = await getLatestInspectionNo(fleetId);
-  const inspectionNo = freshInspectionNo ?? payload.inspectionNo;
+  if (freshInspectionNo === null) {
+    throw new Error(
+      "Could not determine next inspection number – network or server issue",
+    );
+  }
+  const inspectionNo = freshInspectionNo;
   console.log(
     `[SyncEngine] Inspection number: ${inspectionNo} (queued was: ${payload.inspectionNo})`,
   );
 
-  // Step 1: Upload any local photos to S3 using the correct inspection number
   const s3PhotoKeys = await uploadLocalPhotos(
     photoUris,
     vehicleReg,
     inspectionNo,
   );
 
-  // Step 2: Update fleet km in Amplify
   try {
-    console.log("[SyncEngine] Updating fleet km:", fleetKmUpdate);
     const result = (await client.graphql({
       query: UPDATE_FLEET,
       variables: { input: fleetKmUpdate },
@@ -479,16 +535,17 @@ const submitVif = async (payload: any): Promise<void> => {
     throw new Error(`Fleet km update failed: ${err.message}`);
   }
 
-  // Step 3: Create inspection record with fresh inspection number and real S3 keys
+  const freshHistory = inspectionData.history.replace(
+    /Inspection #\d+/,
+    `Inspection #${inspectionNo}`,
+  );
   const fullInspectionData = {
     ...inspectionData,
     inspectionNo,
     photo: s3PhotoKeys,
+    history: freshHistory,
   };
-  console.log(
-    "[SyncEngine] Creating inspection:",
-    JSON.stringify(fullInspectionData, null, 2),
-  );
+
   try {
     const result = (await client.graphql({
       query: CREATE_INSPECTION,
@@ -504,7 +561,6 @@ const submitVif = async (payload: any): Promise<void> => {
     throw new Error(`Inspection save failed: ${err.message}`);
   }
 
-  // Step 4: Create ClickUp task with fresh inspection number and real S3 keys
   const clickUpPayload = {
     ...payload.clickUpPayload,
     inspectionNo: String(inspectionNo),
@@ -516,19 +572,23 @@ const submitVif = async (payload: any): Promise<void> => {
     throw new Error(taskResponse.message || "ClickUp task creation failed");
   }
 
-  // Step 5: Attach photos to ClickUp task
   const taskId = String(taskResponse.taskId);
   for (let i = 0; i < photoUris.length; i++) {
-    const photo = photoUris[i];
     try {
       await uploadPhoto({
-        photo: { uri: photo.uri, name: photo.name, type: photo.type },
+        photo: {
+          uri: photoUris[i].uri,
+          name: photoUris[i].name,
+          type: photoUris[i].type,
+        },
         taskId,
       });
     } catch {
       console.warn(`[SyncEngine] Failed to attach photo ${i + 1} to ClickUp`);
     }
   }
+
+  await cleanupPersistedPhotos(photoUris);
 };
 
 // ─── Stock submission ─────────────────────────────────────────
@@ -543,10 +603,155 @@ const submitStock = async (payload: any): Promise<void> => {
   }
 };
 
-// ─── Process one queued row ───────────────────────────────────
+// ─── Clock record GraphQL mutations ──────────────────────────
+const CREATE_CLOCK_RECORD = /* GraphQL */ `
+  mutation CreateClockRecord($input: CreateClockRecordInput!) {
+    createClockRecord(input: $input) {
+      id
+      userId
+      employeeName
+      clockInTime
+      verificationStatus
+      syncedOffline
+      date
+    }
+  }
+`;
+
+const UPDATE_CLOCK_RECORD_MUTATION = /* GraphQL */ `
+  mutation UpdateClockRecord($input: UpdateClockRecordInput!) {
+    updateClockRecord(input: $input) {
+      id
+      clockOutTime
+      hoursWorked
+      verificationStatus
+      similarityScore
+    }
+  }
+`;
+
+const VERIFY_URL: string =
+  (require("@/amplify_outputs.json") as any)?.custom?.verifyFaceApiUrl ?? "";
+
+// Upload offline selfie and run verification, returns updated status info
+const syncOfflineSelfie = async (
+  userId: string,
+  localUri: string,
+  clockRecordId: string,
+): Promise<{
+  status: "VERIFIED" | "REVIEW_REQUIRED";
+  similarity: number;
+  selfieKey: string | null;
+}> => {
+  try {
+    const selfieKey = `hr/clock-selfies/${userId}/${Date.now()}.jpg`;
+    const response = await fetch(localUri);
+    const blob = await response.blob();
+    await uploadData({
+      path: selfieKey,
+      data: blob,
+      options: { contentType: "image/jpeg" },
+    }).result;
+
+    if (VERIFY_URL) {
+      const lambdaRes = await fetch(VERIFY_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, selfieKey, clockRecordId }),
+      });
+      const body = await lambdaRes.json();
+      return {
+        status: body.verified ? "VERIFIED" : "REVIEW_REQUIRED",
+        similarity: body.similarity ?? 0,
+        selfieKey,
+      };
+    }
+
+    return { status: "REVIEW_REQUIRED", similarity: 0, selfieKey };
+  } catch {
+    return { status: "REVIEW_REQUIRED", similarity: 0, selfieKey: null };
+  }
+};
+
+// ─── Clock-in sync ────────────────────────────────────────────
+const submitClockIn = async (payload: any): Promise<void> => {
+  const { localSelfieUri, ...input } = payload;
+
+  // Create the clock record first
+  const { data, errors } = (await client.graphql({
+    query: CREATE_CLOCK_RECORD,
+    variables: {
+      input: {
+        ...input,
+        syncedOffline: true,
+        verificationStatus: localSelfieUri
+          ? "PENDING_VERIFICATION"
+          : input.verificationStatus,
+      },
+    },
+    authMode: "apiKey",
+  })) as any;
+
+  if (errors) throw new Error(errors[0].message);
+
+  const createdRecord = data.createClockRecord;
+
+  // If we stored a selfie offline, upload and verify now
+  if (localSelfieUri && createdRecord?.id && input.userId) {
+    const verifyResult = await syncOfflineSelfie(
+      input.userId,
+      localSelfieUri,
+      createdRecord.id,
+    );
+
+    // Update the record with verification result
+    await client.graphql({
+      query: UPDATE_CLOCK_RECORD_MUTATION,
+      variables: {
+        input: {
+          id: createdRecord.id,
+          verificationStatus: verifyResult.status,
+          similarityScore: verifyResult.similarity,
+        },
+      },
+      authMode: "apiKey",
+    });
+
+    // Clean up local selfie file — deleteAsync imported statically at top
+    try {
+      await deleteAsync(localSelfieUri, { idempotent: true });
+    } catch {}
+  }
+};
+
+// ─── Clock-out sync ───────────────────────────────────────────
+const submitClockOut = async (payload: any): Promise<void> => {
+  const { originalClockIn: _ignored, localSelfieUri, ...input } = payload;
+
+  if (input.id?.startsWith("local_")) {
+    // The clock-in was also offline — we can't update a local_ ID
+    // The clock-in sync should have created the real record; skip for now
+    console.warn("[SyncEngine] Clock-out skipped — local_ ID not resolved yet");
+    return;
+  }
+
+  const { errors } = (await client.graphql({
+    query: UPDATE_CLOCK_RECORD_MUTATION,
+    variables: { input },
+    authMode: "apiKey",
+  })) as any;
+
+  if (errors) throw new Error(errors[0].message);
+
+  // Sync clock-out selfie if present
+  if (localSelfieUri && input.id && input.userId) {
+    await syncOfflineSelfie(input.userId, localSelfieUri, input.id);
+  }
+};
+
+// ─── Process one row ──────────────────────────────────────────
 const processRow = async (row: QueuedSubmission): Promise<void> => {
   await markSyncing(row.id);
-
   let parsed: any;
   try {
     parsed = JSON.parse(row.payload);
@@ -554,63 +759,86 @@ const processRow = async (row: QueuedSubmission): Promise<void> => {
     await markFailed(row.id, "Payload JSON parse error — cannot recover");
     return;
   }
-
   try {
-    if (row.type === "vif") {
-      await submitVif(parsed);
-    } else if (row.type === "stock") {
-      await submitStock(parsed);
-    }
+    if (row.type === "vif") await submitVif(parsed);
+    else if (row.type === "stock") await submitStock(parsed);
+    else if (row.type === "clockin") await submitClockIn(parsed);
+    else if (row.type === "clockout") await submitClockOut(parsed);
     await markCompleted(row.id);
     console.log(`[SyncEngine] ✓ Row ${row.id} (${row.type}) completed`);
   } catch (error: any) {
     const msg = error?.message ?? "Unknown error";
     await markFailed(row.id, msg);
-    console.warn(`[SyncEngine] ✗ Row ${row.id} failed: ${msg}`);
+    console.warn(`[SyncEngine] ✗ Row ${row.id} (${row.type}) failed: ${msg}`);
   }
 };
 
-// ─── Drain the full queue ─────────────────────────────────────
-const drainQueue = async (): Promise<void> => {
-  const rows = await getPending();
-  if (rows.length === 0) return;
+// ─── Drain ────────────────────────────────────────────────────
+let isDraining = false;
 
-  console.log(`[SyncEngine] Draining ${rows.length} pending submission(s)`);
+const drainQueue = async (callbacks: SyncCallbacks = {}): Promise<void> => {
+  if (isDraining) return;
+  isDraining = true;
+  try {
+    const rows = await getPending();
+    console.log(
+      `[SyncEngine] Pending rows: ${rows.length}`,
+      rows.map((r) => `${r.id}:${r.type}`),
+    );
+    if (rows.length === 0) return;
 
-  for (const row of rows) {
-    // Re-check network before each row
-    const net = await NetInfo.fetch();
-    if (!net.isConnected) {
-      console.log("[SyncEngine] Lost network mid-drain, stopping");
-      break;
+    callbacks.onSyncStart?.();
+    console.log(`[SyncEngine] Draining ${rows.length} submission(s)`);
+
+    let syncedCount = 0;
+    for (const row of rows) {
+      const net = await NetInfo.fetch();
+      if (!net.isConnected) {
+        console.log("[SyncEngine] Lost network mid-drain, stopping");
+        break;
+      }
+      await processRow(row);
+      syncedCount++;
     }
-    await processRow(row);
-  }
 
-  await pruneCompleted();
+    await pruneCompleted();
+    callbacks.onSyncSuccess?.(syncedCount);
+  } catch (e: any) {
+    callbacks.onSyncError?.(e.message ?? "Unknown error");
+  } finally {
+    isDraining = false;
+  }
 };
 
 // ─── Start / stop ─────────────────────────────────────────────
 let unsubscribe: (() => void) | null = null;
+let wasOnline = false;
 
-export const startSyncEngine = (): void => {
+export const startSyncEngine = (callbacks: SyncCallbacks = {}): void => {
   if (unsubscribe) return;
 
-  // On startup: prune old completed rows first, then drain pending
   NetInfo.fetch().then(async (state) => {
-    await pruneCompleted(); // always prune on startup
-    if (state.isConnected && state.isInternetReachable !== false) {
-      drainQueue().catch((e) =>
+    await resetStuckSyncing();
+    await pruneCompleted();
+    if (state.isConnected) {
+      wasOnline = true;
+      drainQueue(callbacks).catch((e) =>
         console.warn("[SyncEngine] Startup drain error:", e),
       );
     }
   });
 
-  // Listen for connectivity restored
   unsubscribe = NetInfo.addEventListener((state) => {
-    if (state.isConnected && state.isInternetReachable !== false) {
-      drainQueue().catch((e) => console.warn("[SyncEngine] Drain error:", e));
+    const online = !!state.isConnected;
+    if (online && !wasOnline) {
+      console.log("[SyncEngine] Network restored — draining queue");
+      setTimeout(() => {
+        drainQueue(callbacks).catch((e) =>
+          console.warn("[SyncEngine] Drain error:", e),
+        );
+      }, 2000);
     }
+    wasOnline = online;
   });
 
   console.log("[SyncEngine] Started");
@@ -624,8 +852,10 @@ export const stopSyncEngine = (): void => {
   }
 };
 
-export const triggerSync = async (): Promise<void> => {
+export const triggerSync = async (
+  callbacks: SyncCallbacks = {},
+): Promise<void> => {
   const net = await NetInfo.fetch();
   if (!net.isConnected) throw new Error("No network connection");
-  await drainQueue();
+  await drainQueue(callbacks);
 };

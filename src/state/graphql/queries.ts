@@ -370,6 +370,17 @@ export const CREATE_COMPONENT = /* GraphQL */ `
     }
   }
 `;
+export const LIST_PERMISSIONS_BY_USER_ID = /* GraphQL */ `
+  query ListPermissionsByUserId($userId: String!) {
+    listPermissionsByUserId(userId: $userId) {
+      items {
+        id
+        userId
+        permissions
+      }
+    }
+  }
+`;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Arg types
