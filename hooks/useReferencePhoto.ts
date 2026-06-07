@@ -1,112 +1,3 @@
-// // hooks/useReferencePhoto.ts
-// import AsyncStorage from "@react-native-async-storage/async-storage";
-// import { getUrl, uploadData } from "aws-amplify/storage";
-// import * as ImagePicker from "expo-image-picker";
-// import { useCallback, useEffect, useState } from "react";
-
-// const SETUP_KEY = (uid: string) => `face:setup_complete:${uid}`;
-// const S3_PATH = (uid: string) => `hr/reference-faces/${uid}/profile.jpg`;
-
-// export function useReferencePhoto(userId: string) {
-//   const [isSetupComplete, setIsSetupComplete] = useState<boolean | null>(null);
-//   const [photoUri, setPhotoUri] = useState<string | null>(null);
-//   const [uploading, setUploading] = useState(false);
-//   const [error, setError] = useState<string | null>(null);
-
-//   // ── Check setup status on mount ───────────────────────────────────────────
-//   useEffect(() => {
-//     if (!userId || userId === "anonymous") return;
-//     AsyncStorage.getItem(SETUP_KEY(userId)).then((val) => {
-//       setIsSetupComplete(val === "true");
-//     });
-//   }, [userId]);
-
-//   // ── Load existing photo from S3 ───────────────────────────────────────────
-//   useEffect(() => {
-//     if (!isSetupComplete || !userId) return;
-//     getUrl({ path: S3_PATH(userId) })
-//       .then(({ url }) => setPhotoUri(url.toString()))
-//       .catch(() => setPhotoUri(null));
-//   }, [isSetupComplete, userId]);
-
-//   // ── Open camera and capture selfie ────────────────────────────────────────
-//   const captureAndUpload = useCallback(async (): Promise<boolean> => {
-//     setError(null);
-
-//     // Request camera permission
-//     const { status } = await ImagePicker.requestCameraPermissionsAsync();
-//     if (status !== "granted") {
-//       setError("Camera permission is required to set up face verification.");
-//       return false;
-//     }
-
-//     // Open front camera
-//     const result = await ImagePicker.launchCameraAsync({
-//       cameraType: ImagePicker.CameraType.front,
-//       allowsEditing: true,
-//       aspect: [1, 1],
-//       quality: 0.8,
-//       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-//     });
-
-//     if (result.canceled || !result.assets?.[0]?.uri) {
-//       return false; // user cancelled — not an error
-//     }
-
-//     const localUri = result.assets[0].uri;
-//     setPhotoUri(localUri);
-//     setUploading(true);
-
-//     try {
-//       // Fetch the image as a blob and upload to Amplify Storage
-//       const response = await fetch(localUri);
-//       const blob = await response.blob();
-
-//       await uploadData({
-//         path: S3_PATH(userId),
-//         data: blob,
-//         options: { contentType: "image/jpeg" },
-//       }).result;
-
-//       // Mark setup complete
-//       await AsyncStorage.setItem(SETUP_KEY(userId), "true");
-//       setIsSetupComplete(true);
-
-//       // Refresh signed URL
-//       const { url } = await getUrl({ path: S3_PATH(userId) });
-//       setPhotoUri(url.toString());
-
-//       return true;
-//     } catch (e: any) {
-//       setError(e?.message ?? "Upload failed. Please try again.");
-//       setPhotoUri(null);
-//       return false;
-//     } finally {
-//       setUploading(false);
-//     }
-//   }, [userId]);
-
-//   // ── Reset — lets employee re-enroll ──────────────────────────────────────
-//   const resetSetup = useCallback(async () => {
-//     await AsyncStorage.removeItem(SETUP_KEY(userId));
-//     setIsSetupComplete(false);
-//     setPhotoUri(null);
-//   }, [userId]);
-
-//   const clearError = useCallback(() => setError(null), []);
-
-//   return {
-//     isSetupComplete,
-//     photoUri,
-//     uploading,
-//     error,
-//     clearError,
-//     captureAndUpload,
-//     resetSetup,
-//     s3Path: S3_PATH(userId),
-//   };
-// }
-
 // hooks/useReferencePhoto.ts
 import { client } from "@/src/amplify";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -115,6 +6,7 @@ import * as ImagePicker from "expo-image-picker";
 import { useCallback, useEffect, useState } from "react";
 
 const SETUP_KEY = (uid: string) => `face:setup_complete:${uid}`;
+const PHOTO_URI_KEY = (uid: string) => `face:cached_photo_uri:${uid}`;
 const S3_PATH = (uid: string) => `hr/reference-faces/${uid}/profile.jpg`;
 
 // GraphQL for PhotoChangeRequest
@@ -199,12 +91,28 @@ export function useReferencePhoto(userId: string) {
     });
   }, [userId]);
 
-  // ── Load existing photo from S3 ─────────────────────────────────────────
+  // ── Load existing photo from S3 (with offline cache fallback) ──────────
   useEffect(() => {
     if (!isSetupComplete || !userId) return;
+
+    // 1. Show cached URI immediately (works offline, like Facebook)
+    AsyncStorage.getItem(PHOTO_URI_KEY(userId)).then((cached) => {
+      if (cached) setPhotoUri(cached);
+    });
+
+    // 2. Try to refresh a fresh signed URL from S3 (online only)
     getUrl({ path: S3_PATH(userId) })
-      .then(({ url }) => setPhotoUri(url.toString()))
-      .catch(() => setPhotoUri(null));
+      .then(({ url }) => {
+        const fresh = url.toString();
+        setPhotoUri(fresh);
+        // Persist the fresh URL so next offline load sees an up-to-date URI.
+        // Signed URLs expire, but the local file URI written after upload
+        // never expires — so we also store the localUri after upload (below).
+        AsyncStorage.setItem(PHOTO_URI_KEY(userId), fresh).catch(() => {});
+      })
+      .catch(() => {
+        // Network unavailable — cached URI already set above, nothing to do.
+      });
   }, [isSetupComplete, userId]);
 
   // ── Check for pending/approved requests from DynamoDB ───────────────────
@@ -295,6 +203,9 @@ export function useReferencePhoto(userId: string) {
 
     const localUri = result.assets[0].uri;
     setPhotoUri(localUri);
+    // Cache locally first so the photo is visible even before upload completes
+    // and remains visible offline (same pattern as Facebook profile photos).
+    AsyncStorage.setItem(PHOTO_URI_KEY(userId), localUri).catch(() => {});
     setUploading(true);
 
     try {
@@ -327,7 +238,10 @@ export function useReferencePhoto(userId: string) {
       }
 
       const { url } = await getUrl({ path: S3_PATH(userId) });
-      setPhotoUri(url.toString());
+      const freshUrl = url.toString();
+      setPhotoUri(freshUrl);
+      // Update cache with the S3-signed URL so subsequent online loads are fast
+      AsyncStorage.setItem(PHOTO_URI_KEY(userId), freshUrl).catch(() => {});
       return true;
     } catch (e: any) {
       setError(e?.message ?? "Upload failed. Please try again.");
@@ -342,6 +256,7 @@ export function useReferencePhoto(userId: string) {
   const resetSetup = useCallback(async () => {
     if (!approvedRequest && isSetupComplete) return; // blocked
     await AsyncStorage.removeItem(SETUP_KEY(userId));
+    await AsyncStorage.removeItem(PHOTO_URI_KEY(userId));
     setIsSetupComplete(false);
     setPhotoUri(null);
   }, [userId, approvedRequest, isSetupComplete]);

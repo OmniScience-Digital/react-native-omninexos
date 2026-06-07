@@ -5,6 +5,8 @@ import { useTheme } from "@/src/contexts/theme-context";
 import { format, parseISO } from "date-fns";
 import {
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   Clock,
   LogIn,
   LogOut,
@@ -12,6 +14,7 @@ import {
   RefreshCw,
   Timer,
 } from "lucide-react-native";
+import { useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -21,6 +24,8 @@ import {
 } from "react-native";
 
 const IconCheckCircle2 = CheckCircle2 as any;
+const IconChevronDown = ChevronDown as any;
+const IconChevronUp = ChevronUp as any;
 const IconClock = Clock as any;
 const IconLogIn = LogIn as any;
 const IconLogOut = LogOut as any;
@@ -51,6 +56,25 @@ function statusMeta(status: ClockRecord["verificationStatus"], theme: any) {
   }
 }
 
+function safeFormat(iso: string | undefined | null, fmt: string): string {
+  if (!iso) return "—";
+  try {
+    return format(parseISO(iso), fmt);
+  } catch {
+    return "—";
+  }
+}
+
+function isCoordString(s?: string | null): boolean {
+  return !!s && /^-?\d+\.\d+,\s*-?\d+\.\d+$/.test(s.trim());
+}
+
+function formatAddress(addr?: string | null): string {
+  if (!addr) return "—";
+  if (isCoordString(addr)) return "Location will show after sync";
+  return addr;
+}
+
 interface HistoryRowProps {
   record: ClockRecord;
   onClockOut?: (record: ClockRecord) => void;
@@ -58,25 +82,13 @@ interface HistoryRowProps {
 
 function HistoryRow({ record, onClockOut }: HistoryRowProps) {
   const { theme } = useTheme();
+  const [expanded, setExpanded] = useState(false);
   const { label, color, Icon } = statusMeta(record.verificationStatus, theme)!;
   const isOpen = !record.clockOutTime;
 
-  const safeFormat = (iso?: string) => {
-    if (!iso) return "—";
-    try {
-      return format(parseISO(iso), "HH:mm");
-    } catch {
-      return "—";
-    }
-  };
-
-  const safeDate = (iso: string) => {
-    try {
-      return format(parseISO(iso), "EEE, d MMM yyyy");
-    } catch {
-      return iso;
-    }
-  };
+  const clockInTime = safeFormat(record.clockInTime, "HH:mm");
+  const clockOutTime = safeFormat(record.clockOutTime, "HH:mm");
+  const dateLabel = safeFormat(record.clockInTime, "EEE, d MMM yyyy");
 
   return (
     <View
@@ -87,172 +99,237 @@ function HistoryRow({ record, onClockOut }: HistoryRowProps) {
           borderColor: isOpen
             ? theme.colors.warning + "60"
             : theme.colors.border,
-          borderLeftColor: isOpen ? theme.colors.warning : theme.colors.card,
+          borderLeftColor: isOpen ? theme.colors.warning : theme.colors.success,
         },
       ]}
     >
-      {/* Date + status badge */}
-      <View style={styles.rowTop}>
-        <ThemedText weight="600" style={{ fontSize: 14 }}>
-          {safeDate(record.clockInTime)}
-        </ThemedText>
-        <View
-          style={[
-            styles.badge,
-            { backgroundColor: color + "18", borderColor: color + "40" },
-          ]}
-        >
-          <Icon size={10} color={color} />
-          <ThemedText
-            style={{ color, fontSize: 11, marginLeft: 4 }}
-            weight="600"
-          >
-            {label}
+      {/* ── Collapsed row — always visible ── */}
+      <Pressable onPress={() => setExpanded((v) => !v)} style={styles.summary}>
+        {/* Date */}
+        <View style={{ flex: 1 }}>
+          <ThemedText weight="700" style={{ fontSize: 14 }}>
+            {dateLabel}
           </ThemedText>
-        </View>
-      </View>
-
-      {/* Open shift warning */}
-      {isOpen && (
-        <View
-          style={[
-            styles.openBanner,
-            { backgroundColor: theme.colors.warning + "14" },
-          ]}
-        >
-          <ThemedText
-            style={{ color: theme.colors.warning, fontSize: 12 }}
-            weight="600"
-          >
-            Shift not closed
-          </ThemedText>
-        </View>
-      )}
-
-      {/* Times */}
-      <View style={styles.times}>
-        <View style={styles.timeBlock}>
-          <View
-            style={[
-              styles.timeIcon,
-              { backgroundColor: theme.colors.success + "18" },
-            ]}
-          >
-            <IconLogIn size={14} color={theme.colors.success} />
-          </View>
-          <View>
-            <ThemedText muted variant="small">
-              Clock In
+          {/* Clock in → clock out on one line */}
+          <View style={styles.timeLine}>
+            <IconLogIn size={12} color={theme.colors.success} />
+            <ThemedText muted variant="small" style={{ marginLeft: 4 }}>
+              {clockInTime}
             </ThemedText>
-            <ThemedText weight="700" style={{ fontSize: 18 }}>
-              {safeFormat(record.clockInTime)}
+            <ThemedText muted variant="small" style={{ marginHorizontal: 6 }}>
+              →
             </ThemedText>
+            <IconLogOut
+              size={12}
+              color={isOpen ? theme.colors.textMuted : theme.colors.warning}
+            />
+            <ThemedText muted variant="small" style={{ marginLeft: 4 }}>
+              {isOpen ? "Active" : clockOutTime}
+            </ThemedText>
+            {record.hoursWorked != null && !isOpen && (
+              <>
+                <ThemedText
+                  muted
+                  variant="small"
+                  style={{ marginHorizontal: 6 }}
+                >
+                  ·
+                </ThemedText>
+                <IconClock size={11} color={theme.colors.textMuted} />
+                <ThemedText muted variant="small" style={{ marginLeft: 3 }}>
+                  {record.hoursWorked.toFixed(1)}h
+                </ThemedText>
+              </>
+            )}
           </View>
         </View>
 
-        {record.hoursWorked != null && (
+        {/* Right side: status badge + chevron */}
+        <View style={styles.summaryRight}>
           <View
             style={[
-              styles.durationPill,
-              {
-                backgroundColor: theme.colors.accent + "14",
-                borderColor: theme.colors.accent + "30",
-              },
+              styles.badge,
+              { backgroundColor: color + "18", borderColor: color + "40" },
             ]}
           >
-            <IconClock size={11} color={theme.colors.accent} />
+            <Icon size={10} color={color} />
             <ThemedText
-              style={{
-                color: theme.colors.accent,
-                fontSize: 12,
-                marginLeft: 4,
-              }}
+              style={{ color, fontSize: 11, marginLeft: 4 }}
               weight="600"
             >
-              {(record.hoursWorked ?? 0).toFixed(1)}h
+              {label}
             </ThemedText>
           </View>
-        )}
-
-        <View style={styles.timeBlock}>
-          <View
-            style={[
-              styles.timeIcon,
-              {
-                backgroundColor: record.clockOutTime
-                  ? theme.colors.warning + "18"
-                  : theme.colors.border,
-              },
-            ]}
-          >
-            <IconLogOut
-              size={14}
-              color={
-                record.clockOutTime
-                  ? theme.colors.warning
-                  : theme.colors.textMuted
-              }
+          {expanded ? (
+            <IconChevronUp
+              size={16}
+              color={theme.colors.textMuted}
+              style={{ marginTop: 6 }}
             />
-          </View>
-          <View>
-            <ThemedText muted variant="small">
-              Clock Out
-            </ThemedText>
-            <ThemedText weight="700" style={{ fontSize: 18 }}>
-              {safeFormat(record.clockOutTime)}
-            </ThemedText>
-          </View>
+          ) : (
+            <IconChevronDown
+              size={16}
+              color={theme.colors.textMuted}
+              style={{ marginTop: 6 }}
+            />
+          )}
         </View>
-      </View>
+      </Pressable>
 
-      {/* Location */}
-      {!!record.clockInAddress && (
-        <View
-          style={[styles.location, { borderTopColor: theme.colors.border }]}
-        >
-          <IconMapPin size={12} color={theme.colors.textMuted} />
-          <ThemedText
-            muted
-            variant="small"
-            numberOfLines={1}
-            style={{ marginLeft: 5, flex: 1 }}
-          >
-            {record.clockInAddress}
-          </ThemedText>
+      {/* ── Expanded detail ── */}
+      {expanded && (
+        <View style={[styles.detail, { borderTopColor: theme.colors.border }]}>
+          {/* Open shift warning */}
+          {isOpen && (
+            <View
+              style={[
+                styles.openBanner,
+                { backgroundColor: theme.colors.warning + "14" },
+              ]}
+            >
+              <ThemedText
+                style={{ color: theme.colors.warning, fontSize: 12 }}
+                weight="600"
+              >
+                Shift not closed
+              </ThemedText>
+            </View>
+          )}
+
+          {/* Clock In row */}
+          <View style={styles.detailRow}>
+            <View
+              style={[
+                styles.iconCircle,
+                { backgroundColor: theme.colors.success + "18" },
+              ]}
+            >
+              <IconLogIn size={14} color={theme.colors.success} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <ThemedText muted variant="small">
+                Clock In
+              </ThemedText>
+              <ThemedText weight="700" style={{ fontSize: 17 }}>
+                {clockInTime}
+              </ThemedText>
+              <View style={styles.addrRow}>
+                <IconMapPin size={11} color={theme.colors.textMuted} />
+                <ThemedText
+                  muted
+                  variant="small"
+                  numberOfLines={2}
+                  style={{ marginLeft: 4, flex: 1 }}
+                >
+                  {formatAddress(record.clockInAddress)}
+                </ThemedText>
+              </View>
+            </View>
+          </View>
+
+          {/* Clock Out row */}
+          <View style={[styles.detailRow, { marginTop: 12 }]}>
+            <View
+              style={[
+                styles.iconCircle,
+                {
+                  backgroundColor: isOpen
+                    ? theme.colors.border
+                    : theme.colors.warning + "18",
+                },
+              ]}
+            >
+              <IconLogOut
+                size={14}
+                color={isOpen ? theme.colors.textMuted : theme.colors.warning}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <ThemedText muted variant="small">
+                Clock Out
+              </ThemedText>
+              <ThemedText weight="700" style={{ fontSize: 17 }}>
+                {isOpen ? "—" : clockOutTime}
+              </ThemedText>
+              {!isOpen && (
+                <View style={styles.addrRow}>
+                  <IconMapPin size={11} color={theme.colors.textMuted} />
+                  <ThemedText
+                    muted
+                    variant="small"
+                    numberOfLines={2}
+                    style={{ marginLeft: 4, flex: 1 }}
+                  >
+                    {formatAddress(record.clockOutAddress)}
+                  </ThemedText>
+                </View>
+              )}
+            </View>
+          </View>
+
+          {/* Shift duration */}
+          {record.hoursWorked != null && !isOpen && (
+            <View
+              style={[
+                styles.durationRow,
+                {
+                  backgroundColor: theme.colors.accent + "12",
+                  borderColor: theme.colors.accent + "30",
+                },
+              ]}
+            >
+              <IconClock size={13} color={theme.colors.accent} />
+              <ThemedText
+                style={{
+                  color: theme.colors.accent,
+                  marginLeft: 6,
+                  fontSize: 13,
+                }}
+                weight="600"
+              >
+                Shift duration: {record.hoursWorked.toFixed(1)}h
+              </ThemedText>
+            </View>
+          )}
+
+          {/* Offline badge */}
+          {record.syncedOffline && (
+            <ThemedText
+              style={{ color: theme.colors.info, fontSize: 11, marginTop: 8 }}
+              weight="600"
+            >
+              Submitted offline
+            </ThemedText>
+          )}
+
+          {/* Clock Out button for open shifts */}
+          {isOpen && onClockOut && (
+            <Pressable
+              onPress={() => onClockOut(record)}
+              style={({ pressed }) => [
+                styles.clockOutBtn,
+                {
+                  backgroundColor: pressed
+                    ? theme.colors.warning + "30"
+                    : theme.colors.warning + "18",
+                  borderColor: theme.colors.warning + "50",
+                },
+              ]}
+            >
+              <IconLogOut size={14} color={theme.colors.warning} />
+              <ThemedText
+                style={{
+                  color: theme.colors.warning,
+                  marginLeft: 6,
+                  fontSize: 13,
+                }}
+                weight="700"
+              >
+                Clock Out This Shift
+              </ThemedText>
+            </Pressable>
+          )}
         </View>
-      )}
-
-      {/* Clock Out button — only on unclosed shifts */}
-      {isOpen && onClockOut && (
-        <Pressable
-          onPress={() => onClockOut(record)}
-          style={({ pressed }) => [
-            styles.clockOutBtn,
-            {
-              backgroundColor: pressed
-                ? theme.colors.warning + "30"
-                : theme.colors.warning + "18",
-              borderColor: theme.colors.warning + "50",
-            },
-          ]}
-        >
-          <IconLogOut size={14} color={theme.colors.warning} />
-          <ThemedText
-            style={{ color: theme.colors.warning, marginLeft: 6, fontSize: 13 }}
-            weight="700"
-          >
-            Clock Out This Shift
-          </ThemedText>
-        </Pressable>
-      )}
-
-      {record.syncedOffline && (
-        <ThemedText
-          style={{ color: theme.colors.info, fontSize: 11, marginTop: 6 }}
-          weight="600"
-        >
-          Submitted offline
-        </ThemedText>
       )}
     </View>
   );
@@ -324,13 +401,19 @@ export function AttendanceHistory({
 }
 
 const styles = StyleSheet.create({
-  row: { borderRadius: 16, borderWidth: 1, borderLeftWidth: 3, padding: 16 },
-  rowTop: {
+  row: { borderRadius: 16, borderWidth: 1, borderLeftWidth: 3 },
+  summary: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 10,
+    alignItems: "flex-start",
+    padding: 14,
   },
+  timeLine: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 4,
+    flexWrap: "wrap",
+  },
+  summaryRight: { alignItems: "flex-end", marginLeft: 8 },
   badge: {
     flexDirection: "row",
     alignItems: "center",
@@ -339,40 +422,35 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     borderWidth: 1,
   },
-  openBanner: { padding: 8, borderRadius: 8, marginBottom: 10 },
-  times: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginBottom: 12,
+  detail: {
+    paddingHorizontal: 14,
+    paddingBottom: 14,
+    borderTopWidth: 0.5,
+    paddingTop: 12,
   },
-  timeBlock: { flexDirection: "row", alignItems: "center", gap: 10 },
-  timeIcon: {
-    width: 32,
-    height: 32,
+  openBanner: { padding: 8, borderRadius: 8, marginBottom: 12 },
+  detailRow: { flexDirection: "row", alignItems: "flex-start", gap: 12 },
+  iconCircle: {
+    width: 34,
+    height: 34,
     borderRadius: 999,
     alignItems: "center",
     justifyContent: "center",
   },
-  durationPill: {
+  addrRow: { flexDirection: "row", alignItems: "flex-start", marginTop: 3 },
+  durationRow: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 999,
+    marginTop: 14,
+    padding: 10,
+    borderRadius: 10,
     borderWidth: 1,
-  },
-  location: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingTop: 10,
-    borderTopWidth: 0.5,
   },
   clockOutBtn: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    marginTop: 12,
+    marginTop: 14,
     paddingVertical: 10,
     borderRadius: 12,
     borderWidth: 1,

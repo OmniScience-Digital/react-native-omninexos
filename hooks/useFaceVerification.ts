@@ -61,8 +61,10 @@ export function useFaceVerification(userId: string) {
     setError(null);
     try {
       const net = await NetInfo.fetch();
+      // On iOS in airplane mode, isInternetReachable may be null (undetermined).
+      // Treat null as offline — same as !== true — so offline path is taken.
       const isOnline =
-        net.isConnected === true && net.isInternetReachable !== false;
+        net.isConnected === true && net.isInternetReachable === true;
 
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
       if (status !== "granted") {
@@ -119,6 +121,25 @@ export function useFaceVerification(userId: string) {
         localSelfieUri: localUri,
       };
     } catch (e: any) {
+      // Re-check connectivity — if we're offline, a network error during the
+      // online verification path should not block clock-in/out. Return
+      // PENDING_VERIFICATION so the action queues and verifies on sync.
+      let stillOnline = false;
+      try {
+        const net = await NetInfo.fetch();
+        stillOnline =
+          net.isConnected === true && net.isInternetReachable === true;
+      } catch {
+        stillOnline = false;
+      }
+      if (!stillOnline) {
+        return {
+          status: "PENDING_VERIFICATION",
+          similarity: 0,
+          reason: "Offline — identity will be verified when connection returns",
+          selfieKey: null,
+        };
+      }
       setError(e?.message ?? "Verification failed");
       return {
         status: "REVIEW_REQUIRED",

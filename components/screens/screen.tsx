@@ -10,6 +10,7 @@ interface ScreenProps extends ViewProps {
   children: ReactNode;
   className?: string;
   scrollable?: boolean;
+  showsVerticalScrollIndicator?: boolean;
   onScroll?: (...args: any[]) => void;
   refreshControl?: React.ReactElement<
     React.ComponentProps<typeof RefreshControl>
@@ -61,6 +62,7 @@ export function Screen({
   children,
   className,
   scrollable = false,
+  showsVerticalScrollIndicator = false, // 👈 default false
   onScroll,
   refreshControl,
   ...props
@@ -91,6 +93,7 @@ export function Screen({
             refreshControl={refreshControl}
             contentContainerStyle={{ padding: theme.spacing.sm }}
             className={cn(className)}
+            showsVerticalScrollIndicator={showsVerticalScrollIndicator} // 👈 pass it down
           >
             {children}
           </Animated.ScrollView>

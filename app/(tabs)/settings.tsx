@@ -9,6 +9,7 @@ import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { CustomHeader } from "@/components/ui/customHeader";
 import { CustomScrollView } from "@/components/ui/scrollView";
 import "@/global.css";
+import { useReferencePhoto } from "@/hooks/useReferencePhoto";
 import { getCopyright } from "@/lib/utils";
 import { useAuth } from "@/src/contexts/auth-context";
 import { useTabBar } from "@/src/contexts/tabbar-context";
@@ -32,7 +33,13 @@ import {
   User,
 } from "lucide-react-native";
 import { useState } from "react";
-import { Pressable, RefreshControl, StyleSheet, View } from "react-native";
+import {
+  Image,
+  Pressable,
+  RefreshControl,
+  StyleSheet,
+  View,
+} from "react-native";
 
 const IShieldAlert = ShieldAlert as any;
 
@@ -61,6 +68,8 @@ const ThemeToggle = () => {
 
 export default function Settings() {
   const { user, logout, isAdmin } = useAuth();
+  const userId = (user as any)?.sub ?? (user as any)?.username ?? "anonymous";
+  const { photoUri } = useReferencePhoto(userId);
   const { onScroll } = useTabBar();
   const dispatch = useAppDispatch();
   const { theme, preference, setPreference } = useTheme();
@@ -172,7 +181,11 @@ export default function Settings() {
                 },
               ]}
             >
-              <User size={26} color={theme.colors.accent} />
+              {photoUri ? (
+                <Image source={{ uri: photoUri }} style={styles.avatarImage} />
+              ) : (
+                <User size={26} color={theme.colors.accent} />
+              )}
             </View>
 
             {/* Name / email / admin badge */}
@@ -344,6 +357,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
+    overflow: "hidden",
+  },
+  avatarImage: {
+    width: 50,
+    height: 50,
+    borderRadius: 16,
   },
   adminBadge: {
     flexDirection: "row",

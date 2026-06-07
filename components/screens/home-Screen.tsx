@@ -1,9 +1,11 @@
 // components/screens/home-Screen.tsx
 import { Screen, ThemedText } from "@/components/screens/screen";
 import { ModuleCard, StatCard } from "@/components/ui/DashboardCards";
+import { OfflineBanner } from "@/components/ui/OfflineBanner";
 import { CustomScrollView } from "@/components/ui/scrollView";
-import { useClockIn } from "@/hooks/useClockIn";
+import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { useAuth } from "@/src/contexts/auth-context";
+import { useClockInContext } from "@/src/contexts/clockin-context";
 import { useTabBar } from "@/src/contexts/tabbar-context";
 import { useTheme } from "@/src/contexts/theme-context";
 import {
@@ -11,6 +13,7 @@ import {
   useListCategoriesQuery,
   useListFleetsQuery,
 } from "@/src/state/api";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { format } from "date-fns";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
@@ -23,11 +26,10 @@ import {
   LogIn,
   LogOut,
   Package,
-  Settings,
   Timer,
   Truck,
 } from "lucide-react-native";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -37,7 +39,7 @@ import {
   View,
 } from "react-native";
 
-// ── Attendance Hero Card ─────────────────────────────────────────────────────
+// ── Attendance Hero Card ──────────────────────────────────────────────────────
 function AttendanceHeroCard({
   isClockedIn,
   activeRecord,
@@ -83,7 +85,6 @@ function AttendanceHeroCard({
           },
         ]}
       >
-        {/* Status row */}
         <View style={styles.attendanceHeader}>
           <View>
             <ThemedText muted variant="small">
@@ -132,7 +133,6 @@ function AttendanceHeroCard({
           </View>
         </View>
 
-        {/* Stats row */}
         <View style={styles.attendanceStats}>
           <View style={styles.statItem}>
             <Timer size={15} color={theme.colors.textMuted} />
@@ -160,7 +160,6 @@ function AttendanceHeroCard({
           </View>
         </View>
 
-        {/* Quick clock button */}
         <Pressable
           onPress={onClockPress}
           disabled={isLoading}
@@ -209,13 +208,13 @@ function AttendanceHeroCard({
   );
 }
 
+// ── Main screen ───────────────────────────────────────────────────────────────
 export default function HomeScreen() {
   const { theme } = useTheme();
   const { onScroll } = useTabBar();
   const { user } = useAuth();
-  const currentDate = format(new Date(), "MMM d, yyyy");
+  const { isOffline } = useNetworkStatus();
 
-  // Get user info for attendance
   const userId = (user as any)?.sub ?? (user as any)?.username ?? "anonymous";
   const employeeName =
     (user as any)?.preferred_username ??
@@ -223,7 +222,7 @@ export default function HomeScreen() {
     (user as any)?.email?.split("@")[0] ??
     "Employee";
 
-  // ── Attendance ─────────────────────────────────────────────────────────────
+  // ── Attendance ──────────────────────────────────────────────────────────
   const {
     activeRecord,
     history: attendanceHistory,
@@ -232,9 +231,8 @@ export default function HomeScreen() {
     clockIn,
     clockOut,
     refetchHistory,
-  } = useClockIn(userId, employeeName);
+  } = useClockInContext();
 
-  // Week stats derived from history
   const weekAgo = Date.now() - 7 * 24 * 3600000;
   const weekRecords = attendanceHistory.filter(
     (r) => new Date(r.clockInTime).getTime() > weekAgo,
@@ -242,92 +240,171 @@ export default function HomeScreen() {
   const weekHours = weekRecords.reduce((s, r) => s + (r.hoursWorked ?? 0), 0);
   const weekDays = new Set(weekRecords.map((r) => r.date)).size;
 
-  // ── Fleet & categories ─────────────────────────────────────────────────────
+  // ── Fleet & categories ──────────────────────────────────────────────────
   const {
     data: vehicles = [],
     isLoading: vehiclesLoading,
     refetch: refetchFleets,
   } = useListFleetsQuery();
+
   const {
     data: categories = [],
     isLoading: categoriesLoading,
     refetch: refetchCategories,
   } = useListCategoriesQuery();
+
   const [getInspections] = useLazyGetInspectionsByFleetQuery();
 
+  const INSPECTION_TOTAL_KEY = "inspections:total";
   const [totalInspections, setTotalInspections] = useState(0);
-  const [refresh, setRefresh] = useState(false);
   const [recentInspections, setRecentInspections] = useState<any[]>([]);
-  const [isCalculatingInspections, setIsCalculatingInspections] =
-    useState(false);
+  const [inspectionsCalculating, setInspectionsCalculating] = useState(false);
+  const [refresh, setRefresh] = useState(false);
+
+  // Load cached total on mount so it shows instantly offline
+  useEffect(() => {
+    AsyncStorage.getItem(INSPECTION_TOTAL_KEY).then((v) => {
+      if (v) setTotalInspections(Number(v));
+    });
+  }, []);
+
+  // Guard against running the loop multiple times for the same vehicle list
+  const lastVehicleIds = useRef<string>("");
 
   const calculateInspectionsSummary = useCallback(
-    async (vehicles: any[]) => {
-      if (!vehicles.length) return;
-      setIsCalculatingInspections(true);
-      let sum = 0;
-      const allRecent: any[] = [];
-
-      for (const vehicle of vehicles) {
-        const result = await getInspections({
-          fleetId: vehicle.id,
-          limit: 1,
-        }).unwrap();
-        const latest = result?.[0];
-        if (latest) {
-          sum += latest.inspectionNo ?? 0;
-          allRecent.push(latest);
-        }
+    async (fleets: typeof vehicles) => {
+      if (!fleets.length) {
+        // Do not reset total to 0 – keep cached value
+        setRecentInspections([]);
+        return;
       }
 
-      setTotalInspections(sum);
-      const sorted = allRecent.sort(
-        (a, b) =>
-          new Date(b.inspectionDate || 0).getTime() -
-          new Date(a.inspectionDate || 0).getTime(),
-      );
-      setRecentInspections(sorted.slice(0, 5));
-      setIsCalculatingInspections(false);
+      // Skip if vehicles haven't changed and we're not forcing a refresh
+      const ids = fleets.map((v) => v.id).join(",");
+      if (ids === lastVehicleIds.current && !refresh) return;
+      lastVehicleIds.current = ids;
+
+      setInspectionsCalculating(true);
+      try {
+        // Run all fleet queries in parallel
+        const results = await Promise.allSettled(
+          fleets.map((v) =>
+            getInspections({ fleetId: v.id, limit: 1 })
+              .unwrap()
+              .catch(() => [] as any[]),
+          ),
+        );
+
+        let maxInspectionNo = 0;
+        const allRecent: any[] = [];
+
+        results.forEach((result) => {
+          if (result.status === "fulfilled") {
+            const latest = result.value?.[0];
+            if (latest) {
+              if ((latest.inspectionNo ?? 0) > maxInspectionNo) {
+                maxInspectionNo = latest.inspectionNo ?? 0;
+              }
+              allRecent.push(latest);
+            }
+          }
+        });
+
+        //  Only update if we got a valid number (online with data)
+        if (maxInspectionNo > 0) {
+          setTotalInspections(maxInspectionNo);
+          await AsyncStorage.setItem(
+            INSPECTION_TOTAL_KEY,
+            String(maxInspectionNo),
+          );
+        } else {
+          // Offline or no data returned – preserve existing cached value
+          const cached = await AsyncStorage.getItem(INSPECTION_TOTAL_KEY);
+          if (cached) {
+            setTotalInspections(Number(cached));
+          }
+          // If no cached value, totalInspections remains whatever it was (0 or previous)
+        }
+
+        setRecentInspections(
+          allRecent
+            .sort(
+              (a, b) =>
+                new Date(b.inspectionDate || 0).getTime() -
+                new Date(a.inspectionDate || 0).getTime(),
+            )
+            .slice(0, 5),
+        );
+      } catch (error) {
+        // On any error, keep existing cached total
+        const cached = await AsyncStorage.getItem(INSPECTION_TOTAL_KEY);
+        if (cached) {
+          setTotalInspections(Number(cached));
+        }
+      } finally {
+        setInspectionsCalculating(false);
+      }
     },
-    [getInspections],
+    [getInspections, refresh],
   );
 
+  // When offline, skip the calculation entirely – just show cached value
   useEffect(() => {
-    calculateInspectionsSummary(vehicles);
-  }, [vehicles, calculateInspectionsSummary]);
+    if (!vehiclesLoading && !isOffline) {
+      calculateInspectionsSummary(vehicles);
+    }
+  }, [vehicles, vehiclesLoading, calculateInspectionsSummary, isOffline]);
 
-  // ── Quick clock handler ────────────────────────────────────────────────────
+  // When RTK invalidates the Inspection tag (e.g. after sync), vehicles may
+  // reload with the same IDs but we need to re-query inspections with fresh data.
+  const prevVehiclesLoading = useRef(false);
+  useEffect(() => {
+    if (prevVehiclesLoading.current && !vehiclesLoading) {
+      // A refetch just finished – clear guard so inspection query re-runs
+      lastVehicleIds.current = "";
+    }
+    prevVehiclesLoading.current = vehiclesLoading;
+  }, [vehiclesLoading]);
+
   const handleQuickClock = useCallback(async () => {
     if (isClockedIn) await clockOut();
     else await clockIn();
   }, [isClockedIn, clockIn, clockOut]);
 
-  const totalVehicles = vehicles.length;
-  const totalCategories = categories.length;
-  const isLoading =
-    vehiclesLoading || categoriesLoading || isCalculatingInspections;
+  const handleRefresh = async () => {
+    setRefresh(true);
+    // Clear the vehicle ID guard so calculateInspectionsSummary re-runs
+    lastVehicleIds.current = "";
+    await Promise.all([refetchFleets(), refetchCategories(), refetchHistory()]);
+    setRefresh(false);
+  };
+
+  // Show inspections spinner only while online and actually loading vehicles or calculating
+  const showInspectionSpinner =
+    !isOffline && (vehiclesLoading || inspectionsCalculating);
 
   const statsData = [
     {
       id: "inspections",
       title: "Total Inspections",
-      value: isLoading ? "..." : String(totalInspections),
+      value: showInspectionSpinner ? "..." : String(totalInspections),
       icon: ClipboardCheck,
       trend: "all time",
-      trendType: "success" as "success",
+      trendType: "success" as const,
     },
     {
       id: "categories",
       title: "Stock Categories",
-      value: categoriesLoading ? "..." : String(totalCategories),
+      value:
+        !isOffline && categoriesLoading ? "..." : String(categories.length),
       icon: Package,
       trend: "active",
-      trendType: "success" as "success",
+      trendType: "success" as const,
     },
     {
       id: "vehicles",
       title: "Active Vehicles",
-      value: vehiclesLoading ? "..." : String(totalVehicles),
+      value: !isOffline && vehiclesLoading ? "..." : String(vehicles.length),
       icon: Truck,
     },
     {
@@ -336,20 +413,9 @@ export default function HomeScreen() {
       value: "0",
       icon: FileText,
       trend: "healthy",
-      trendType: "success" as "success",
+      trendType: "success" as const,
     },
   ];
-
-  const handleRefresh = async () => {
-    setRefresh(true);
-    await Promise.all([refetchFleets(), refetchCategories(), refetchHistory()]);
-    setRefresh(false);
-  };
-
-  const handleStockPress = () => router.push("/operations/ims");
-  const handleInspectionPress = () => router.push("/operations/fms");
-  const handleFormsPress = () => router.push("/forms");
-  const handleSettingsPress = () => router.push("/settings");
 
   return (
     <Screen
@@ -360,22 +426,11 @@ export default function HomeScreen() {
       }
     >
       <CustomScrollView>
+        {/* Offline banner — only shows when actually offline */}
+        <OfflineBanner />
+
         {/* Header */}
         <View>
-          <View className="flex-row justify-end">
-            <Pressable
-              onPress={handleSettingsPress}
-              className="w-10 h-10 rounded-full items-center justify-center"
-              style={({ pressed }) => [
-                { backgroundColor: theme.colors.glass },
-                pressed && { opacity: 0.7, transform: [{ scale: 0.96 }] },
-              ]}
-            >
-              <Settings size={20} color={theme.colors.text} />
-            </Pressable>
-          </View>
-
-          {/* Welcome Section */}
           <View className="mb-2">
             <ThemedText variant="h2" weight="700">
               Hello, {employeeName.split(" ")[0]}!
@@ -385,7 +440,6 @@ export default function HomeScreen() {
             </ThemedText>
           </View>
 
-          {/* Attendance Hero Card - Main Feature */}
           <AttendanceHeroCard
             isClockedIn={isClockedIn}
             activeRecord={activeRecord}
@@ -396,7 +450,7 @@ export default function HomeScreen() {
           />
         </View>
 
-        {/* Stats row */}
+        {/* Stats */}
         <View className="mb-2">
           <ThemedText variant="h2" weight="700">
             Quick Overview
@@ -430,19 +484,19 @@ export default function HomeScreen() {
             title="Inventory Management"
             description="Track inventory, low stock alerts"
             icon={Package}
-            onPress={handleStockPress}
+            onPress={() => router.push("/operations/ims")}
           />
           <ModuleCard
             title="Fleet Management"
             description="Vehicle inspections & management"
             icon={ClipboardList}
-            onPress={handleInspectionPress}
+            onPress={() => router.push("/operations/fms")}
           />
           <ModuleCard
             title="Forms"
             description="All operational forms in one place"
             icon={FileText}
-            onPress={handleFormsPress}
+            onPress={() => router.push("/forms")}
           />
         </View>
 
@@ -462,6 +516,7 @@ export default function HomeScreen() {
               </ThemedText>
             </Pressable>
           </View>
+
           <View
             className="p-4 rounded-2xl border"
             style={{
@@ -469,7 +524,7 @@ export default function HomeScreen() {
               borderColor: theme.colors.border,
             }}
           >
-            {isLoading ? (
+            {showInspectionSpinner ? (
               <ActivityIndicator size="small" color={theme.colors.text} />
             ) : recentInspections.length === 0 ? (
               <>
@@ -480,7 +535,9 @@ export default function HomeScreen() {
                   </ThemedText>
                 </View>
                 <ThemedText muted variant="small">
-                  Complete an inspection to see activity here.
+                  {isOffline
+                    ? "Connect to the internet to load inspections."
+                    : "Complete an inspection to see activity here."}
                 </ThemedText>
               </>
             ) : (
@@ -535,26 +592,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     gap: 5,
   },
-  statusDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
+  statusDot: { width: 6, height: 6, borderRadius: 3 },
   attendanceStats: {
     flexDirection: "row",
     alignItems: "center",
     marginBottom: 16,
     gap: 16,
   },
-  statItem: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  statDivider: {
-    width: 1,
-    height: 24,
-    opacity: 0.4,
-  },
+  statItem: { flexDirection: "row", alignItems: "center" },
+  statDivider: { width: 1, height: 24, opacity: 0.4 },
   clockButton: {
     flexDirection: "row",
     alignItems: "center",

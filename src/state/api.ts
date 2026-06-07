@@ -1,3 +1,4 @@
+// //src/state/api.ts
 // import { client } from "@/src/amplify";
 // import { createApi, fakeBaseQuery } from "@reduxjs/toolkit/query/react";
 // import {
@@ -51,6 +52,7 @@
 //   verificationStatus: ClockVerificationStatus;
 //   similarityScore?: number;
 //   syncedOffline: boolean;
+//   localSelfieUri?: string | null; // cleared after S3 sync
 //   date: string;
 //   createdAt?: string;
 //   updatedAt?: string;
@@ -65,6 +67,7 @@
 //   clockInAddress?: string;
 //   verificationStatus: ClockVerificationStatus;
 //   syncedOffline: boolean;
+//   localSelfieUri?: string | null;
 //   date: string;
 // }
 
@@ -557,6 +560,7 @@
 //   useLazyGetClockRecordQuery,
 // } = api;
 
+//src/state/api.ts
 import { client } from "@/src/amplify";
 import { createApi, fakeBaseQuery } from "@reduxjs/toolkit/query/react";
 import {
@@ -610,7 +614,7 @@ export interface ClockRecord {
   verificationStatus: ClockVerificationStatus;
   similarityScore?: number;
   syncedOffline: boolean;
-  localSelfieUri?: string | null; // cleared after S3 sync
+  localSelfieUri?: string | null;
   date: string;
   createdAt?: string;
   updatedAt?: string;
@@ -643,6 +647,35 @@ export interface ListClockRecordsResult {
   nextToken: string | null;
 }
 
+// ── Network error helper ──────────────────────────────────────────────────────
+// Returns FETCH_ERROR for connectivity failures so:
+//   1. The error middleware skips the modal
+//   2. RTK Query serves the persisted cache instead
+const NETWORK_PATTERNS = [
+  "network",
+  "fetch",
+  "Failed to fetch",
+  "Network request failed",
+  "offline",
+  "timeout",
+  "Load failed",
+  "Could not connect",
+  "ERR_INTERNET_DISCONNECTED",
+];
+
+function isNetworkErr(msg: string): boolean {
+  const lower = (msg ?? "").toLowerCase();
+  return NETWORK_PATTERNS.some((p) => lower.includes(p.toLowerCase()));
+}
+
+function netAwareError(e: any): { error: any } {
+  const msg = e?.message ?? String(e) ?? "Unknown error";
+  if (isNetworkErr(msg)) {
+    return { error: { status: "FETCH_ERROR", error: msg } };
+  }
+  return { error: msg };
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // API slice
 // ─────────────────────────────────────────────────────────────────────────────
@@ -660,7 +693,7 @@ export const api = createApi({
   ],
 
   endpoints: (build) => ({
-    /* ── FLEET ─────────────────────────────────────────────────────────────── */
+    /* ── FLEET ──────────────────────────────────────────────────────────── */
 
     listFleets: build.query<Fleet[], void>({
       queryFn: async () => {
@@ -672,7 +705,7 @@ export const api = createApi({
           if (errors) return { error: errors[0].message };
           return { data: data.listFleets.items as Fleet[] };
         } catch (e: any) {
-          return { error: e?.message ?? "Failed to fetch fleets" };
+          return netAwareError(e);
         }
       },
       providesTags: ["Fleet"],
@@ -692,7 +725,7 @@ export const api = createApi({
           if (errors) return { error: errors[0].message };
           return { data: data.updateFleet };
         } catch (e: any) {
-          return { error: e?.message ?? "Failed to update fleet" };
+          return netAwareError(e);
         }
       },
       invalidatesTags: ["Fleet"],
@@ -709,7 +742,7 @@ export const api = createApi({
           if (errors) throw new Error(errors[0].message);
           return { data: data.createFleet };
         } catch (e: any) {
-          return { error: e.message };
+          return netAwareError(e);
         }
       },
       invalidatesTags: ["Fleet"],
@@ -726,7 +759,7 @@ export const api = createApi({
           if (errors) throw new Error(errors[0].message);
           return { data: data.updateFleet };
         } catch (e: any) {
-          return { error: e.message };
+          return netAwareError(e);
         }
       },
       invalidatesTags: ["Fleet"],
@@ -743,13 +776,13 @@ export const api = createApi({
           if (errors) throw new Error(errors[0].message);
           return { data: { id } };
         } catch (e: any) {
-          return { error: e.message };
+          return netAwareError(e);
         }
       },
       invalidatesTags: ["Fleet"],
     }),
 
-    /* ── INSPECTION ────────────────────────────────────────────────────────── */
+    /* ── INSPECTION ─────────────────────────────────────────────────────── */
 
     getInspectionsByFleet: build.query<Inspection[], GetInspectionsByFleetArgs>(
       {
@@ -765,7 +798,7 @@ export const api = createApi({
               data: data.inspectionsByFleetAndNumber.items as Inspection[],
             };
           } catch (e: any) {
-            return { error: e?.message ?? "Failed to fetch inspections" };
+            return netAwareError(e);
           }
         },
         providesTags: (_result, _error, arg) => [
@@ -788,7 +821,7 @@ export const api = createApi({
           if (errors) return { error: errors[0].message };
           return { data: data.createInspection };
         } catch (e: any) {
-          return { error: e?.message ?? "Failed to create inspection" };
+          return netAwareError(e);
         }
       },
       invalidatesTags: (_result, _error, arg) => [
@@ -812,7 +845,7 @@ export const api = createApi({
             data: data.inspectionsByFleetAndNumber.items as Inspection[],
           };
         } catch (e: any) {
-          return { error: e.message };
+          return netAwareError(e);
         }
       },
       providesTags: (_result, _error, { fleetId }) => [
@@ -839,7 +872,7 @@ export const api = createApi({
             },
           };
         } catch (e: any) {
-          return { error: e.message };
+          return netAwareError(e);
         }
       },
       providesTags: (_result, _error, { fleetId }) => [
@@ -847,7 +880,7 @@ export const api = createApi({
       ],
     }),
 
-    /* ── STOCK CONTROL ─────────────────────────────────────────────────────── */
+    /* ── STOCK CONTROL ──────────────────────────────────────────────────── */
 
     listCategories: build.query<Category[], void>({
       queryFn: async () => {
@@ -859,7 +892,7 @@ export const api = createApi({
           if (errors) return { error: errors[0].message };
           return { data: data.listCategories.items as Category[] };
         } catch (e: any) {
-          return { error: e?.message ?? "Failed to fetch categories" };
+          return netAwareError(e);
         }
       },
       providesTags: ["Categories"],
@@ -879,7 +912,7 @@ export const api = createApi({
               .items as Subcategory[],
           };
         } catch (e: any) {
-          return { error: e?.message ?? "Failed to fetch subcategories" };
+          return netAwareError(e);
         }
       },
       providesTags: (_result, _error, categoryId) => [
@@ -900,7 +933,7 @@ export const api = createApi({
             data: data.listComponentsBySubCategoryId.items as Component[],
           };
         } catch (e: any) {
-          return { error: e?.message ?? "Failed to fetch components" };
+          return netAwareError(e);
         }
       },
       providesTags: (_result, _error, subcategoryId) => [
@@ -922,7 +955,7 @@ export const api = createApi({
           if (response.errors) throw new Error(response.errors[0].message);
           return { data: response.data.updateComponent };
         } catch (e: any) {
-          return { error: e.message };
+          return netAwareError(e);
         }
       },
       invalidatesTags: (_result, _error, { subcategoryId }) =>
@@ -950,7 +983,7 @@ export const api = createApi({
             },
           };
         } catch (e: any) {
-          return { error: e.message };
+          return netAwareError(e);
         }
       },
       providesTags: (_result, _error, { subcategoryId }) => [
@@ -969,7 +1002,7 @@ export const api = createApi({
           if (response.errors) throw new Error(response.errors[0].message);
           return { data: { id } };
         } catch (e: any) {
-          return { error: e.message };
+          return netAwareError(e);
         }
       },
       invalidatesTags: (_result, _error, id) => [
@@ -977,7 +1010,7 @@ export const api = createApi({
       ],
     }),
 
-    /* ── HISTORY ───────────────────────────────────────────────────────────── */
+    /* ── HISTORY ────────────────────────────────────────────────────────── */
 
     addHistoryEntry: build.mutation<
       HistoryEntry,
@@ -995,12 +1028,12 @@ export const api = createApi({
           if (errors) throw new Error(errors[0].message);
           return { data: data.createHistory };
         } catch (e: any) {
-          return { error: e.message };
+          return netAwareError(e);
         }
       },
     }),
 
-    /* ── ATTENDANCE ────────────────────────────────────────────────────────── */
+    /* ── ATTENDANCE ─────────────────────────────────────────────────────── */
 
     createClockRecord: build.mutation<ClockRecord, CreateClockRecordInput>({
       queryFn: async (input) => {
@@ -1013,7 +1046,7 @@ export const api = createApi({
           if (errors) throw new Error(errors[0].message);
           return { data: data.createClockRecord as ClockRecord };
         } catch (e: any) {
-          return { error: e?.message ?? "Failed to clock in" };
+          return netAwareError(e);
         }
       },
       invalidatesTags: (_result, _error, { userId }) => [
@@ -1032,7 +1065,7 @@ export const api = createApi({
           if (errors) throw new Error(errors[0].message);
           return { data: data.updateClockRecord as ClockRecord };
         } catch (e: any) {
-          return { error: e?.message ?? "Failed to clock out" };
+          return netAwareError(e);
         }
       },
       invalidatesTags: (_result, _error, { id }) => [
@@ -1059,7 +1092,7 @@ export const api = createApi({
             },
           };
         } catch (e: any) {
-          return { error: e?.message ?? "Failed to fetch attendance records" };
+          return netAwareError(e);
         }
       },
       providesTags: (_result, _error, { userId }) => [
@@ -1078,7 +1111,7 @@ export const api = createApi({
           if (errors) throw new Error(errors[0].message);
           return { data: data.getClockRecord as ClockRecord };
         } catch (e: any) {
-          return { error: e?.message ?? "Failed to fetch record" };
+          return netAwareError(e);
         }
       },
       providesTags: (_result, _error, id) => [{ type: "ClockRecord", id }],
@@ -1097,7 +1130,6 @@ export const {
   useDeleteFleetMutation,
   useListInspectionsByFleetQuery,
   useAddHistoryEntryMutation,
-  // stock
   useListCategoriesQuery,
   useListSubcategoriesByCategoryQuery,
   useListComponentsBySubcategoryQuery,
@@ -1109,7 +1141,6 @@ export const {
   useLazyListComponentsBySubcategoryPaginatedQuery,
   useListInspectionsByFleetPaginatedQuery,
   useLazyListInspectionsByFleetPaginatedQuery,
-  // attendance
   useCreateClockRecordMutation,
   useUpdateClockRecordMutation,
   useListMyClockRecordsQuery,
