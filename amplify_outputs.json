@@ -4801,6 +4801,29 @@
           "isRequired": false,
           "isArrayNullable": true
         }
+      },
+      "mutations": {
+        "notifyPhotoRequestStatus": {
+          "name": "notifyPhotoRequestStatus",
+          "isArray": false,
+          "type": "AWSJSON",
+          "isRequired": false,
+          "arguments": {
+            "pushTokens": {
+              "name": "pushTokens",
+              "isArray": true,
+              "type": "String",
+              "isRequired": false,
+              "isArrayNullable": false
+            },
+            "status": {
+              "name": "status",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true
+            }
+          }
+        }
       }
     }
   },

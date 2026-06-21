@@ -400,67 +400,23 @@ function ReferencePhotoCard({
   );
 }
 
-// ── Loading skeleton that shows header and spinner (same layout as main) ─────
-function LoadingSkeleton() {
-  const { theme } = useTheme();
-  return (
-    <Screen>
-      <View style={{ flex: 1 }}>
-        <View style={styles.header}>
-          <View>
-            <ThemedText variant="h2" weight="700">
-              Attendance
-            </ThemedText>
-            <ThemedText muted variant="small">
-              {format(new Date(), "EEEE, d MMMM yyyy")}
-            </ThemedText>
-          </View>
-          <View
-            style={[
-              styles.statusBadge,
-              {
-                backgroundColor: theme.colors.card,
-                borderColor: theme.colors.border,
-              },
-            ]}
-          >
-            <View
-              style={[
-                styles.statusDot,
-                { backgroundColor: theme.colors.textMuted },
-              ]}
-            />
-            <ThemedText
-              style={{
-                fontSize: 12,
-                color: theme.colors.textMuted,
-              }}
-              weight="600"
-            >
-              Loading...
-            </ThemedText>
-          </View>
-        </View>
-        <View
-          style={{ flex: 1, alignItems: "center", justifyContent: "center" }}
-        >
-          <ActivityIndicator size="large" color={theme.colors.accent} />
-          <ThemedText muted style={{ marginTop: 16 }}>
-            Loading your attendance data...
-          </ThemedText>
-        </View>
-      </View>
-    </Screen>
-  );
-}
-
 // ── Main screen ───────────────────────────────────────────────────────────────
 export default function AttendanceScreen() {
   const { theme } = useTheme();
   const { onScroll } = useTabBar();
   const { user } = useAuth();
 
-  const userId = (user as any)?.sub ?? (user as any)?.username ?? "anonymous";
+  // Always key on email. During Cognito auth the `user` object can briefly
+  // be the raw session containing only `sub` (a UUID) before
+  // fetchUserAttributes resolves. If we passed the UUID to useReferencePhoto
+  // it would look up the wrong AsyncStorage key and show the setup screen
+  // even though setup is complete. Falling back to "anonymous" when there's
+  // no email yet lets the hook stay idle until the real identity arrives.
+  const userId: string =
+    typeof (user as any)?.email === "string" &&
+    (user as any).email.includes("@")
+      ? (user as any).email
+      : "anonymous";
 
   const {
     activeRecord,
@@ -516,7 +472,9 @@ export default function AttendanceScreen() {
     async (record: any) => {
       const r = await clockOut(record);
       if (r)
-        flash(`Shift closed · ${r.hoursWorked?.toFixed(1) ?? "0"}h worked`);
+        flash(
+          `Shift closed · ${r.hoursWorked != null && r.hoursWorked < 0.1 ? Math.round(r.hoursWorked * 60) + "min" : (r.hoursWorked?.toFixed(2) ?? "0")}h worked`,
+        );
     },
     [clockOut, flash],
   );
@@ -524,7 +482,10 @@ export default function AttendanceScreen() {
   const handleButtonPress = useCallback(async () => {
     if (isClockedIn) {
       const r = await clockOut();
-      if (r) flash(`Clocked out · ${r.hoursWorked?.toFixed(1) ?? "0"}h worked`);
+      if (r)
+        flash(
+          `Clocked out · ${r.hoursWorked != null && r.hoursWorked < 0.1 ? Math.round(r.hoursWorked * 60) + "min" : (r.hoursWorked?.toFixed(2) ?? "0")}h worked`,
+        );
     } else {
       const r = await clockIn();
       if (r) flash("Clocked in successfully");
@@ -551,9 +512,17 @@ export default function AttendanceScreen() {
     );
   }
 
-  // If still loading face setup status, show skeleton with header and centered spinner
+  // If still loading face setup status, show ONLY a centered loader (no header)
   if (isSetupComplete === null) {
-    return <LoadingSkeleton />;
+    return (
+      <Screen>
+        <View
+          style={{ flex: 1, alignItems: "center", justifyContent: "center" }}
+        >
+          <ActivityIndicator size="large" color={theme.colors.accent} />
+        </View>
+      </Screen>
+    );
   }
 
   // Main UI (isSetupComplete === true)

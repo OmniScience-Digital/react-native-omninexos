@@ -215,7 +215,7 @@ export default function HomeScreen() {
   const { user } = useAuth();
   const { isOffline } = useNetworkStatus();
 
-  const userId = (user as any)?.sub ?? (user as any)?.username ?? "anonymous";
+  const userId = (user as any)?.email ?? (user as any)?.username ?? "anonymous";
   const employeeName =
     (user as any)?.preferred_username ??
     (user as any)?.name ??
@@ -496,7 +496,7 @@ export default function HomeScreen() {
             title="Forms"
             description="All operational forms in one place"
             icon={FileText}
-            onPress={() => router.push("/forms")}
+            onPress={() => router.replace("/(tabs)/forms")}
           />
         </View>
 

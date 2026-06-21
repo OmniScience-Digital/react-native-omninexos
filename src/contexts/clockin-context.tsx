@@ -17,7 +17,7 @@ const ClockInContext = createContext<ClockInContextValue | undefined>(
 
 export function ClockInProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
-  const userId = (user as any)?.sub ?? (user as any)?.username ?? "anonymous";
+  const userId = (user as any)?.email ?? (user as any)?.username ?? "anonymous";
   const employeeName =
     (user as any)?.preferred_username ??
     (user as any)?.name ??

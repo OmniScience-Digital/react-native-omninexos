@@ -27,7 +27,7 @@ const TabIcon = ({ focused, icon: Icon, badgeCount }: TabIconProps) => {
     <View className="tabs-icon">
       <View className={cn("tabs-pill", focused && "tabs-active")}>
         <Icon
-          size={22}
+          size={20}
           color={focused ? "#393E46" : "#fff"}
           strokeWidth={focused ? 2.2 : 1.8}
         />
@@ -85,8 +85,8 @@ function TabLayoutInner() {
       screenOptions={{
         headerShown: false,
         tabBarShowLabel: false,
-        freezeOnBlur: true,
-        lazy: true,
+        // freezeOnBlur: true,
+        lazy: false,
         tabBarStyle: {
           position: "absolute",
           bottom: Math.max(insets.bottom, tabBar.horizontalInset) + 2,
@@ -139,6 +139,14 @@ function SyncManager() {
   const { refetchHistory } = useClockInContext();
 
   useSyncEngine({
+    onDebugLog: (message) => {
+      dispatch(
+        showResponseModal({
+          successful: true,
+          message: `🔍 ${message}`,
+        }),
+      );
+    },
     onSyncSuccess: (count) => {
       dispatch(
         showResponseModal({

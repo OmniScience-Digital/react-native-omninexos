@@ -16,6 +16,7 @@ import {
   markFailed,
   markSyncing,
   pruneCompleted,
+  resetForRetry,
   resetStuckSyncing,
 } from "./submissionQueue";
 
@@ -24,6 +25,7 @@ export type SyncCallbacks = {
   onSyncSuccess?: (count: number) => void;
   onSyncError?: (error: string) => void;
   onItemSynced?: (type: string, payload: any) => void;
+  onDebugLog?: (message: string) => void;
 };
 
 const CLOCK_ID_MAP_KEY = "attendance:id_map";
@@ -138,7 +140,7 @@ const UPDATE_CLOCK_RECORD_MUTATION = /* GraphQL */ `
 `;
 
 const FIND_CLOCK_BY_TIME = /* GraphQL */ `
-  query FindClockRecord($userId: String!, $clockInTime: AWSDateTime!) {
+  query FindClockRecord($userId: String!, $clockInTime: String!) {
     clockRecordsByUserAndTime(
       userId: $userId
       clockInTime: { eq: $clockInTime }
@@ -439,17 +441,29 @@ const submitClockIn = async (payload: any): Promise<void> => {
 };
 
 // ─── Clock-out sync with mapping and address resolution ──────
-const submitClockOut = async (payload: any): Promise<void> => {
+const submitClockOut = async (
+  payload: any,
+  log: (msg: string) => void = () => {},
+): Promise<void> => {
   const { originalClockIn, localSelfieUri, userId, ...input } = payload;
+
+  log(
+    `[1] submitClockOut start | raw id: ${input.id} | clockOutTime: ${input.clockOutTime} | hoursWorked: ${input.hoursWorked}`,
+  );
 
   let resolvedId = input.id;
 
   if (resolvedId?.startsWith("local_")) {
+    log(`[2] Local ID detected — resolving via mapping or FIND_CLOCK_BY_TIME`);
     const mappedId = await getRealIdFromMapping(resolvedId);
     if (mappedId) {
       resolvedId = mappedId;
+      log(`[3] Resolved via AsyncStorage map → ${resolvedId}`);
     } else if (originalClockIn?.clockInTime) {
-      const { data } = (await client.graphql({
+      log(
+        `[3] No mapping found — querying server by clockInTime: ${originalClockIn.clockInTime}`,
+      );
+      const { data, errors: findErrors } = (await client.graphql({
         query: FIND_CLOCK_BY_TIME,
         variables: {
           userId: originalClockIn.userId,
@@ -457,18 +471,29 @@ const submitClockOut = async (payload: any): Promise<void> => {
         },
         authMode: "apiKey",
       })) as any;
-      const found = data?.clockRecordsByUserAndTime?.items?.[0]?.id;
-      if (!found) {
+      if (findErrors) {
+        log(
+          `[3] FIND_CLOCK_BY_TIME GraphQL errors: ${JSON.stringify(findErrors)}`,
+        );
         throw new Error(
-          "[SyncEngine] Clock-out deferred — clock-in record not yet synced",
+          `FIND_CLOCK_BY_TIME failed: ${findErrors[0]?.message ?? JSON.stringify(findErrors)}`,
         );
       }
+      const found = data?.clockRecordsByUserAndTime?.items?.[0]?.id;
+      if (!found) {
+        log(`[3] Clock-in not on server yet — deferring clock-out`);
+        throw new Error("DEFERRED: clock-in not yet synced");
+      }
       resolvedId = found;
+      log(`[3] Resolved via FIND_CLOCK_BY_TIME → ${resolvedId}`);
     } else {
+      log(`[3] FAIL — no mapping and no clockInTime to query`);
       throw new Error(
         "[SyncEngine] Cannot resolve local clock-in ID for clock-out",
       );
     }
+  } else {
+    log(`[2] Real server ID — no resolution needed: ${resolvedId}`);
   }
 
   let resolvedClockOutAddress = input.clockOutAddress;
@@ -480,32 +505,49 @@ const submitClockOut = async (payload: any): Promise<void> => {
     resolvedClockOutAddress =
       (await reverseGeocode(input.clockOutLat, input.clockOutLng)) ??
       input.clockOutAddress;
+    log(`[4] Geocoded address: ${resolvedClockOutAddress}`);
   }
 
-  const { errors } = (await client.graphql({
+  const mutationInput = {
+    ...input,
+    id: resolvedId,
+    clockOutAddress: resolvedClockOutAddress,
+  };
+
+  log(`[5] Firing UPDATE mutation | input: ${JSON.stringify(mutationInput)}`);
+
+  const { data: mutData, errors } = (await client.graphql({
     query: UPDATE_CLOCK_RECORD_MUTATION,
-    variables: {
-      input: {
-        ...input,
-        id: resolvedId,
-        clockOutAddress: resolvedClockOutAddress,
-      },
-    },
+    variables: { input: mutationInput },
     authMode: "apiKey",
   })) as any;
 
-  if (errors) throw new Error(errors[0].message);
+  if (errors) {
+    log(`[6] FAIL — GraphQL errors: ${JSON.stringify(errors)}`);
+    throw new Error(errors[0].message);
+  }
+
+  log(
+    `[6] UPDATE success | response: ${JSON.stringify(mutData?.updateClockRecord)}`,
+  );
 
   if (localSelfieUri && userId) {
+    log(`[7] Syncing offline selfie for ${resolvedId}`);
     await syncOfflineSelfie(userId, localSelfieUri, resolvedId);
+    log(`[7] Selfie sync done`);
+  } else {
+    log(`[7] No selfie to sync`);
   }
+
+  log(`[8] submitClockOut complete ✓`);
 };
 
 // ─── Process one row ──────────────────────────────────────────
 const processRow = async (
   row: QueuedSubmission,
-  onItemSynced?: SyncCallbacks["onItemSynced"],
+  callbacks?: SyncCallbacks,
 ): Promise<boolean> => {
+  const onItemSynced = callbacks?.onItemSynced;
   await markSyncing(row.id);
   let parsed: any;
   try {
@@ -515,18 +557,50 @@ const processRow = async (
     return false;
   }
   try {
+    const log = (msg: string) => {
+      console.log(`[SyncEngine:${row.type}]`, msg);
+      callbacks?.onDebugLog?.(`[${row.type}] ${msg}`);
+    };
     if (row.type === "vif") await submitVif(parsed);
     else if (row.type === "stock") await submitStock(parsed);
     else if (row.type === "clockin") await submitClockIn(parsed);
-    else if (row.type === "clockout") await submitClockOut(parsed);
+    else if (row.type === "clockout") await submitClockOut(parsed, log);
     await markCompleted(row.id);
     console.log(`[SyncEngine] ✓ Row ${row.id} (${row.type}) completed`);
     onItemSynced?.(row.type, parsed);
     return true;
   } catch (error: any) {
-    const msg = error?.message ?? "Unknown error";
-    await markFailed(row.id, msg);
-    console.warn(`[SyncEngine] ✗ Row ${row.id} (${row.type}) failed: ${msg}`);
+    // Don't collapse the real error into "Unknown error" — capture whatever
+    // shape it actually came in as (Error, GraphQL error array, plain
+    // object, string) so failures are diagnosable from logs instead of
+    // disappearing behind a generic message.
+    const msg =
+      error?.message ??
+      (Array.isArray(error?.errors) ? JSON.stringify(error.errors) : null) ??
+      (typeof error === "string" ? error : null) ??
+      (() => {
+        try {
+          return JSON.stringify(error);
+        } catch {
+          return String(error);
+        }
+      })();
+    console.log(`[SyncEngine] Row ${row.id} (${row.type}) raw error:`, error);
+    if (msg.startsWith("DEFERRED:")) {
+      // Clock-in hasn't synced yet — reset this row to pending so the
+      // next drain (after clock-in completes) will retry it.
+      await resetForRetry(row.id);
+      console.log(
+        `[SyncEngine] ⏳ Row ${row.id} (${row.type}) deferred — will retry`,
+      );
+      callbacks?.onDebugLog?.(
+        `[${row.type}] Deferred — will retry after clock-in syncs`,
+      );
+    } else {
+      await markFailed(row.id, msg);
+      console.warn(`[SyncEngine] ✗ Row ${row.id} (${row.type}) failed: ${msg}`);
+      callbacks?.onDebugLog?.(`[${row.type}] FAILED: ${msg}`);
+    }
     return false;
   }
 };
@@ -555,7 +629,7 @@ const drainQueue = async (callbacks: SyncCallbacks = {}): Promise<void> => {
         console.log("[SyncEngine] Lost network mid-drain, stopping");
         break;
       }
-      const succeeded = await processRow(row, callbacks.onItemSynced);
+      const succeeded = await processRow(row, callbacks);
       if (succeeded) syncedCount++;
     }
 

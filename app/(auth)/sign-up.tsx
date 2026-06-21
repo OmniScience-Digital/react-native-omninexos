@@ -179,7 +179,7 @@ const SignUp = () => {
           style={getInputStyle(emailTouched && !emailValid)}
           autoCapitalize="none"
           value={emailAddress}
-          placeholder=" name@example.com"
+          placeholder="name@example.com"
           placeholderTextColor={theme.colors.textMuted}
           onChangeText={setEmailAddress}
           onBlur={() => setEmailTouched(true)}
@@ -219,7 +219,7 @@ const SignUp = () => {
           className="rounded-2xl border px-4 py-4 text-base font-sans-medium"
           style={getInputStyle(fullNameTouched && !fullNameValid)}
           value={fullName}
-          placeholder=" e.g., John Cross"
+          placeholder="e.g., John Cross"
           placeholderTextColor={theme.colors.textMuted}
           onChangeText={setFullName}
           onBlur={() => setFullNameTouched(true)}

@@ -1,101 +1,3 @@
-// // state/redux.tsx
-// import globalReducer, { showResponseModal } from "@/src/state";
-// import { api } from "@/src/state/api";
-// import stockReducer from "@/src/state/stockSlice";
-// import {
-//   combineReducers,
-//   configureStore,
-//   isRejectedWithValue,
-// } from "@reduxjs/toolkit";
-// import { setupListeners } from "@reduxjs/toolkit/query";
-// import React from "react";
-// import {
-//   Provider,
-//   TypedUseSelectorHook,
-//   useDispatch,
-//   useSelector,
-// } from "react-redux";
-
-// // ─────────────────────────────────────────────────────────────────────────────
-// // Root reducer
-// // ─────────────────────────────────────────────────────────────────────────────
-
-// const rootReducer = combineReducers({
-//   global: globalReducer,
-//   stock: stockReducer,
-//   [api.reducerPath]: api.reducer,
-// });
-
-// // ----- Error middleware
-// const rtkQueryErrorMiddleware =
-//   (store: any) => (next: any) => (action: any) => {
-//     if (isRejectedWithValue(action)) {
-//       const message =
-//         action.payload?.error ||
-//         action.error?.message ||
-//         "Something went wrong";
-//       store.dispatch(showResponseModal({ successful: false, message }));
-//     }
-//     return next(action);
-//   };
-
-// // ─────────────────────────────────────────────────────────────────────────────
-// // Store factory  (matches teacher's makeStore pattern)
-// // ─────────────────────────────────────────────────────────────────────────────
-
-// export const makeStore = () => {
-//   return configureStore({
-//     reducer: rootReducer,
-//     middleware: (getDefaultMiddleware) =>
-//       getDefaultMiddleware({
-//         serializableCheck: {
-//           ignoredActions: [
-//             "api/executeMutation/pending",
-//             "api/executeMutation/fulfilled",
-//             "api/executeMutation/rejected",
-//           ],
-//           ignoredActionPaths: [
-//             "meta.baseQueryMeta.request",
-//             "meta.baseQueryMeta.response",
-//           ],
-//           ignoredPaths: [
-//             "global.vifForm.photos",
-//             "meta.baseQueryMeta.request",
-//             "meta.baseQueryMeta.response",
-//           ],
-//         },
-//       }).concat(api.middleware, rtkQueryErrorMiddleware),
-//   });
-// };
-
-// // ─────────────────────────────────────────────────────────────────────────────
-// // Types
-// // ─────────────────────────────────────────────────────────────────────────────
-
-// export type AppStore = ReturnType<typeof makeStore>;
-// export type RootState = ReturnType<AppStore["getState"]>;
-// export type AppDispatch = AppStore["dispatch"];
-
-// // Typed hooks — use these everywhere instead of plain useDispatch / useSelector
-// export const useAppDispatch = () => useDispatch<AppDispatch>();
-// export const useAppSelector: TypedUseSelectorHook<RootState> = useSelector;
-
-// // ─────────────────────────────────────────────────────────────────────────────
-// // Provider  (wrap your Expo _layout.tsx with this)
-// // ─────────────────────────────────────────────────────────────────────────────
-
-// // In React Native we don't need the useRef SSR trick — the store is a singleton
-// const store = makeStore();
-// setupListeners(store.dispatch);
-
-// export default function StoreProvider({
-//   children,
-// }: {
-//   children: React.ReactNode;
-// }) {
-//   return <Provider store={store}>{children}</Provider>;
-// }
-
 // state/redux.tsx
 import globalReducer, { showResponseModal } from "@/src/state";
 import { api } from "@/src/state/api";
@@ -164,7 +66,10 @@ const NETWORK_ERROR_PATTERNS = [
   "Could not connect",
 ];
 
-function isNetworkError(message: string): boolean {
+function isNetworkError(message: string, payload?: any): boolean {
+  // netAwareError in api.ts marks offline failures with status "FETCH_ERROR" —
+  // catch it directly so we never need to rely solely on string matching.
+  if (payload?.status === "FETCH_ERROR") return true;
   if (!message) return false;
   return NETWORK_ERROR_PATTERNS.some((pattern) =>
     message.toLowerCase().includes(pattern.toLowerCase()),
@@ -181,7 +86,9 @@ const rtkQueryErrorMiddleware: Middleware =
         action.error?.message ||
         "Something went wrong";
 
-      if (!isNetworkError(message)) {
+      // Pass the full payload so FETCH_ERROR status is caught even when
+      // the error string doesn't contain a recognised network keyword.
+      if (!isNetworkError(message, action.payload)) {
         store.dispatch(showResponseModal({ successful: false, message }));
       }
     }

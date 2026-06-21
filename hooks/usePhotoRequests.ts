@@ -1,6 +1,6 @@
 // hooks/usePhotoRequests.ts — paginated photo change requests for admin
 import { client } from "@/src/amplify";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 export interface PhotoChangeRequest {
   id: string;
@@ -19,17 +19,42 @@ interface PageResult {
   nextToken: string | null;
 }
 
-const LIST_REQUESTS_PAGINATED = /* GraphQL */ `
-  query ListPhotoChangeRequests(
-    $status: String
+// Uses the GSI "photoChangeRequestsByStatusAndRequestedAt" so AppSync hits
+// an index instead of a full table scan with a filter. The variable type
+// must be PhotoChangeRequestStatus (the actual enum) — not String, which
+// AppSync rejects and returns an error.
+const LIST_BY_STATUS = /* GraphQL */ `
+  query PhotoRequestsByStatus(
+    $status: PhotoChangeRequestStatus!
     $limit: Int
     $nextToken: String
   ) {
-    listPhotoChangeRequests(
-      filter: { status: { eq: $status } }
+    photoRequestsByStatus(
+      status: $status
       limit: $limit
       nextToken: $nextToken
+      sortDirection: DESC
     ) {
+      items {
+        id
+        userId
+        employeeName
+        status
+        requestedAt
+        reviewedAt
+        reviewedBy
+        createdAt
+        updatedAt
+      }
+      nextToken
+    }
+  }
+`;
+
+// Full list with no status filter — used for the "ALL" tab.
+const LIST_ALL = /* GraphQL */ `
+  query ListAllPhotoChangeRequests($limit: Int, $nextToken: String) {
+    listPhotoChangeRequests(limit: $limit, nextToken: $nextToken) {
       items {
         id
         userId
@@ -57,7 +82,63 @@ const UPDATE_REQUEST = /* GraphQL */ `
   }
 `;
 
+// Looked up client-side right before notifying — this hook fetches the
+// employee's registered push token(s) itself rather than the Lambda doing
+// it, so notifyPhotoApproval stays a pure "send this push" function with
+// no DynamoDB/AppSync access of its own.
+const GET_PUSH_TOKENS = /* GraphQL */ `
+  query GetPushTokens($userId: String!) {
+    pushTokensByUser(userId: $userId) {
+      items {
+        token
+      }
+    }
+  }
+`;
+
+// Sends a push notification to the employee — fires server-side via
+// Lambda, so it reaches their device even if the app is fully closed.
+const NOTIFY_STATUS = /* GraphQL */ `
+  mutation NotifyPhotoRequestStatus($pushTokens: [String]!, $status: String!) {
+    notifyPhotoRequestStatus(pushTokens: $pushTokens, status: $status)
+  }
+`;
+
 const PAGE_SIZE = 15;
+
+// Fetches the employee's registered push tokens, then fires the notify
+// mutation. Best-effort by design — failures are logged, never thrown,
+// since a missing/stale push token shouldn't block an approval/denial.
+async function notifyEmployee(userId: string, status: "APPROVED" | "DENIED") {
+  try {
+    const { data, errors } = (await client.graphql({
+      query: GET_PUSH_TOKENS,
+      variables: { userId },
+      authMode: "apiKey",
+    })) as any;
+
+    if (errors) throw new Error(errors[0].message);
+
+    const tokens: string[] = (data?.pushTokensByUser?.items ?? [])
+      .map((t: any) => t.token)
+      .filter((t: string) => !!t);
+
+    if (tokens.length === 0) {
+      console.log(`[usePhotoRequests] No push tokens for user ${userId}`);
+      return;
+    }
+
+    const { errors: notifyErrors } = (await client.graphql({
+      query: NOTIFY_STATUS,
+      variables: { pushTokens: tokens, status },
+      authMode: "apiKey",
+    })) as any;
+
+    if (notifyErrors) throw new Error(notifyErrors[0].message);
+  } catch (e) {
+    console.warn("[usePhotoRequests] notify failed:", e);
+  }
+}
 
 export function usePhotoRequests(statusFilter: "PENDING" | "ALL" = "PENDING") {
   const [items, setItems] = useState<PhotoChangeRequest[]>([]);
@@ -68,6 +149,12 @@ export function usePhotoRequests(statusFilter: "PENDING" | "ALL" = "PENDING") {
 
   const nextTokenRef = useRef<string | null>(null);
   const loadingRef = useRef(false);
+  // Always-current mirror of items — lets approve/deny callbacks read the
+  // latest list without capturing stale state via their dependency array.
+  const itemsRef = useRef<PhotoChangeRequest[]>([]);
+  useEffect(() => {
+    itemsRef.current = items;
+  }, [items]);
 
   const loadFirstPage = useCallback(async () => {
     if (loadingRef.current) return;
@@ -79,19 +166,30 @@ export function usePhotoRequests(statusFilter: "PENDING" | "ALL" = "PENDING") {
     setError(null);
 
     try {
-      const { data, errors } = (await client.graphql({
-        query: LIST_REQUESTS_PAGINATED,
-        variables: {
-          status: statusFilter === "ALL" ? undefined : statusFilter,
-          limit: PAGE_SIZE,
-          nextToken: null,
-        },
-        authMode: "apiKey",
-      })) as any;
+      let result: PageResult;
 
-      if (errors) throw new Error(errors[0].message);
+      if (statusFilter === "ALL") {
+        const { data, errors } = (await client.graphql({
+          query: LIST_ALL,
+          variables: { limit: PAGE_SIZE, nextToken: null },
+          authMode: "apiKey",
+        })) as any;
+        if (errors) throw new Error(errors[0].message);
+        result = data.listPhotoChangeRequests;
+      } else {
+        const { data, errors } = (await client.graphql({
+          query: LIST_BY_STATUS,
+          variables: {
+            status: statusFilter,
+            limit: PAGE_SIZE,
+            nextToken: null,
+          },
+          authMode: "apiKey",
+        })) as any;
+        if (errors) throw new Error(errors[0].message);
+        result = data.photoRequestsByStatus;
+      }
 
-      const result: PageResult = data.listPhotoChangeRequests;
       const sorted = [...result.items].sort(
         (a, b) =>
           new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
@@ -112,19 +210,30 @@ export function usePhotoRequests(statusFilter: "PENDING" | "ALL" = "PENDING") {
     setFetchingMore(true);
 
     try {
-      const { data, errors } = (await client.graphql({
-        query: LIST_REQUESTS_PAGINATED,
-        variables: {
-          status: statusFilter === "ALL" ? undefined : statusFilter,
-          limit: PAGE_SIZE,
-          nextToken: nextTokenRef.current,
-        },
-        authMode: "apiKey",
-      })) as any;
+      let result: PageResult;
 
-      if (errors) throw new Error(errors[0].message);
+      if (statusFilter === "ALL") {
+        const { data, errors } = (await client.graphql({
+          query: LIST_ALL,
+          variables: { limit: PAGE_SIZE, nextToken: nextTokenRef.current },
+          authMode: "apiKey",
+        })) as any;
+        if (errors) throw new Error(errors[0].message);
+        result = data.listPhotoChangeRequests;
+      } else {
+        const { data, errors } = (await client.graphql({
+          query: LIST_BY_STATUS,
+          variables: {
+            status: statusFilter,
+            limit: PAGE_SIZE,
+            nextToken: nextTokenRef.current,
+          },
+          authMode: "apiKey",
+        })) as any;
+        if (errors) throw new Error(errors[0].message);
+        result = data.photoRequestsByStatus;
+      }
 
-      const result: PageResult = data.listPhotoChangeRequests;
       setItems((prev) => {
         const ids = new Set(prev.map((i) => i.id));
         const fresh = result.items.filter((i) => !ids.has(i.id));
@@ -161,13 +270,20 @@ export function usePhotoRequests(statusFilter: "PENDING" | "ALL" = "PENDING") {
         setItems((prev) =>
           prev.map((r) => (r.id === id ? { ...r, status: "APPROVED" } : r)),
         );
+
+        // Use the ref — always points to the current list, no stale closure.
+        const target = itemsRef.current.find((r) => r.id === id);
+        if (target?.userId) {
+          notifyEmployee(target.userId, "APPROVED");
+        }
+
         return true;
       } catch (e: any) {
         setError(e?.message ?? "Failed to approve");
         return false;
       }
     },
-    [],
+    [], // no dependency on items — itemsRef stays current via useEffect
   );
 
   const denyRequest = useCallback(
@@ -189,13 +305,20 @@ export function usePhotoRequests(statusFilter: "PENDING" | "ALL" = "PENDING") {
         setItems((prev) =>
           prev.map((r) => (r.id === id ? { ...r, status: "DENIED" } : r)),
         );
+
+        // Use the ref — same stale-closure fix as approveRequest above.
+        const target = itemsRef.current.find((r) => r.id === id);
+        if (target?.userId) {
+          notifyEmployee(target.userId, "DENIED");
+        }
+
         return true;
       } catch (e: any) {
         setError(e?.message ?? "Failed to deny");
         return false;
       }
     },
-    [],
+    [], // no dependency on items — itemsRef stays current via useEffect
   );
 
   const clearError = useCallback(() => setError(null), []);

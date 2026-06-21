@@ -68,7 +68,7 @@ const ThemeToggle = () => {
 
 export default function Settings() {
   const { user, logout, isAdmin } = useAuth();
-  const userId = (user as any)?.sub ?? (user as any)?.username ?? "anonymous";
+  const userId = (user as any)?.email ?? (user as any)?.username ?? "anonymous";
   const { photoUri } = useReferencePhoto(userId);
   const { onScroll } = useTabBar();
   const dispatch = useAppDispatch();

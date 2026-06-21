@@ -12,6 +12,7 @@ import {
   LogOut,
   MapPin,
   RefreshCw,
+  ScanFace,
   Timer,
 } from "lucide-react-native";
 import { useState } from "react";
@@ -31,6 +32,7 @@ const IconLogIn = LogIn as any;
 const IconLogOut = LogOut as any;
 const IconMapPin = MapPin as any;
 const IconRefreshCw = RefreshCw as any;
+const IconScanFace = ScanFace as any;
 const IconTimer = Timer as any;
 
 function statusMeta(status: ClockRecord["verificationStatus"], theme: any) {
@@ -137,7 +139,9 @@ function HistoryRow({ record, onClockOut }: HistoryRowProps) {
                 </ThemedText>
                 <IconClock size={11} color={theme.colors.textMuted} />
                 <ThemedText muted variant="small" style={{ marginLeft: 3 }}>
-                  {record.hoursWorked.toFixed(1)}h
+                  {record.hoursWorked < 0.1
+                    ? `${Math.round(record.hoursWorked * 60)}m`
+                    : `${record.hoursWorked.toFixed(2)}h`}
                 </ThemedText>
               </>
             )}
@@ -287,7 +291,36 @@ function HistoryRow({ record, onClockOut }: HistoryRowProps) {
                 }}
                 weight="600"
               >
-                Shift duration: {record.hoursWorked.toFixed(1)}h
+                Shift duration:{" "}
+                {record.hoursWorked < 0.1
+                  ? `${Math.round(record.hoursWorked * 60)} min`
+                  : `${record.hoursWorked.toFixed(2)}h`}
+              </ThemedText>
+            </View>
+          )}
+
+          {/* Face match accuracy */}
+          {record.similarityScore != null && record.similarityScore > 0 && (
+            <View
+              style={[
+                styles.durationRow,
+                {
+                  backgroundColor: theme.colors.success + "12",
+                  borderColor: theme.colors.success + "30",
+                  marginTop: 10,
+                },
+              ]}
+            >
+              <IconScanFace size={13} color={theme.colors.success} />
+              <ThemedText
+                style={{
+                  color: theme.colors.success,
+                  marginLeft: 6,
+                  fontSize: 13,
+                }}
+                weight="600"
+              >
+                Face match: {record.similarityScore.toFixed(1)}%
               </ThemedText>
             </View>
           )}

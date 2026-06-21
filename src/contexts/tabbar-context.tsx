@@ -5,6 +5,7 @@ import { Animated } from "react-native";
 const TabBarContext = createContext<{
   scrollY: Animated.Value;
   onScroll: (...args: any[]) => void;
+  resetScrollY: () => void;
 } | null>(null);
 
 export const TabBarProvider = ({ children }: { children: React.ReactNode }) => {
@@ -15,8 +16,10 @@ export const TabBarProvider = ({ children }: { children: React.ReactNode }) => {
     { useNativeDriver: true },
   );
 
+  const resetScrollY = () => scrollY.setValue(0);
+
   return (
-    <TabBarContext.Provider value={{ scrollY, onScroll }}>
+    <TabBarContext.Provider value={{ scrollY, onScroll, resetScrollY }}>
       {children}
     </TabBarContext.Provider>
   );

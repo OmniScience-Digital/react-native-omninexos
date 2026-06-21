@@ -86,8 +86,29 @@ export function useReferencePhoto(userId: string) {
   // ── Check setup status on mount ─────────────────────────────────────────
   useEffect(() => {
     if (!userId || userId === "anonymous") return;
-    AsyncStorage.getItem(SETUP_KEY(userId)).then((val) => {
-      setIsSetupComplete(val === "true");
+
+    // Guard: userId must be an email. During Cognito auth the user object
+    // can briefly carry only `sub` (UUID) before fetchUserAttributes
+    // resolves — we wait for the real email before doing anything.
+    if (!userId.includes("@")) return;
+
+    AsyncStorage.getItem(SETUP_KEY(userId)).then(async (val) => {
+      if (val === "true") {
+        setIsSetupComplete(true);
+        return;
+      }
+      // No local flag — could be a fresh device install even though the
+      // photo already exists in S3 under this email. Check S3 directly
+      // before concluding the user needs to set up again.
+      try {
+        await getUrl({ path: S3_PATH(userId) });
+        // Photo found in S3 — backfill the local flag and mark complete.
+        await AsyncStorage.setItem(SETUP_KEY(userId), "true");
+        setIsSetupComplete(true);
+      } catch {
+        // No photo in S3 either — genuinely needs setup.
+        setIsSetupComplete(false);
+      }
     });
   }, [userId]);
 

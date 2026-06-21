@@ -8,10 +8,10 @@ import { router } from "expo-router";
 export default function Forms() {
   const { onScroll } = useTabBar();
   const handleStockformPress = () => {
-    router.push("/forms/stockcontrolform");
+    router.push("./stockcontrolform");
   };
   const handleVehicleInspectionPress = () => {
-    router.push("/forms/vehicle-inspection");
+    router.push("./vehicle-inspection");
   };
 
   return (

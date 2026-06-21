@@ -1,5 +1,6 @@
 // services/submissionQueue.ts
 import * as SQLite from "expo-sqlite";
+import { Platform } from "react-native";
 
 export type SubmissionType = "vif" | "stock" | "clockin" | "clockout";
 export type SubmissionStatus = "pending" | "syncing" | "completed" | "failed";
@@ -26,6 +27,13 @@ let initPromise: Promise<SQLite.SQLiteDatabase> | null = null;
 // Force a full database reopen (with up to 3 retries)
 // ------------------------------------------------------------------
 async function forceReopen(): Promise<SQLite.SQLiteDatabase> {
+  // On Android APK builds the JSI/native bridge needs a moment to
+  // settle before SQLite can open. Expo Go is immune (it pre-warms
+  // the bridge), but a cold APK launch reliably NPEs without this.
+  if (Platform.OS === "android" && !db) {
+    await new Promise((r) => setTimeout(r, 150));
+  }
+
   // Close existing connection if any
   if (db) {
     try {
@@ -181,7 +189,8 @@ export const getPending = async (): Promise<QueuedSubmission[]> => {
     const rows = await database.getAllAsync<any>(
       `SELECT * FROM pending_submissions
        WHERE status IN ('pending', 'failed') AND retry_count < ?
-       ORDER BY created_at ASC`,
+       ORDER BY created_at ASC,
+         CASE type WHEN 'clockin' THEN 0 WHEN 'clockout' THEN 1 ELSE 2 END ASC`,
       [MAX_RETRIES],
     );
     return rows.map(mapRow);

@@ -6,12 +6,12 @@ import { CustomScrollView } from "@/components/ui/scrollView";
 import { useTheme } from "@/src/contexts/theme-context";
 import { Link } from "expo-router";
 import {
-    ActivityIndicator,
-    Image,
-    KeyboardAvoidingView,
-    Platform,
-    Pressable,
-    View,
+  ActivityIndicator,
+  Image,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  View,
 } from "react-native";
 
 export const AuthFormLayout = ({
@@ -125,7 +125,7 @@ export const AuthFormLayout = ({
                       backgroundColor: getButtonStyle(isDisabled || isLoading)
                         .backgroundColor,
                       borderRadius: 100,
-                      paddingVertical: 16,
+                      paddingVertical: 14,
                       alignItems: "center",
                       opacity: pressed ? 0.8 : 1,
                     },
