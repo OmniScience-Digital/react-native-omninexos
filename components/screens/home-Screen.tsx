@@ -14,6 +14,7 @@ import {
   useListFleetsQuery,
 } from "@/src/state/api";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useFocusEffect } from "@react-navigation/native";
 import { format } from "date-fns";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
@@ -215,7 +216,14 @@ export default function HomeScreen() {
   const { user } = useAuth();
   const { isOffline } = useNetworkStatus();
 
-  const userId = (user as any)?.email ?? (user as any)?.username ?? "anonymous";
+  // Inside HomeScreen component
+  const { resetScrollY } = useTabBar();
+
+  useFocusEffect(
+    useCallback(() => {
+      resetScrollY();
+    }, [resetScrollY]),
+  );
   const employeeName =
     (user as any)?.preferred_username ??
     (user as any)?.name ??
@@ -496,7 +504,7 @@ export default function HomeScreen() {
             title="Forms"
             description="All operational forms in one place"
             icon={FileText}
-            onPress={() => router.replace("/(tabs)/forms")}
+            onPress={() => router.push("/(tabs)/forms")}
           />
         </View>
 

@@ -3,15 +3,25 @@ import { CustomHeader } from "@/components/ui/customHeader";
 import { ModuleCard } from "@/components/ui/DashboardCards";
 import { useTabBar } from "@/src/contexts/tabbar-context";
 import { Tabforms } from "@/src/dashboardLists";
+import { useFocusEffect } from "@react-navigation/native";
 import { router } from "expo-router";
+import { useCallback } from "react";
 
 export default function Forms() {
   const { onScroll } = useTabBar();
+  const { resetScrollY } = useTabBar();
+
+  useFocusEffect(
+    useCallback(() => {
+      resetScrollY();
+    }, [resetScrollY]),
+  );
+
   const handleStockformPress = () => {
-    router.push("./stockcontrolform");
+    router.push("./forms/stockcontrolform");
   };
   const handleVehicleInspectionPress = () => {
-    router.push("./vehicle-inspection");
+    router.push("./forms/vehicle-inspection");
   };
 
   return (
