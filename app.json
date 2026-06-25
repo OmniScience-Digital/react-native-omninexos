@@ -10,7 +10,10 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.reactnativeomninexos"
+      "bundleIdentifier": "com.anonymous.reactnativeomninexos",
+      "entitlements": {
+        "com.apple.developer.networking.wifi-info": true
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -22,6 +25,7 @@
       "predictiveBackGestureEnabled": false,
       "package": "com.anonymous.reactnativeomninexos"
     },
+
     "web": {
       "output": "static",
       "favicon": "./assets/images/play_store_512.png"

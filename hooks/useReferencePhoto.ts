@@ -1,7 +1,8 @@
 // hooks/useReferencePhoto.ts
 import { client } from "@/src/amplify";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { getUrl, uploadData } from "aws-amplify/storage";
+import NetInfo from "@react-native-community/netinfo";
+import { getUrl, list, uploadData } from "aws-amplify/storage";
 import * as ImagePicker from "expo-image-picker";
 import { useCallback, useEffect, useState } from "react";
 
@@ -92,24 +93,56 @@ export function useReferencePhoto(userId: string) {
     // resolves — we wait for the real email before doing anything.
     if (!userId.includes("@")) return;
 
-    AsyncStorage.getItem(SETUP_KEY(userId)).then(async (val) => {
-      if (val === "true") {
-        setIsSetupComplete(true);
+    const check = async () => {
+      const localFlag = await AsyncStorage.getItem(SETUP_KEY(userId));
+
+      // Check connectivity first so we know whether an S3 failure means
+      // "no photo" or just "no internet".
+      const net = await NetInfo.fetch();
+      const online =
+        net.isConnected === true && net.isInternetReachable === true;
+
+      if (!online) {
+        // Offline — trust the local flag. The S3 verification will run
+        // the next time the app starts with a connection.
+        setIsSetupComplete(localFlag === "true");
         return;
       }
-      // No local flag — could be a fresh device install even though the
-      // photo already exists in S3 under this email. Check S3 directly
-      // before concluding the user needs to set up again.
+
+      // Online — use list() to confirm the file actually exists in S3.
+      // getUrl() only generates a signed URL and SUCCEEDS even when the
+      // file has been deleted, so we'd get a white broken image and a
+      // failed face-verification. list() returns an empty array if absent.
       try {
-        await getUrl({ path: S3_PATH(userId) });
-        // Photo found in S3 — backfill the local flag and mark complete.
-        await AsyncStorage.setItem(SETUP_KEY(userId), "true");
-        setIsSetupComplete(true);
+        const result = await list({ path: S3_PATH(userId) });
+        const exists = (result.items ?? []).length > 0;
+
+        if (exists) {
+          // File confirmed in S3 — refresh the signed URL and mark complete.
+          const { url } = await getUrl({ path: S3_PATH(userId) });
+          const freshUrl = url.toString();
+          setPhotoUri(freshUrl);
+          AsyncStorage.setItem(PHOTO_URI_KEY(userId), freshUrl).catch(() => {});
+          if (localFlag !== "true") {
+            await AsyncStorage.setItem(SETUP_KEY(userId), "true");
+          }
+          setIsSetupComplete(true);
+        } else {
+          // File gone from S3 (admin deleted it) — clear ALL local cache
+          // and send the user back to FaceSetup.
+          await AsyncStorage.removeItem(SETUP_KEY(userId));
+          await AsyncStorage.removeItem(PHOTO_URI_KEY(userId));
+          setPhotoUri(null);
+          setIsSetupComplete(false);
+        }
       } catch {
-        // No photo in S3 either — genuinely needs setup.
-        setIsSetupComplete(false);
+        // Network error during list — fall back to local flag so a brief
+        // connectivity blip doesn't force a re-setup.
+        setIsSetupComplete(localFlag === "true");
       }
-    });
+    };
+
+    check();
   }, [userId]);
 
   // ── Load existing photo from S3 (with offline cache fallback) ──────────
@@ -137,41 +170,45 @@ export function useReferencePhoto(userId: string) {
   }, [isSetupComplete, userId]);
 
   // ── Check for pending/approved requests from DynamoDB ───────────────────
-  useEffect(() => {
-    if (!userId || userId === "anonymous" || !isSetupComplete) return;
-
-    const checkRequests = async () => {
-      try {
-        // Check pending
-        const { data: pendingData, errors: pe } = (await client.graphql({
-          query: LIST_PHOTO_REQUESTS_BY_USER,
-          variables: { userId },
-          authMode: "apiKey",
-        })) as any;
-        if (!pe) {
-          const pending =
-            pendingData?.listPhotoChangeRequests?.items?.[0] ?? null;
-          setPendingRequest(pending);
-        }
-
-        // Check approved
-        const { data: approvedData, errors: ae } = (await client.graphql({
-          query: GET_APPROVED_REQUEST,
-          variables: { userId },
-          authMode: "apiKey",
-        })) as any;
-        if (!ae) {
-          const approved =
-            approvedData?.listPhotoChangeRequests?.items?.[0] ?? null;
-          setApprovedRequest(approved);
-        }
-      } catch {
-        // Silent — non-critical
+  // NOTE: no isSetupComplete guard here — we need to fetch approval status
+  // independently of setup state, otherwise useFocusEffect calls this and
+  // exits immediately if setup is still loading or incomplete.
+  const checkRequests = useCallback(async () => {
+    if (!userId || userId === "anonymous") return;
+    try {
+      // Check pending
+      const { data: pendingData, errors: pe } = (await client.graphql({
+        query: LIST_PHOTO_REQUESTS_BY_USER,
+        variables: { userId },
+        authMode: "apiKey",
+      })) as any;
+      if (!pe) {
+        const pending =
+          pendingData?.listPhotoChangeRequests?.items?.[0] ?? null;
+        setPendingRequest(pending);
       }
-    };
 
+      // Check approved — use the same photoRequestsByStatus GSI that the
+      // admin panel uses (via LIST_PHOTO_REQUESTS_BY_USER already filters
+      // by userId + PENDING; for APPROVED we query directly by userId).
+      const { data: approvedData, errors: ae } = (await client.graphql({
+        query: GET_APPROVED_REQUEST,
+        variables: { userId },
+        authMode: "apiKey",
+      })) as any;
+      if (!ae) {
+        const approved =
+          approvedData?.listPhotoChangeRequests?.items?.[0] ?? null;
+        setApprovedRequest(approved);
+      }
+    } catch {
+      // Silent — non-critical
+    }
+  }, [userId]); // removed isSetupComplete dependency — must run regardless
+
+  useEffect(() => {
     checkRequests();
-  }, [userId, isSetupComplete]);
+  }, [checkRequests]);
 
   // ── Request photo change (creates a pending request) ────────────────────
   const requestPhotoChange = useCallback(async (): Promise<boolean> => {
@@ -296,6 +333,7 @@ export function useReferencePhoto(userId: string) {
     captureAndUpload,
     resetSetup,
     requestPhotoChange,
+    checkRequests,
     canChangePhoto,
     pendingRequest,
     approvedRequest,

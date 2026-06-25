@@ -8,6 +8,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Platform } from "react-native";
 
 const TOKEN_CACHE_KEY = (uid: string) => `push:token:${uid}`;
+// Persist up to 50 notifications across app restarts
+const NOTIF_CACHE_KEY = (uid: string) => `push:notifications:${uid}`;
+const MAX_STORED = 50;
 
 const CREATE_OR_UPDATE_PUSH_TOKEN = /* GraphQL */ `
   mutation CreatePushToken($input: CreatePushTokenInput!) {
@@ -40,6 +43,15 @@ export interface InAppNotification {
   read: boolean;
 }
 
+// Serialised form stored in AsyncStorage (Date → ISO string)
+interface StoredNotification extends Omit<InAppNotification, "receivedAt"> {
+  receivedAt: string;
+}
+
+function hydrate(stored: StoredNotification): InAppNotification {
+  return { ...stored, receivedAt: new Date(stored.receivedAt) };
+}
+
 export function usePushNotifications(userId: string) {
   const [expoPushToken, setExpoPushToken] = useState<string | null>(null);
   const [notifications, setNotifications] = useState<InAppNotification[]>([]);
@@ -53,6 +65,35 @@ export function usePushNotifications(userId: string) {
     null,
   );
   const responseListener = useRef<Notifications.EventSubscription | null>(null);
+  // Guard: only attempt registration once per userId mount
+  const registeredRef = useRef(false);
+
+  // ── Persist helpers ──────────────────────────────────────────────────────
+  const persistNotifications = useCallback(
+    (notifs: InAppNotification[]) => {
+      if (!userId || userId === "anonymous") return;
+      const stored: StoredNotification[] = notifs
+        .slice(0, MAX_STORED)
+        .map((n) => ({ ...n, receivedAt: n.receivedAt.toISOString() }));
+      AsyncStorage.setItem(
+        NOTIF_CACHE_KEY(userId),
+        JSON.stringify(stored),
+      ).catch(() => {});
+    },
+    [userId],
+  );
+
+  // ── Load persisted notifications on mount ────────────────────────────────
+  useEffect(() => {
+    if (!userId || userId === "anonymous") return;
+    AsyncStorage.getItem(NOTIF_CACHE_KEY(userId))
+      .then((raw) => {
+        if (!raw) return;
+        const stored: StoredNotification[] = JSON.parse(raw);
+        setNotifications(stored.map(hydrate));
+      })
+      .catch(() => {});
+  }, [userId]);
 
   const storeTokenRemotely = useCallback(
     async (token: string): Promise<void> => {
@@ -137,9 +178,13 @@ export function usePushNotifications(userId: string) {
     }
   }, [userId, storeTokenRemotely]);
 
+  // ── Register token & attach listeners — runs once per userId ────────────
   useEffect(() => {
     if (!userId || userId === "anonymous") return;
+    if (registeredRef.current) return;
+    registeredRef.current = true;
 
+    // Load cached token or register fresh — does NOT re-run on every render
     AsyncStorage.getItem(TOKEN_CACHE_KEY(userId)).then((cached) => {
       if (cached) setExpoPushToken(cached);
       else registerForPushNotifications();
@@ -148,17 +193,26 @@ export function usePushNotifications(userId: string) {
     notificationListener.current =
       Notifications.addNotificationReceivedListener((notification) => {
         const { title, body, data } = notification.request.content;
-        setNotifications((prev) => [
-          {
-            id: notification.request.identifier,
-            title: title ?? "Notification",
-            body: body ?? "",
-            data: data as Record<string, any>,
-            receivedAt: new Date(),
-            read: false,
-          },
-          ...prev,
-        ]);
+        const newNotif: InAppNotification = {
+          id: notification.request.identifier,
+          title: title ?? "Notification",
+          body: body ?? "",
+          data: data as Record<string, any>,
+          receivedAt: new Date(),
+          read: false,
+        };
+        setNotifications((prev) => {
+          const updated = [newNotif, ...prev];
+          // Persist immediately so the notification survives a restart
+          const stored: StoredNotification[] = updated
+            .slice(0, MAX_STORED)
+            .map((n) => ({ ...n, receivedAt: n.receivedAt.toISOString() }));
+          AsyncStorage.setItem(
+            NOTIF_CACHE_KEY(userId),
+            JSON.stringify(stored),
+          ).catch(() => {});
+          return updated;
+        });
       });
 
     responseListener.current =
@@ -172,20 +226,38 @@ export function usePushNotifications(userId: string) {
     return () => {
       notificationListener.current?.remove();
       responseListener.current?.remove();
+      registeredRef.current = false;
     };
-  }, [userId, registerForPushNotifications]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]); // intentionally exclude registerForPushNotifications to avoid loop
 
   const markAllRead = useCallback(() => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
-  }, []);
+    setNotifications((prev) => {
+      const updated = prev.map((n) => ({ ...n, read: true }));
+      persistNotifications(updated);
+      return updated;
+    });
+  }, [persistNotifications]);
 
-  const markRead = useCallback((id: string) => {
-    setNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, read: true } : n)),
-    );
-  }, []);
+  const markRead = useCallback(
+    (id: string) => {
+      setNotifications((prev) => {
+        const updated = prev.map((n) =>
+          n.id === id ? { ...n, read: true } : n,
+        );
+        persistNotifications(updated);
+        return updated;
+      });
+    },
+    [persistNotifications],
+  );
 
-  const clearNotifications = useCallback(() => setNotifications([]), []);
+  const clearNotifications = useCallback(() => {
+    setNotifications([]);
+    if (userId && userId !== "anonymous") {
+      AsyncStorage.removeItem(NOTIF_CACHE_KEY(userId)).catch(() => {});
+    }
+  }, [userId]);
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 

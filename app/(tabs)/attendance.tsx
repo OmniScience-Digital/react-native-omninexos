@@ -9,6 +9,7 @@ import { useTabBar } from "@/src/contexts/tabbar-context";
 import { useTheme } from "@/src/contexts/theme-context";
 import { format, parseISO } from "date-fns";
 import { LinearGradient } from "expo-linear-gradient";
+import { useFocusEffect } from "expo-router";
 import {
   AlertCircle,
   Camera,
@@ -204,9 +205,21 @@ function WeekSummary({
   history: ReturnType<typeof useClockInContext>["history"];
 }) {
   const { theme } = useTheme();
-  const weekAgo = Date.now() - 7 * 24 * 3600000;
+  // Use start of the current ISO week (Monday 00:00 local time) so the
+  // summary always reflects Mon–today rather than a rolling 168-hour window.
+  const startOfWeek = (() => {
+    const d = new Date();
+    const day = d.getDay(); // 0 = Sun, 1 = Mon, ...
+    const diffToMonday = day === 0 ? -6 : 1 - day; // days back to Monday
+    d.setDate(d.getDate() + diffToMonday);
+    d.setHours(0, 0, 0, 0);
+    return d.getTime();
+  })();
+  // Use `r.hoursWorked != null` instead of `&& r.hoursWorked` so a 0h shift
+  // (e.g. clock-in/out within seconds) isn't incorrectly excluded.
   const weekRecords = history.filter(
-    (r) => new Date(r.clockInTime).getTime() > weekAgo && r.hoursWorked,
+    (r) =>
+      new Date(r.clockInTime).getTime() >= startOfWeek && r.hoursWorked != null,
   );
   const totalHours = weekRecords.reduce((s, r) => s + (r.hoursWorked ?? 0), 0);
   const daysWorked = new Set(weekRecords.map((r) => r.date)).size;
@@ -443,8 +456,18 @@ export default function AttendanceScreen() {
     captureAndUpload,
     canChangePhoto,
     requestPhotoChange,
+    checkRequests: recheckPhotoApproval,
     pendingRequest,
   } = useReferencePhoto(userId);
+
+  // Re-check photo change approval every time the screen comes into focus,
+  // so users see the "Change approved" state as soon as admin acts —
+  // without needing to kill and relaunch the app.
+  useFocusEffect(
+    useCallback(() => {
+      recheckPhotoApproval();
+    }, [recheckPhotoApproval]),
+  );
 
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
