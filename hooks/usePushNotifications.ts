@@ -23,15 +23,22 @@ const CREATE_OR_UPDATE_PUSH_TOKEN = /* GraphQL */ `
   }
 `;
 
-// ── Fix: use shouldShowBanner + shouldShowList (shouldShowAlert is deprecated) ─
+// Support both old (shouldShowAlert) and new (shouldShowBanner/shouldShowList)
+// expo-notifications API shapes so the app doesn't crash on either version.
 Notifications.setNotificationHandler({
-  handleNotification:
-    async (): Promise<Notifications.NotificationBehavior> => ({
-      shouldShowBanner: true,
-      shouldShowList: true,
+  handleNotification: async () => {
+    const behavior: any = {
       shouldPlaySound: true,
       shouldSetBadge: true,
-    }),
+    };
+    // expo-notifications >=0.29 uses shouldShowBanner + shouldShowList
+    // expo-notifications <0.29  uses shouldShowAlert
+    // Include all three so it works regardless of installed version.
+    behavior.shouldShowAlert = true;
+    behavior.shouldShowBanner = true;
+    behavior.shouldShowList = true;
+    return behavior;
+  },
 });
 
 export interface InAppNotification {

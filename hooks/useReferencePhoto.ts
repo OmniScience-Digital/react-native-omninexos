@@ -22,28 +22,14 @@ const CREATE_PHOTO_REQUEST = /* GraphQL */ `
   }
 `;
 
-const LIST_PHOTO_REQUESTS_BY_USER = /* GraphQL */ `
-  query ListPhotoChangeRequestsByUser($userId: String!) {
-    listPhotoChangeRequests(
-      filter: { userId: { eq: $userId }, status: { eq: "PENDING" } }
-      limit: 1
-    ) {
-      items {
-        id
-        userId
-        status
-        createdAt
-        updatedAt
-      }
-    }
-  }
-`;
-
-const GET_APPROVED_REQUEST = /* GraphQL */ `
-  query GetApprovedPhotoRequest($userId: String!) {
-    listPhotoChangeRequests(
-      filter: { userId: { eq: $userId }, status: { eq: "APPROVED" } }
-      limit: 1
+// Query using the photoRequestsByUserAndDate GSI — hits the index directly,
+// no table scan, always returns only this user's records sorted newest first.
+const REQUESTS_BY_USER = /* GraphQL */ `
+  query PhotoRequestsByUserAndDate($userId: String!) {
+    photoRequestsByUserAndDate(
+      userId: $userId
+      sortDirection: DESC
+      limit: 10
     ) {
       items {
         id
@@ -170,41 +156,34 @@ export function useReferencePhoto(userId: string) {
   }, [isSetupComplete, userId]);
 
   // ── Check for pending/approved requests from DynamoDB ───────────────────
-  // NOTE: no isSetupComplete guard here — we need to fetch approval status
-  // independently of setup state, otherwise useFocusEffect calls this and
-  // exits immediately if setup is still loading or incomplete.
+  // Uses the photoRequestsByStatus GSI (same as admin panel) then filters
+  // client-side by userId. This avoids the broken listPhotoChangeRequests
+  // full-table-scan-with-limit:1 pattern that almost always returns empty.
   const checkRequests = useCallback(async () => {
     if (!userId || userId === "anonymous") return;
     try {
-      // Check pending
-      const { data: pendingData, errors: pe } = (await client.graphql({
-        query: LIST_PHOTO_REQUESTS_BY_USER,
+      // Single query scoped to this user — guaranteed to find their record
+      // no matter how many other users have requests in the table.
+      const { data, errors } = (await client.graphql({
+        query: REQUESTS_BY_USER,
         variables: { userId },
         authMode: "apiKey",
       })) as any;
-      if (!pe) {
-        const pending =
-          pendingData?.listPhotoChangeRequests?.items?.[0] ?? null;
-        setPendingRequest(pending);
-      }
 
-      // Check approved — use the same photoRequestsByStatus GSI that the
-      // admin panel uses (via LIST_PHOTO_REQUESTS_BY_USER already filters
-      // by userId + PENDING; for APPROVED we query directly by userId).
-      const { data: approvedData, errors: ae } = (await client.graphql({
-        query: GET_APPROVED_REQUEST,
-        variables: { userId },
-        authMode: "apiKey",
-      })) as any;
-      if (!ae) {
-        const approved =
-          approvedData?.listPhotoChangeRequests?.items?.[0] ?? null;
-        setApprovedRequest(approved);
+      if (!errors) {
+        const items: any[] = data?.photoRequestsByUserAndDate?.items ?? [];
+        // Sort newest first so we always act on the latest request
+        items.sort(
+          (a, b) =>
+            new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+        );
+        setPendingRequest(items.find((r) => r.status === "PENDING") ?? null);
+        setApprovedRequest(items.find((r) => r.status === "APPROVED") ?? null);
       }
     } catch {
       // Silent — non-critical
     }
-  }, [userId]); // removed isSetupComplete dependency — must run regardless
+  }, [userId]);
 
   useEffect(() => {
     checkRequests();
