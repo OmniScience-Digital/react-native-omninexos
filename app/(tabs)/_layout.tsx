@@ -6,6 +6,7 @@ import {
   useClockInContext,
 } from "@/src/contexts/clockin-context";
 import { useNotifications } from "@/src/contexts/notification-context";
+import { ReferencePhotoProvider } from "@/src/contexts/reference-photo-context";
 import { TabBarProvider, useTabBar } from "@/src/contexts/tabbar-context";
 import { useTheme } from "@/src/contexts/theme-context";
 import { showResponseModal } from "@/src/state";
@@ -196,10 +197,12 @@ function SyncManager() {
 export default function TabLayout() {
   return (
     <ClockInProvider>
-      <SyncManager />
-      <TabBarProvider>
-        <TabLayoutInner />
-      </TabBarProvider>
+      <ReferencePhotoProvider>
+        <SyncManager />
+        <TabBarProvider>
+          <TabLayoutInner />
+        </TabBarProvider>
+      </ReferencePhotoProvider>
     </ClockInProvider>
   );
 }

@@ -9,9 +9,9 @@ import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { CustomHeader } from "@/components/ui/customHeader";
 import { CustomScrollView } from "@/components/ui/scrollView";
 import "@/global.css";
-import { useReferencePhoto } from "@/hooks/useReferencePhoto";
 import { getCopyright } from "@/lib/utils";
 import { useAuth } from "@/src/contexts/auth-context";
+import { useReferencePhotoContext } from "@/src/contexts/reference-photo-context";
 import { useTabBar } from "@/src/contexts/tabbar-context";
 import { useTheme } from "@/src/contexts/theme-context";
 import { resetVifForm, showResponseModal } from "@/src/state";
@@ -69,7 +69,7 @@ const ThemeToggle = () => {
 export default function Settings() {
   const { user, logout, isAdmin } = useAuth();
   const userId = (user as any)?.email ?? (user as any)?.username ?? "anonymous";
-  const { photoUri } = useReferencePhoto(userId);
+  const { photoUri } = useReferencePhotoContext();
   const { onScroll } = useTabBar();
   const dispatch = useAppDispatch();
   const { theme, preference, setPreference } = useTheme();

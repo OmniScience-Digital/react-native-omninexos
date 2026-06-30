@@ -2,14 +2,13 @@ import { AttendanceHistory } from "@/components/attendance/AttendanceHistory";
 import { FaceSetup } from "@/components/attendance/FaceSetup";
 import { Screen, ThemedText } from "@/components/screens/screen";
 import { CustomScrollView } from "@/components/ui/scrollView";
-import { useReferencePhoto } from "@/hooks/useReferencePhoto";
 import { useAuth } from "@/src/contexts/auth-context";
 import { useClockInContext } from "@/src/contexts/clockin-context";
+import { useReferencePhotoContext } from "@/src/contexts/reference-photo-context";
 import { useTabBar } from "@/src/contexts/tabbar-context";
 import { useTheme } from "@/src/contexts/theme-context";
 import { format, parseISO } from "date-fns";
 import { LinearGradient } from "expo-linear-gradient";
-import { useFocusEffect } from "expo-router";
 import {
   AlertCircle,
   Camera,
@@ -456,18 +455,8 @@ export default function AttendanceScreen() {
     captureAndUpload,
     canChangePhoto,
     requestPhotoChange,
-    checkRequests: recheckPhotoApproval,
     pendingRequest,
-  } = useReferencePhoto(userId);
-
-  // Re-check photo change approval every time the screen comes into focus,
-  // so users see the "Change approved" state as soon as admin acts —
-  // without needing to kill and relaunch the app.
-  useFocusEffect(
-    useCallback(() => {
-      recheckPhotoApproval();
-    }, [recheckPhotoApproval]),
-  );
+  } = useReferencePhotoContext();
 
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);

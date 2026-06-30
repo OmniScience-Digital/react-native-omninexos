@@ -4,7 +4,8 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import NetInfo from "@react-native-community/netinfo";
 import { getUrl, list, uploadData } from "aws-amplify/storage";
 import * as ImagePicker from "expo-image-picker";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AppState, type AppStateStatus } from "react-native";
 
 const SETUP_KEY = (uid: string) => `face:setup_complete:${uid}`;
 const PHOTO_URI_KEY = (uid: string) => `face:cached_photo_uri:${uid}`;
@@ -132,28 +133,36 @@ export function useReferencePhoto(userId: string) {
   }, [userId]);
 
   // ── Load existing photo from S3 (with offline cache fallback) ──────────
-  useEffect(() => {
-    if (!isSetupComplete || !userId) return;
+  // Extracted as a standalone callback so any screen using this hook can
+  // call reloadPhoto() (e.g. on focus) to pick up a photo that was changed
+  // from a DIFFERENT screen — each useReferencePhoto() call has its own
+  // local photoUri state, they don't share it automatically.
+  const reloadPhoto = useCallback(async () => {
+    if (!userId) return;
 
     // 1. Show cached URI immediately (works offline, like Facebook)
-    AsyncStorage.getItem(PHOTO_URI_KEY(userId)).then((cached) => {
+    try {
+      const cached = await AsyncStorage.getItem(PHOTO_URI_KEY(userId));
       if (cached) setPhotoUri(cached);
-    });
+    } catch {
+      // ignore
+    }
 
     // 2. Try to refresh a fresh signed URL from S3 (online only)
-    getUrl({ path: S3_PATH(userId) })
-      .then(({ url }) => {
-        const fresh = url.toString();
-        setPhotoUri(fresh);
-        // Persist the fresh URL so next offline load sees an up-to-date URI.
-        // Signed URLs expire, but the local file URI written after upload
-        // never expires — so we also store the localUri after upload (below).
-        AsyncStorage.setItem(PHOTO_URI_KEY(userId), fresh).catch(() => {});
-      })
-      .catch(() => {
-        // Network unavailable — cached URI already set above, nothing to do.
-      });
-  }, [isSetupComplete, userId]);
+    try {
+      const { url } = await getUrl({ path: S3_PATH(userId) });
+      const fresh = url.toString();
+      setPhotoUri(fresh);
+      AsyncStorage.setItem(PHOTO_URI_KEY(userId), fresh).catch(() => {});
+    } catch {
+      // Network unavailable — cached URI already set above, nothing to do.
+    }
+  }, [userId]);
+
+  useEffect(() => {
+    if (!isSetupComplete || !userId) return;
+    reloadPhoto();
+  }, [isSetupComplete, userId, reloadPhoto]);
 
   // ── Check for pending/approved requests from DynamoDB ───────────────────
   // Uses the photoRequestsByStatus GSI (same as admin panel) then filters
@@ -187,6 +196,29 @@ export function useReferencePhoto(userId: string) {
 
   useEffect(() => {
     checkRequests();
+  }, [checkRequests]);
+
+  // ── Refresh on app foreground ────────────────────────────────────────────
+  // This hook now lives in a single shared context (ReferencePhotoProvider),
+  // so this listener exists exactly ONCE for the whole app rather than being
+  // duplicated per-screen. Covers the case where an approval push
+  // notification was missed (app was killed, not just backgrounded) — when
+  // the user reopens the app, we re-verify approval status from DynamoDB.
+  const appStateRef = useRef(AppState.currentState);
+  useEffect(() => {
+    const sub = AppState.addEventListener(
+      "change",
+      (nextState: AppStateStatus) => {
+        const cameToForeground =
+          appStateRef.current.match(/inactive|background/) &&
+          nextState === "active";
+        appStateRef.current = nextState;
+        if (cameToForeground) {
+          checkRequests();
+        }
+      },
+    );
+    return () => sub.remove();
   }, [checkRequests]);
 
   // ── Request photo change (creates a pending request) ────────────────────
@@ -258,20 +290,20 @@ export function useReferencePhoto(userId: string) {
       await AsyncStorage.setItem(SETUP_KEY(userId), "true");
       setIsSetupComplete(true);
 
-      // If there was an approved request, mark it as used (COMPLETED)
+      // If there was an approved request, mark it COMPLETED in DynamoDB
+      // and ALWAYS clear it from local state — even if the mutation fails.
+      // Keeping it in state would leave the change-photo button permanently
+      // unlocked after a successful upload.
       if (approvedRequest) {
-        try {
-          await client.graphql({
-            query: UPDATE_PHOTO_REQUEST,
-            variables: {
-              input: { id: approvedRequest.id, status: "COMPLETED" },
-            },
-            authMode: "apiKey",
-          });
-          setApprovedRequest(null);
-        } catch {
-          // Non-critical
-        }
+        const requestId = approvedRequest.id;
+        setApprovedRequest(null); // clear immediately, don't wait for network
+        client.graphql({
+          query: UPDATE_PHOTO_REQUEST,
+          variables: {
+            input: { id: requestId, status: "COMPLETED" },
+          },
+          authMode: "apiKey",
+        });
       }
 
       const { url } = await getUrl({ path: S3_PATH(userId) });
@@ -313,6 +345,7 @@ export function useReferencePhoto(userId: string) {
     resetSetup,
     requestPhotoChange,
     checkRequests,
+    reloadPhoto,
     canChangePhoto,
     pendingRequest,
     approvedRequest,
