@@ -1,8 +1,11 @@
 // state/redux.tsx
+import { APP_ENV } from "@/app/env";
+import { purgeAllForEnvironmentChange } from "@/services/submissionQueue";
 import globalReducer, { showResponseModal } from "@/src/state";
 import { api } from "@/src/state/api";
 import stockReducer from "@/src/state/stockSlice";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import NetInfo from "@react-native-community/netinfo";
 import {
   combineReducers,
   configureStore,
@@ -10,7 +13,7 @@ import {
   Middleware,
 } from "@reduxjs/toolkit";
 import { setupListeners } from "@reduxjs/toolkit/query";
-import React from "react";
+import React, { useEffect, useState } from "react";
 import {
   Provider,
   TypedUseSelectorHook,
@@ -43,7 +46,6 @@ const apiPersistConfig = {
 const rootReducer = combineReducers({
   global: globalReducer,
   stock: stockReducer,
-  // Double cast to resolve PersistPartial vs CombinedState mismatch
   [api.reducerPath]: persistReducer(
     apiPersistConfig,
     api.reducer,
@@ -64,11 +66,14 @@ const NETWORK_ERROR_PATTERNS = [
   "ERR_INTERNET_DISCONNECTED",
   "Load failed",
   "Could not connect",
+  "credentials",
+  "getaddrinfo",
+  "unable to connect",
+  "no internet",
+  "connection",
 ];
 
 function isNetworkError(message: string, payload?: any): boolean {
-  // netAwareError in api.ts marks offline failures with status "FETCH_ERROR" —
-  // catch it directly so we never need to rely solely on string matching.
   if (payload?.status === "FETCH_ERROR") return true;
   if (!message) return false;
   return NETWORK_ERROR_PATTERNS.some((pattern) =>
@@ -76,19 +81,30 @@ function isNetworkError(message: string, payload?: any): boolean {
   );
 }
 
+// ── Live connectivity flag ─────────────────────────────────────────────────────
+let isDeviceOffline = false;
+NetInfo.fetch().then((net) => {
+  isDeviceOffline = !(
+    net.isConnected === true && net.isInternetReachable === true
+  );
+});
+NetInfo.addEventListener((net) => {
+  isDeviceOffline = !(
+    net.isConnected === true && net.isInternetReachable === true
+  );
+});
+
 // ── Error middleware ──────────────────────────────────────────────────────────
 const rtkQueryErrorMiddleware: Middleware =
   (store) => (next) => (action: any) => {
     if (isRejectedWithValue(action)) {
       const message: string =
+        (typeof action.payload === "string" ? action.payload : undefined) ||
         action.payload?.error ||
         action.payload?.message ||
-        action.error?.message ||
         "Something went wrong";
 
-      // Pass the full payload so FETCH_ERROR status is caught even when
-      // the error string doesn't contain a recognised network keyword.
-      if (!isNetworkError(message, action.payload)) {
+      if (!isDeviceOffline && !isNetworkError(message, action.payload)) {
         store.dispatch(showResponseModal({ successful: false, message }));
       }
     }
@@ -146,16 +162,66 @@ export const useAppSelector: TypedUseSelectorHook<RootState> = useSelector;
 // ─────────────────────────────────────────────────────────────────────────────
 
 const store = makeStore();
-const persistor = persistStore(store);
+const persistor = persistStore(store, { manualPersist: true } as any);
 setupListeners(store.dispatch);
 
 export { persistor };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Environment guard
+// ─────────────────────────────────────────────────────────────────────────────
+const ENV_FINGERPRINT_KEY = "amplify:env_fingerprint";
+
+async function purgeCacheIfEnvironmentChanged(): Promise<void> {
+  const currentFingerprint = APP_ENV; // "main" or "test"
+
+  try {
+    const stored = await AsyncStorage.getItem(ENV_FINGERPRINT_KEY);
+    if (stored && stored !== currentFingerprint) {
+      const [, discardedCount] = await Promise.all([
+        persistor.purge(),
+        purgeAllForEnvironmentChange(),
+      ]);
+      console.log(
+        `[EnvGuard] Environment changed (${stored} → ${currentFingerprint}) — cleared cache` +
+          (discardedCount
+            ? ` and discarded ${discardedCount} offline submission(s).`
+            : "."),
+      );
+      store.dispatch(
+        showResponseModal({
+          successful: true,
+          message:
+            "Switched backend environment — local cache" +
+            (discardedCount
+              ? " and unsynced offline submissions were"
+              : " was") +
+            " cleared to prevent showing or saving data to the wrong environment.",
+        }),
+      );
+    }
+    await AsyncStorage.setItem(ENV_FINGERPRINT_KEY, currentFingerprint);
+  } catch {
+    // fail open — don't block app startup
+  }
+}
 
 export default function StoreProvider({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const [envCheckDone, setEnvCheckDone] = useState(false);
+
+  useEffect(() => {
+    purgeCacheIfEnvironmentChanged().finally(() => {
+      persistor.persist();
+      setEnvCheckDone(true);
+    });
+  }, []);
+
+  if (!envCheckDone) return null;
+
   return (
     <Provider store={store}>
       <PersistGate loading={null} persistor={persistor}>

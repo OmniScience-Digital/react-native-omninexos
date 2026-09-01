@@ -42,3 +42,24 @@ adb install -r android/app/build/outputs/apk/release/app-release.apk
 //play store
 
 npx eas build -p android
+
+
+//zip files
+
+zip -r react-native-omninexos.zip . \
+-x "node_modules/*" \
+-x ".git/*" \
+-x ".expo/*" \
+-x "android/.gradle/*" \
+-x "android/build/*" \
+-x "android/app/build/*" \
+-x "android/app/.cxx/*" \
+-x "ios/build/*" \
+-x "ios/Pods/*" \
+-x "ios/DerivedData/*" \
+-x "coverage/*" \
+-x "*.log" \
+-x "**/.DS_Store" \
+-x ".env" \
+-x ".env.*"
+
