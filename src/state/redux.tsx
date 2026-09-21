@@ -1,6 +1,6 @@
 // state/redux.tsx
-import { APP_ENV } from "@/app/env";
 import { purgeAllForEnvironmentChange } from "@/services/submissionQueue";
+import { APP_ENV } from "@/src/config/env";
 import globalReducer, { showResponseModal } from "@/src/state";
 import { api } from "@/src/state/api";
 import stockReducer from "@/src/state/stockSlice";

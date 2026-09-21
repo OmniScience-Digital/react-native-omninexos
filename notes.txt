@@ -14,6 +14,7 @@ You build and install it like a normal Android app after prebuilding:
 
    ```bash
    npx expo run:android
+   npx expo run:ios
    ```
 
 That will **build and install the APK automatically** on your phone.

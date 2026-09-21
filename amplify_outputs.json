@@ -44,14 +44,18 @@
         "https://vite.d2ib10qin54ac6.amplifyapp.com/landing",
         "https://test.d2ib10qin54ac6.amplifyapp.com/landing",
         "https://main.d2ib10qin54ac6.amplifyapp.com/landing",
-        "reactnativeomninexos://"
+        "reactnativeomninexos://",
+        "https://omninexos.fray.co.za/landing",
+        "https://test.omninexos.fray.co.za/landing"
       ],
       "redirect_sign_out_uri": [
         "http://localhost:5173/",
         "https://vite.d2ib10qin54ac6.amplifyapp.com/",
         "https://test.d2ib10qin54ac6.amplifyapp.com/",
         "https://main.d2ib10qin54ac6.amplifyapp.com/",
-        "reactnativeomninexos://"
+        "reactnativeomninexos://",
+        "https://omninexos.fray.co.za/",
+        "https://test.omninexos.fray.co.za/"
       ],
       "response_type": "code",
       "scopes": [
@@ -3921,8 +3925,43 @@
               "isRequired": false,
               "attributes": []
             },
-            "clickUpTaskidCrm5": {
-              "name": "clickUpTaskidCrm5",
+            "clickUpTaskidCRM032": {
+              "name": "clickUpTaskidCRM032",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "clickUpTaskidCRM033": {
+              "name": "clickUpTaskidCRM033",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "clickUpTaskidCRM050_Global": {
+              "name": "clickUpTaskidCRM050_Global",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "clickUpTaskidCRM050_SERVICES": {
+              "name": "clickUpTaskidCRM050_SERVICES",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "clickUpTaskidCRM051_GLOBAL": {
+              "name": "clickUpTaskidCRM051_GLOBAL",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "clickUpTaskidCRM051_SERVICES": {
+              "name": "clickUpTaskidCRM051_SERVICES",
               "isArray": false,
               "type": "String",
               "isRequired": false,
