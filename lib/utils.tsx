@@ -8,6 +8,13 @@ export function getJhbTimestamp(): string {
     .toFormat("yyyy-MM-dd HH:mm:ss");
 }
 
+/** "2026-09-21" -> "21 Sep 2026". Returns null for empty/invalid input. */
+export function formatShortDate(value?: string | null): string | null {
+  if (!value) return null;
+  const dt = DateTime.fromISO(value);
+  return dt.isValid ? dt.toFormat("d LLL yyyy") : null;
+}
+
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }

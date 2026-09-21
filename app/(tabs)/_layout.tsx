@@ -1,4 +1,5 @@
 // app/(tabs)/_layout.tsx
+import { useRealtimeSync } from "@/hooks/useRealtimeSync";
 import { useSyncEngine } from "@/hooks/useSyncEngine";
 import { cn } from "@/lib/utils";
 import {
@@ -138,6 +139,9 @@ function TabLayoutInner() {
 function SyncManager() {
   const dispatch = useAppDispatch();
   const { refetchHistory } = useClockInContext();
+
+  // Live auto-sync of fleet + inventory changes made on the web app.
+  useRealtimeSync();
 
   useSyncEngine({
     onDebugLog: (message) => {

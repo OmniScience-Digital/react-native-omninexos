@@ -960,14 +960,7 @@ export default function HomeScreen() {
   const { user } = useAuth();
   const { isOffline } = useNetworkStatus();
 
-  // Inside HomeScreen component
   const { resetScrollY } = useTabBar();
-
-  useFocusEffect(
-    useCallback(() => {
-      resetScrollY();
-    }, [resetScrollY]),
-  );
   const employeeName =
     (user as any)?.preferred_username ??
     (user as any)?.name ??
@@ -996,6 +989,8 @@ export default function HomeScreen() {
   const {
     data: vehicles = [],
     isLoading: vehiclesLoading,
+    isFetching: vehiclesFetching,
+    isError: vehiclesFetchFailed,
     refetch: refetchFleets,
   } = useListFleetsQuery();
 
@@ -1006,6 +1001,21 @@ export default function HomeScreen() {
   } = useListCategoriesQuery();
 
   const [getInspections] = useLazyGetInspectionsByFleetQuery();
+
+  // Home stays mounted for the whole session (tabs are `lazy: false`), so the
+  // refetch-on-mount policy never fires here. Refresh when the tab regains
+  // focus, at most every 30s, and only when online.
+  const lastFocusRefetch = useRef(Date.now());
+  useFocusEffect(
+    useCallback(() => {
+      resetScrollY();
+      if (!isOffline && Date.now() - lastFocusRefetch.current > 30_000) {
+        lastFocusRefetch.current = Date.now();
+        refetchFleets();
+        refetchCategories();
+      }
+    }, [resetScrollY, isOffline, refetchFleets, refetchCategories]),
+  );
 
   const INSPECTION_TOTAL_KEY = "inspections:total";
   const [totalInspections, setTotalInspections] = useState(0);
@@ -1030,6 +1040,9 @@ export default function HomeScreen() {
 
   // Guard against running the loop multiple times for the same vehicle list
   const lastVehicleIds = useRef<string>("");
+  const lastRecountAt = useRef(0);
+  const forceRecount = useRef(false);
+  const RECOUNT_MIN_INTERVAL_MS = 60_000;
 
   const calculateInspectionsSummary = useCallback(
     async (fleets: typeof vehicles) => {
@@ -1039,17 +1052,21 @@ export default function HomeScreen() {
         return;
       }
 
-      // Skip if vehicles haven't changed and we're not forcing a refresh
+      // Skip if the vehicle list hasn't changed (a settled fleet fetch clears
+      // this guard when a recount is due – see the effect below).
       const ids = fleets.map((v) => v.id).join(",");
-      if (ids === lastVehicleIds.current && !refresh) return;
+      if (ids === lastVehicleIds.current) return;
       lastVehicleIds.current = ids;
+      lastRecountAt.current = Date.now();
 
       setInspectionsCalculating(true);
       try {
         // Run all fleet queries in parallel
         const results = await Promise.allSettled(
           fleets.map((v) =>
-            getInspections({ fleetId: v.id, limit: 1 })
+            // Same args as the inspection form's query => same cache entry, so
+            // this also keeps each vehicle's last inspection available offline.
+            getInspections({ fleetId: v.id, sortDirection: "DESC", limit: 1 })
               .unwrap()
               .catch(() => [] as any[]),
           ),
@@ -1105,29 +1122,42 @@ export default function HomeScreen() {
         setInspectionsCalculating(false);
       }
     },
-    [getInspections, refresh],
+    [getInspections],
   );
 
-  // When offline, skip the calculation entirely – just show cached value
+  // Recount inspections + stamp "last synced" whenever a fleet fetch settles.
+  // RTK's structural sharing keeps `vehicles` referentially equal when nothing
+  // changed, so a settled fetch (isFetching true -> false) is the only signal
+  // that inspections may have changed on the web. Offline: keep cached values.
+  const wasFetching = useRef(false);
   useEffect(() => {
-    if (!vehiclesLoading && !isOffline) {
-      calculateInspectionsSummary(vehicles);
-      const now = new Date().toISOString();
-      setLastSyncedAt(now);
-      AsyncStorage.setItem(LAST_SYNCED_KEY, now);
-    }
-  }, [vehicles, vehiclesLoading, calculateInspectionsSummary, isOffline]);
+    const justSettled = wasFetching.current && !vehiclesFetching;
+    wasFetching.current = vehiclesFetching;
+    if (vehiclesLoading || vehiclesFetching || isOffline) return;
 
-  // When RTK invalidates the Inspection tag (e.g. after sync), vehicles may
-  // reload with the same IDs but we need to re-query inspections with fresh data.
-  const prevVehiclesLoading = useRef(false);
-  useEffect(() => {
-    if (prevVehiclesLoading.current && !vehiclesLoading) {
-      // A refetch just finished – clear guard so inspection query re-runs
-      lastVehicleIds.current = "";
+    if (justSettled) {
+      const due =
+        forceRecount.current ||
+        Date.now() - lastRecountAt.current > RECOUNT_MIN_INTERVAL_MS;
+      if (due) {
+        forceRecount.current = false;
+        lastVehicleIds.current = ""; // let the recount run
+      }
+      if (!vehiclesFetchFailed) {
+        const now = new Date().toISOString();
+        setLastSyncedAt(now);
+        AsyncStorage.setItem(LAST_SYNCED_KEY, now);
+      }
     }
-    prevVehiclesLoading.current = vehiclesLoading;
-  }, [vehiclesLoading]);
+    calculateInspectionsSummary(vehicles);
+  }, [
+    vehicles,
+    vehiclesLoading,
+    vehiclesFetching,
+    vehiclesFetchFailed,
+    isOffline,
+    calculateInspectionsSummary,
+  ]);
 
   // Attendance disabled — quick clock handler no longer used
   // const handleQuickClock = useCallback(async () => {
@@ -1137,16 +1167,14 @@ export default function HomeScreen() {
 
   const handleRefresh = async () => {
     setRefresh(true);
-    // Clear the vehicle ID guard so calculateInspectionsSummary re-runs
-    lastVehicleIds.current = "";
+    // Make the settle-effect recount inspections once the refetch lands.
+    forceRecount.current = true;
     // refetchHistory() removed — attendance system disabled
-    await Promise.all([refetchFleets(), refetchCategories()]);
-    if (!isOffline) {
-      const now = new Date().toISOString();
-      setLastSyncedAt(now);
-      await AsyncStorage.setItem(LAST_SYNCED_KEY, now);
+    try {
+      await Promise.all([refetchFleets(), refetchCategories()]);
+    } finally {
+      setRefresh(false);
     }
-    setRefresh(false);
   };
 
   // Show inspections spinner only while online and actually loading vehicles or calculating

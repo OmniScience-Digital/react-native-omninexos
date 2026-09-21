@@ -7,7 +7,7 @@ export const CustomScrollView = ({
   showsVerticalScrollIndicator = false,
   contentContainerClassName = "pb-35",
   ...props
-}: Omit<ScrollViewProps, "refreshControl"> & {
+}: ScrollViewProps & {
   contentContainerClassName?: string;
 }) => {
   return (

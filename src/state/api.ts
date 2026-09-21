@@ -1,5 +1,6 @@
 //src/state/api.ts
 import { client } from "@/src/amplify";
+import { gql } from "@/src/state/gql";
 import { createApi, fakeBaseQuery } from "@reduxjs/toolkit/query/react";
 import {
   CREATE_CLOCK_RECORD,
@@ -152,6 +153,20 @@ function netAwareError(e: any): { error: any } {
 export const api = createApi({
   reducerPath: "api",
   baseQuery: fakeBaseQuery(),
+
+  // ── Freshness policy (one place, every screen inherits it) ────────────────
+  // The persisted cache is also the offline database, so:
+  //  • refetch when a screen mounts if its data is older than 30s;
+  //  • refetch subscribed queries when the app returns to the foreground or the
+  //    network comes back (wired to AppState/NetInfo in src/state/redux.tsx);
+  //  • never evict cached entries just because a screen closed – keep them for
+  //    a week so they are still there the next time the phone is offline.
+  // A refetch that fails offline keeps the last good `data`.
+  refetchOnMountOrArgChange: 30,
+  refetchOnFocus: true,
+  refetchOnReconnect: true,
+  keepUnusedDataFor: 60 * 60 * 24 * 7,
+
   tagTypes: [
     "Fleet",
     "Inspection",
@@ -167,12 +182,22 @@ export const api = createApi({
     listFleets: build.query<Fleet[], void>({
       queryFn: async () => {
         try {
-          const { data, errors } = (await client.graphql({
-            query: LIST_FLEETS,
-            authMode: "apiKey",
-          })) as any;
-          if (errors) return { error: errors[0].message };
-          return { data: data.listFleets.items as Fleet[] };
+          // Follow nextToken: AppSync returns one page at a time, so without
+          // this a vehicle past the first page never shows up in the app.
+          const items: Fleet[] = [];
+          let nextToken: string | null = null;
+          let pages = 0;
+          do {
+            const { data, errors } = (await gql({
+              query: LIST_FLEETS,
+              variables: { nextToken },
+              authMode: "apiKey",
+            })) as any;
+            if (errors) return { error: errors[0].message };
+            items.push(...(data.listFleets.items as Fleet[]));
+            nextToken = data.listFleets.nextToken ?? null;
+          } while (nextToken && ++pages < 50);
+          return { data: items };
         } catch (e: any) {
           return netAwareError(e);
         }
@@ -257,7 +282,7 @@ export const api = createApi({
       {
         queryFn: async ({ fleetId, sortDirection = "DESC", limit = 1 }) => {
           try {
-            const { data, errors } = (await client.graphql({
+            const { data, errors } = (await gql({
               query: INSPECTIONS_BY_FLEET_AND_NUMBER,
               variables: { fleetid: fleetId, sortDirection, limit },
               authMode: "apiKey",
@@ -304,7 +329,7 @@ export const api = createApi({
     >({
       queryFn: async ({ fleetId, limit = 100 }) => {
         try {
-          const { data, errors } = (await client.graphql({
+          const { data, errors } = (await gql({
             query: LIST_INSPECTIONS_BY_FLEET,
             variables: { fleetId, limit },
             authMode: "apiKey",
@@ -328,7 +353,7 @@ export const api = createApi({
     >({
       queryFn: async ({ fleetId, limit = 20, nextToken = null }) => {
         try {
-          const { data, errors } = (await client.graphql({
+          const { data, errors } = (await gql({
             query: LIST_INSPECTIONS_BY_FLEET_PAGINATED,
             variables: { fleetId, limit, nextToken },
             authMode: "apiKey",
@@ -354,7 +379,7 @@ export const api = createApi({
     listCategories: build.query<Category[], void>({
       queryFn: async () => {
         try {
-          const { data, errors } = (await client.graphql({
+          const { data, errors } = (await gql({
             query: LIST_CATEGORIES,
             authMode: "apiKey",
           })) as any;
@@ -370,7 +395,7 @@ export const api = createApi({
     listSubcategoriesByCategory: build.query<Subcategory[], string>({
       queryFn: async (categoryId) => {
         try {
-          const { data, errors } = (await client.graphql({
+          const { data, errors } = (await gql({
             query: LIST_SUBCATEGORIES_BY_CATEGORY,
             variables: { categoryId },
             authMode: "apiKey",
@@ -392,7 +417,7 @@ export const api = createApi({
     listComponentsBySubcategory: build.query<Component[], string>({
       queryFn: async (subcategoryId) => {
         try {
-          const { data, errors } = (await client.graphql({
+          const { data, errors } = (await gql({
             query: LIST_COMPONENTS_BY_SUBCATEGORY,
             variables: { subcategoryId },
             authMode: "apiKey",
@@ -439,7 +464,7 @@ export const api = createApi({
     >({
       queryFn: async ({ subcategoryId, limit = 20, nextToken = null }) => {
         try {
-          const { data, errors } = (await client.graphql({
+          const { data, errors } = (await gql({
             query: LIST_COMPONENTS_BY_SUBCATEGORY_PAGINATED,
             variables: { subcategoryId, limit, nextToken },
             authMode: "apiKey",

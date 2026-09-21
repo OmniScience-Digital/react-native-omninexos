@@ -14,6 +14,7 @@ import {
 } from "@reduxjs/toolkit";
 import { setupListeners } from "@reduxjs/toolkit/query";
 import React, { useEffect, useState } from "react";
+import { AppState } from "react-native";
 import {
   Provider,
   TypedUseSelectorHook,
@@ -21,6 +22,7 @@ import {
   useSelector,
 } from "react-redux";
 import {
+  createTransform,
   FLUSH,
   PAUSE,
   PERSIST,
@@ -33,10 +35,32 @@ import {
 import { PersistGate } from "redux-persist/integration/react";
 
 // ── Persist config for the API cache ─────────────────────────────────────────
+// The persisted `queries` are the app's offline database. If the app is killed
+// while a request is in flight, that entry is saved as `pending`. RTK Query
+// never refetches a `pending` entry (not on mount, not on pull-to-refresh), so
+// it would stay stale/spinning forever. On load, settle anything not
+// `fulfilled`: keep its data (marked stale by its old timestamp so it refetches
+// on mount) or drop it if it has nothing to show.
+const settleQueries = createTransform(
+  (inbound: any) => inbound,
+  (outbound: any) =>
+    Object.fromEntries(
+      Object.entries(outbound ?? {}).flatMap(([key, q]: [string, any]) => {
+        if (q?.status === "fulfilled") return [[key, q]];
+        if (q?.data !== undefined) {
+          return [[key, { ...q, status: "fulfilled", error: undefined }]];
+        }
+        return [];
+      }),
+    ),
+  { whitelist: ["queries"] },
+);
+
 const apiPersistConfig = {
   key: "api",
   storage: AsyncStorage,
   whitelist: ["queries"],
+  transforms: [settleQueries],
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -163,7 +187,31 @@ export const useAppSelector: TypedUseSelectorHook<RootState> = useSelector;
 
 const store = makeStore();
 const persistor = persistStore(store, { manualPersist: true } as any);
-setupListeners(store.dispatch);
+
+// RTK Query's refetchOnFocus / refetchOnReconnect rely on browser events that
+// don't exist in React Native, so feed them from AppState and NetInfo.
+// Freshness triggers are optimistic about connectivity (a failed background
+// read is silent and keeps cached data); writes/sync use the strict check.
+setupListeners(
+  store.dispatch,
+  (dispatch, { onFocus, onFocusLost, onOnline, onOffline }) => {
+    const appSub = AppState.addEventListener("change", (state) =>
+      dispatch(state === "active" ? onFocus() : onFocusLost()),
+    );
+    let wasOnline = true;
+    const netUnsub = NetInfo.addEventListener((net) => {
+      const online =
+        net.isConnected === true && net.isInternetReachable !== false;
+      if (online && !wasOnline) dispatch(onOnline());
+      if (!online && wasOnline) dispatch(onOffline());
+      wasOnline = online;
+    });
+    return () => {
+      appSub.remove();
+      netUnsub();
+    };
+  },
+);
 
 export { persistor };
 

@@ -22,6 +22,7 @@ import {
 import {
   useCreateInspectionMutation,
   useGetInspectionsByFleetQuery,
+  useLazyGetInspectionsByFleetQuery,
   useListFleetsQuery,
   useUpdateFleetKmMutation,
 } from "@/src/state/api";
@@ -33,7 +34,7 @@ import {
   documentDirectory,
   makeDirectoryAsync,
 } from "expo-file-system/legacy";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   RefreshControl,
@@ -78,6 +79,7 @@ export default function VehicleInspectionForm() {
   const { data: vehicles = [], isLoading: vehiclesLoading } =
     useListFleetsQuery();
   const [createInspection] = useCreateInspectionMutation();
+  const [fetchLatestInspection] = useLazyGetInspectionsByFleetQuery();
   const [updateFleetKm] = useUpdateFleetKmMutation();
 
   const formState = useAppSelector((state) => state.global.vifForm);
@@ -119,36 +121,73 @@ export default function VehicleInspectionForm() {
   }, []);
 
   // ─── Auto-fill from last inspection ──────────────────────
+  // Runs when the vehicle changes, or when a NEWER inspection arrives while the
+  // form is still exactly what we auto-filled. Background refetches (app
+  // foreground, realtime sync) must never overwrite answers the inspector has
+  // already changed.
+  const formRef = useRef(formState);
+  formRef.current = formState;
+  const autofillRef = useRef<{
+    vehicleId: string;
+    inspectionId: string;
+    odometer: string;
+    answers: (boolean | null)[];
+  } | null>(null);
+
   useEffect(() => {
-    if (recentInspection?.odometerStart) {
-      dispatch(setOdometer(recentInspection.odometerStart.toString()));
-      const fieldNames = [
-        "oilAndCoolant",
-        "fuelLevel",
-        "seatbeltDoorsMirrors",
-        "handbrake",
-        "tyreCondition",
-        "spareTyre",
-        "numberPlate",
-        "licenseDisc",
-        "leaks",
-        "lights",
-        "defrosterAircon",
-        "emergencyKit",
-        "clean",
-        "warnings",
-        "windscreenWipers",
-        "serviceBook",
-        "siteKit",
-      ];
-      fieldNames.forEach((field, idx) => {
-        const value = (recentInspection as any)[field];
-        if (value !== undefined && value !== null) {
-          dispatch(setBooleanAnswer({ index: idx, value }));
-        }
-      });
+    const vehicleId = formState.selectedVehicleId;
+    if (!vehicleId) {
+      autofillRef.current = null; // form was reset
+      return;
     }
-  }, [recentInspection, dispatch]);
+    if (!recentInspection?.odometerStart) return;
+
+    const prev = autofillRef.current;
+    if (prev && prev.vehicleId === vehicleId) {
+      if (prev.inspectionId === recentInspection.id) return; // nothing new
+      const current = formRef.current;
+      const untouched =
+        current.odometerValue === prev.odometer &&
+        current.booleanQuestions.every((q, i) => q.value === prev.answers[i]);
+      if (!untouched) return; // inspector already edited – keep their answers
+    }
+
+    const fieldNames = [
+      "oilAndCoolant",
+      "fuelLevel",
+      "seatbeltDoorsMirrors",
+      "handbrake",
+      "tyreCondition",
+      "spareTyre",
+      "numberPlate",
+      "licenseDisc",
+      "leaks",
+      "lights",
+      "defrosterAircon",
+      "emergencyKit",
+      "clean",
+      "warnings",
+      "windscreenWipers",
+      "serviceBook",
+      "siteKit",
+    ];
+    const odometer = recentInspection.odometerStart.toString();
+    dispatch(setOdometer(odometer));
+    const answers = formRef.current.booleanQuestions.map((q) => q.value);
+    fieldNames.forEach((field, idx) => {
+      const value = (recentInspection as any)[field];
+      if (value !== undefined && value !== null) {
+        dispatch(setBooleanAnswer({ index: idx, value }));
+        answers[idx] = value;
+      }
+    });
+    autofillRef.current = {
+      vehicleId,
+      inspectionId: recentInspection.id,
+      odometer,
+      answers,
+    };
+  }, [recentInspection, formState.selectedVehicleId, dispatch]);
 
   // ─── Pull-to-refresh — just refetch data, sync engine handles queue ──
   const onRefresh = async () => {
@@ -183,6 +222,36 @@ export default function VehicleInspectionForm() {
     !!formState.odometerValue &&
     photosReady &&
     !formState.booleanQuestions.some((q) => q.value === null);
+
+  // What the inspector still has to provide (same rules as canSubmit).
+  const getMissingItems = (): string[] => {
+    const missing: string[] = [];
+    if (!formState.selectedVehicleId) missing.push("Select a vehicle");
+    if (!formState.odometerValue) missing.push("Provide vehicle mileage");
+    if (formState.booleanQuestions.some((q) => q.value === null)) {
+      missing.push(
+        `Answer all ${formState.booleanQuestions.length} inspection questions`,
+      );
+    }
+    if (isOnline) {
+      if (formState.photos.length === 0) {
+        missing.push("Upload inspection photos");
+      } else if (formState.photos.some((p) => p.status === "uploading")) {
+        missing.push("Wait for photos to finish uploading");
+      }
+    }
+    return missing;
+  };
+
+  const missingMessage = (missing: string[]): string => {
+    if (missing.length === 1) {
+      const item = missing[0];
+      return `Please ${item.charAt(0).toLowerCase()}${item.slice(1)}.`;
+    }
+    return `Please complete the following:\n${missing
+      .map((m) => `• ${m}`)
+      .join("\n")}`;
+  };
 
   const uploadLocalPhotos = async (inspectionNo: number): Promise<string[]> => {
     const s3Keys: string[] = [];
@@ -236,8 +305,11 @@ export default function VehicleInspectionForm() {
     return s3Keys;
   };
 
-  const buildPayload = (s3PhotoKeys: string[]) => {
-    const inspectionNo = (recentInspection?.inspectionNo ?? 0) + 1;
+  const buildPayload = (
+    s3PhotoKeys: string[],
+    inspectionNo: number,
+    fleets: Fleet[] = vehicles,
+  ) => {
     const timestamp = getJhbTimestamp();
     const inspectionResults = formState.booleanQuestions.map((q) => ({
       question: q.question,
@@ -275,7 +347,7 @@ export default function VehicleInspectionForm() {
       history: historyEntry,
     };
 
-    const customFields = calculateCustomFields(formState, vehicles, timestamp);
+    const customFields = calculateCustomFields(formState, fleets, timestamp);
 
     const clickUpPayload = {
       vehicleId: formState.selectedVehicleId,
@@ -313,10 +385,39 @@ export default function VehicleInspectionForm() {
     };
   };
 
-  const submitOnline = async () => {
-    const inspectionNo = (recentInspection?.inspectionNo ?? 0) + 1;
+  const submitOnline = async (): Promise<"submitted" | "queued"> => {
+    // Never number an inspection from the cache: the web app or another phone
+    // may have added one since. Ask the server, exactly as the sync engine does
+    // for queued items (getLatestInspectionNo).
+    let latestNo: number;
+    try {
+      const latest = await fetchLatestInspection({
+        fleetId: formState.selectedVehicleId,
+        sortDirection: "DESC",
+        limit: 1,
+      }).unwrap();
+      latestNo = latest?.[0]?.inspectionNo ?? 0;
+    } catch (e: any) {
+      if (e?.status !== "FETCH_ERROR") throw e;
+      // "Connected" but the server can't be reached, and nothing has been
+      // written yet – safe to fall back to the offline queue.
+      await queueOffline();
+      return "queued";
+    }
+    const inspectionNo = latestNo + 1;
+
+    // "Service required" / "Tyre rotation required" depend on the vehicle's
+    // last service / rotation km. Use the server's current copy, not whatever
+    // the phone cached (e.g. a rotation km edited on the web since the last
+    // sync). If it can't be fetched, fall back to the cached copy.
+    let fleetsForFlags = vehicles;
+    try {
+      const fresh = await refetchFleets().unwrap();
+      if (fresh?.length) fleetsForFlags = fresh;
+    } catch {}
+
     const s3PhotoKeys = await uploadLocalPhotos(inspectionNo);
-    const payload = buildPayload(s3PhotoKeys);
+    const payload = buildPayload(s3PhotoKeys, inspectionNo, fleetsForFlags);
 
     await updateFleetKm(payload.fleetKmUpdate).unwrap();
     await createInspection({ input: payload.inspectionData }).unwrap();
@@ -336,6 +437,7 @@ export default function VehicleInspectionForm() {
       });
       if (!result?.success) throw new Error(`Failed to attach photo ${i + 1}`);
     }
+    return "submitted";
   };
 
   const queueOffline = async () => {
@@ -371,6 +473,7 @@ export default function VehicleInspectionForm() {
 
     const payload = buildPayload(
       formState.photos.filter((p) => p.s3Key).map((p) => p.s3Key),
+      inspectionNo, // provisional – the sync engine re-derives it from the server
     );
 
     try {
@@ -393,21 +496,19 @@ export default function VehicleInspectionForm() {
   };
 
   const handleSubmit = async () => {
+    const missing = getMissingItems();
+    if (missing.length > 0) {
+      dispatch(
+        showResponseModal({
+          successful: false,
+          message: missingMessage(missing),
+        }),
+      );
+      return;
+    }
+
     setSubmitting(true);
     try {
-      if (
-        !formState.odometerValue ||
-        formState.booleanQuestions.some((q) => q.value === null)
-      ) {
-        dispatch(
-          showResponseModal({
-            successful: false,
-            message: "Please complete all required fields",
-          }),
-        );
-        return;
-      }
-
       const net = await NetInfo.fetch();
       const online = !!net.isConnected;
 
@@ -421,11 +522,14 @@ export default function VehicleInspectionForm() {
           );
           return;
         }
-        await submitOnline();
+        const outcome = await submitOnline();
         dispatch(
           showResponseModal({
             successful: true,
-            message: "Inspection submitted successfully!",
+            message:
+              outcome === "queued"
+                ? "Couldn't reach the server — saved offline. Will submit automatically when back online."
+                : "Inspection submitted successfully!",
           }),
         );
       } else {
@@ -553,7 +657,7 @@ export default function VehicleInspectionForm() {
                 (!canSubmit || submitting) && styles.submitBtnDisabled,
               ]}
               onPress={handleSubmit}
-              disabled={!canSubmit || submitting}
+              disabled={submitting}
             >
               {submitting ? (
                 <ActivityIndicator color={theme.colors.primaryText} />

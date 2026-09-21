@@ -22,6 +22,7 @@ import {
   ActivityIndicator,
   Alert,
   Modal,
+  RefreshControl,
   StyleSheet,
   TextInput,
   TouchableOpacity,
@@ -218,7 +219,19 @@ export default function FleetListScreen({
 }) {
   const { theme } = useTheme();
   const styles = getStyles(theme.colors);
-  const { data: fleets = [], isLoading } = useListFleetsQuery();
+  const { data: fleets = [], isLoading, refetch } = useListFleetsQuery();
+
+  // Manual pull-to-refresh. Uses its own flag so background refetches
+  // (on open / foreground / realtime) never flash the pull spinner.
+  const [pulling, setPulling] = useState(false);
+  const onRefresh = async () => {
+    setPulling(true);
+    try {
+      await refetch();
+    } finally {
+      setPulling(false);
+    }
+  };
   const [createFleet] = useCreateFleetMutation();
   const [updateFleet] = useUpdateFleetMutation();
   const [deleteFleet] = useDeleteFleetMutation();
@@ -277,7 +290,12 @@ export default function FleetListScreen({
 
   return (
     <>
-      <CustomScrollView style={styles.content}>
+      <CustomScrollView
+        style={styles.content}
+        refreshControl={
+          <RefreshControl refreshing={pulling} onRefresh={onRefresh} />
+        }
+      >
         {/* Search Card */}
         <View style={styles.card}>
           <View style={{ padding: 14 }}>

@@ -19,38 +19,66 @@ export interface QueuedSubmission {
 const DB_NAME = "submissions.db";
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 100;
+const OPEN_ATTEMPTS = 3;
 
+// ------------------------------------------------------------------
+// Connection management
+//
+// expo-sqlite (Android) keeps a native cache of open databases BY NAME and
+// hands the SAME native handle to every openDatabaseAsync(name) call, with a
+// reference count. That bites this queue in two ways:
+//   1. A reopen attempt that opens fine but then fails (e.g. at CREATE TABLE)
+//      and is simply abandoned keeps its reference forever. Later the shared
+//      handle can be released/closed underneath the live connection, and
+//      because the leaked reference stops the count from ever reaching zero,
+//      the broken handle stays cached: every retry gets the same dead handle
+//      and fails with NativeDatabase.execAsync ... NullPointerException until
+//      the app is restarted.
+//   2. Closing "our" connection can close one another caller is still using.
+//
+// So: every connection is opened with useNewConnection (never the shared
+// cached handle), a failed attempt is always closed, there is exactly one
+// in-flight open, and a failing connection is discarded by identity.
+// ------------------------------------------------------------------
 let db: SQLite.SQLiteDatabase | null = null;
-let initPromise: Promise<SQLite.SQLiteDatabase> | null = null;
+let opening: Promise<SQLite.SQLiteDatabase> | null = null;
+let hasOpenedThisSession = false;
 
-// ------------------------------------------------------------------
-// Force a full database reopen (with up to 3 retries)
-// ------------------------------------------------------------------
-async function forceReopen(): Promise<SQLite.SQLiteDatabase> {
-  // On Android APK builds the JSI/native bridge needs a moment to
-  // settle before SQLite can open. Expo Go is immune (it pre-warms
-  // the bridge), but a cold APK launch reliably NPEs without this.
-  // 150ms was not enough on Samsung devices — bumped to 400ms.
-  if (Platform.OS === "android") {
-    await new Promise((r) => setTimeout(r, 400));
-  }
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
-  // Close existing connection if any
-  if (db) {
-    try {
-      await db.closeAsync();
-    } catch (closeErr) {
-      console.warn("[submissionQueue] Ignored close error:", closeErr);
-    }
-    db = null;
+/** Close a connection; never throws. */
+async function closeQuietly(handle: SQLite.SQLiteDatabase | null | undefined) {
+  if (!handle) return;
+  try {
+    await handle.closeAsync();
+  } catch (closeErr) {
+    console.warn("[submissionQueue] Ignored close error:", closeErr);
   }
-  initPromise = null;
+}
+
+/** Forget `handle` if it is the current connection, and close it. */
+async function discardHandle(handle: SQLite.SQLiteDatabase) {
+  if (db === handle) db = null;
+  await closeQuietly(handle);
+}
+
+async function openFresh(): Promise<SQLite.SQLiteDatabase> {
+  // On Android the JSI/native bridge needs a moment to settle on a cold launch
+  // before SQLite can open (150ms was not enough on Samsung devices).
+  if (Platform.OS === "android" && !hasOpenedThisSession) {
+    await sleep(400);
+  }
 
   let lastError: any;
-  for (let attempt = 1; attempt <= 3; attempt++) {
+  for (let attempt = 1; attempt <= OPEN_ATTEMPTS; attempt++) {
+    let candidate: SQLite.SQLiteDatabase | null = null;
     try {
-      const newDb = await SQLite.openDatabaseAsync(DB_NAME);
-      await newDb.execAsync(`
+      // useNewConnection: never reuse the native module's cached handle.
+      candidate = await SQLite.openDatabaseAsync(DB_NAME, {
+        useNewConnection: true,
+      });
+      await candidate.execAsync(`
+        PRAGMA busy_timeout = 3000;
         CREATE TABLE IF NOT EXISTS pending_submissions (
           id          INTEGER PRIMARY KEY AUTOINCREMENT,
           type        TEXT    NOT NULL,
@@ -64,73 +92,79 @@ async function forceReopen(): Promise<SQLite.SQLiteDatabase> {
         CREATE INDEX IF NOT EXISTS idx_status ON pending_submissions(status);
       `);
       // Validate the connection is alive immediately after open
-      await newDb.getFirstAsync("SELECT 1");
-      db = newDb;
-      return newDb;
+      await candidate.getFirstAsync("SELECT 1");
+      hasOpenedThisSession = true;
+      return candidate;
     } catch (err) {
       lastError = err;
       console.warn(`[submissionQueue] Open attempt ${attempt} failed:`, err);
-      if (attempt < 3) {
-        await new Promise((resolve) => setTimeout(resolve, 200 * attempt));
-      }
+      await closeQuietly(candidate); // never leak a half-open handle
+      if (attempt < OPEN_ATTEMPTS) await sleep(200 * attempt);
     }
   }
   throw new Error(
-    `Failed to open database after 3 attempts: ${lastError?.message}`,
+    `Failed to open database after ${OPEN_ATTEMPTS} attempts: ${lastError?.message}`,
   );
 }
 
-// ------------------------------------------------------------------
-// Get a valid database connection (with aggressive reopen on failure)
-// ------------------------------------------------------------------
-async function getDb(): Promise<SQLite.SQLiteDatabase> {
-  // If we already have a cached connection, validate it
-  if (db) {
-    try {
-      await db.getFirstAsync("SELECT 1");
-      return db;
-    } catch (err) {
-      console.warn("[submissionQueue] Cached db invalid, forcing reopen", err);
-      return await forceReopen();
-    }
+/** Exactly one open in flight; everyone else awaits the same promise. */
+function openShared(): Promise<SQLite.SQLiteDatabase> {
+  if (!opening) {
+    opening = openFresh()
+      .then((fresh) => {
+        db = fresh;
+        return fresh;
+      })
+      .finally(() => {
+        opening = null;
+      });
   }
-
-  // If an init is already in flight, wait for it but be ready to retry
-  if (initPromise) {
-    try {
-      const dbInstance = await initPromise;
-      await dbInstance.getFirstAsync("SELECT 1");
-      return dbInstance;
-    } catch (err) {
-      console.warn(
-        "[submissionQueue] Pending init failed, forcing reopen",
-        err,
-      );
-      return await forceReopen();
-    }
-  }
-
-  // No cached connection – start a fresh init
-  initPromise = forceReopen().catch((err) => {
-    initPromise = null;
-    throw err;
-  });
-  return await initPromise;
+  return opening;
 }
 
 // ------------------------------------------------------------------
-// Reset the cached connection (now does a proper close)
+// Get a valid database connection
+// ------------------------------------------------------------------
+async function getDb(): Promise<SQLite.SQLiteDatabase> {
+  const current = db;
+  if (current) {
+    try {
+      await current.getFirstAsync("SELECT 1");
+      return current;
+    } catch (err) {
+      console.warn("[submissionQueue] Cached db invalid, reopening", err);
+      await discardHandle(current);
+    }
+  }
+  return openShared();
+}
+
+// ------------------------------------------------------------------
+// Drop the cached connection (waits for any open in flight first)
 // ------------------------------------------------------------------
 export const resetDbConnection = async (): Promise<void> => {
-  if (db) {
+  if (opening) {
     try {
-      await db.closeAsync();
-    } catch (e) {
-      // ignore
+      await opening;
+    } catch {
+      // ignore – nothing to reset if the open failed
     }
-    db = null;
   }
-  initPromise = null;
+  const current = db;
+  db = null;
+  await closeQuietly(current);
+};
+
+// ------------------------------------------------------------------
+// Re-validate (and if needed repair) the connection, e.g. on app resume, so
+// it is ready before the user taps "Save Offline". Never throws.
+// ------------------------------------------------------------------
+export const warmDbConnection = async (): Promise<void> => {
+  try {
+    await getDb();
+  } catch (err) {
+    console.warn("[submissionQueue] Warm-up failed:", err);
+  }
 };
 
 // ------------------------------------------------------------------
@@ -142,8 +176,9 @@ async function withRetry<T>(
 ): Promise<T> {
   let lastError: any;
   for (let attempt = 1; attempt <= 2; attempt++) {
+    let database: SQLite.SQLiteDatabase | null = null;
     try {
-      const database = await getDb();
+      database = await getDb();
       return await operation(database);
     } catch (err: any) {
       lastError = err;
@@ -160,8 +195,10 @@ async function withRetry<T>(
           `[submissionQueue] ${context} failed, resetting DB and retrying`,
           err,
         );
-        await resetDbConnection(); // Now does a full close
-        await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
+        // Discard only the connection that failed, so a healthy one opened
+        // meanwhile by another caller is left alone.
+        if (database) await discardHandle(database);
+        await sleep(RETRY_DELAY_MS);
         continue;
       }
       throw err;

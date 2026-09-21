@@ -1,3 +1,4 @@
+import { formatShortDate } from "@/lib/utils";
 import { useTheme } from "@/src/contexts/theme-context";
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
@@ -6,6 +7,8 @@ interface BooleanQuestionProps {
   value: boolean | null;
   onChange: (value: boolean) => void;
   previousAnswer?: boolean | null;
+  /** Date of the inspection the previous answer came from (YYYY-MM-DD). */
+  previousDate?: string | null;
 }
 
 export default function BooleanQuestion({
@@ -13,8 +16,10 @@ export default function BooleanQuestion({
   value,
   onChange,
   previousAnswer,
+  previousDate,
 }: BooleanQuestionProps) {
   const { theme } = useTheme();
+  const previousDateLabel = formatShortDate(previousDate);
   const styles = StyleSheet.create({
     container: {
       borderWidth: 1,
@@ -120,7 +125,9 @@ export default function BooleanQuestion({
       </View>
       {previousAnswer !== null && previousAnswer !== undefined && (
         <Text style={styles.previous}>
-          Previous: {previousAnswer ? "✅ Yes" : "❌ No"}
+          {`Previous${previousDateLabel ? ` (${previousDateLabel})` : ""}: ${
+            previousAnswer ? "✅ Yes" : "❌ No"
+          }`}
         </Text>
       )}
     </View>

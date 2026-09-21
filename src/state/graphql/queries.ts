@@ -3,8 +3,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const LIST_FLEETS = /* GraphQL */ `
-  query ListFleets {
-    listFleets {
+  query ListFleets($nextToken: String) {
+    listFleets(limit: 500, nextToken: $nextToken) {
       items {
         id
         vehicleVin
@@ -30,6 +30,7 @@ export const LIST_FLEETS = /* GraphQL */ `
         breakandLuxExpirey
         liscenseDiscExpirey
       }
+      nextToken
     }
   }
 `;

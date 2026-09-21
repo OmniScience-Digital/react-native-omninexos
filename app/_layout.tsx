@@ -2,7 +2,7 @@
 import ResponseModal from "@/components/responsemodal";
 import "@/global.css";
 
-import { resetDbConnection } from "@/services/submissionQueue";
+import { warmDbConnection } from "@/services/submissionQueue";
 import { AuthProvider, useAuth } from "@/src/contexts/auth-context";
 import { NotificationProvider } from "@/src/contexts/notification-context";
 import { ThemeProvider, useTheme } from "@/src/contexts/theme-context";
@@ -59,12 +59,15 @@ function LayoutInner() {
     "sans-light": require("../assets/fonts/PlusJakartaSans-Light.ttf"),
   });
 
-  // Reset SQLite on foreground resume (Android NullPointerException fix)
+  // On foreground resume, re-validate (and repair if needed) the offline-queue
+  // database so it is ready before the user taps "Save Offline". This used to
+  // close the connection on every resume, which could break a connection that
+  // was still in use.
   const appState = useRef(AppState.currentState);
   useEffect(() => {
     const sub = AppState.addEventListener("change", (next: AppStateStatus) => {
       if (appState.current.match(/inactive|background/) && next === "active") {
-        resetDbConnection();
+        warmDbConnection();
       }
       appState.current = next;
     });

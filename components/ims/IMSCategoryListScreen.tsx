@@ -57,33 +57,57 @@ export default function IMSCategoryListScreen({
       setLoadingCounts(true);
       const enriched: CategoryWithCounts[] = [];
 
-      for (const cat of cats) {
-        const subResult = await getSubcategories(cat.id).unwrap();
-        const subcategories = subResult || [];
-        const subcategoryCount = subcategories.length;
+      // Fresh from the server when online; when the request fails (offline,
+      // timeout) fall back to the persisted cache so the screen still works.
+      const freshOrCached = async <T,>(
+        fresh: () => Promise<T[] | undefined>,
+        cached: () => Promise<T[] | undefined>,
+      ): Promise<T[]> => {
+        try {
+          return (await fresh()) || [];
+        } catch {
+          try {
+            return (await cached()) || [];
+          } catch {
+            return [];
+          }
+        }
+      };
 
-        let componentCount = 0;
-        let lowStockCount = 0;
+      try {
+        for (const cat of cats) {
+          const subcategories = await freshOrCached(
+            () => getSubcategories(cat.id).unwrap(),
+            () => getSubcategories(cat.id, true).unwrap(),
+          );
+          const subcategoryCount = subcategories.length;
 
-        for (const sub of subcategories) {
-          const compResult = await getComponents(sub.id).unwrap();
-          const components = compResult || [];
-          componentCount += components.length;
-          lowStockCount += components.filter(
-            (c) => (c.currentStock ?? 0) < (c.minimumStock ?? 0),
-          ).length;
+          let componentCount = 0;
+          let lowStockCount = 0;
+
+          for (const sub of subcategories) {
+            const components = await freshOrCached(
+              () => getComponents(sub.id).unwrap(),
+              () => getComponents(sub.id, true).unwrap(),
+            );
+            componentCount += components.length;
+            lowStockCount += components.filter(
+              (c) => (c.currentStock ?? 0) < (c.minimumStock ?? 0),
+            ).length;
+          }
+
+          enriched.push({
+            ...cat,
+            subcategoryCount,
+            componentCount,
+            lowStockCount,
+          });
         }
 
-        enriched.push({
-          ...cat,
-          subcategoryCount,
-          componentCount,
-          lowStockCount,
-        });
+        setCategoriesWithCounts(enriched);
+      } finally {
+        setLoadingCounts(false);
       }
-
-      setCategoriesWithCounts(enriched);
-      setLoadingCounts(false);
     },
     [getSubcategories, getComponents],
   );
@@ -95,11 +119,15 @@ export default function IMSCategoryListScreen({
 
   const onRefresh = async () => {
     setRefreshing(true);
-    const result = await refetchCategories();
-    if (result.data) {
-      // Categories updated, fetchCounts will re-run automatically via useEffect
+    try {
+      const result = await refetchCategories();
+      // Categories usually come back identical (RTK keeps the same reference),
+      // so the effect above won't re-run. Recount explicitly so component and
+      // low-stock numbers reflect changes made on the web.
+      await fetchCounts(result.data ?? categories);
+    } finally {
+      setRefreshing(false);
     }
-    setRefreshing(false);
   };
 
   const isLoading = categoriesLoading || loadingCounts;

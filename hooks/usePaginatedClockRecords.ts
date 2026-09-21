@@ -16,7 +16,12 @@ export const usePaginatedClockRecords = (userId: string, limit = 20) => {
   const [hasMore, setHasMore] = useState(true);
   const [loading, setLoading] = useState(false);
   const [fetchingMore, setFetchingMore] = useState(false);
-  const [trigger] = useLazyListMyClockRecordsQuery();
+  // Attendance is out of scope for the app-wide refetch-on-focus/reconnect
+  // policy (src/state/api.ts) – opt this query out so it behaves as before.
+  const [trigger] = useLazyListMyClockRecordsQuery({
+    refetchOnFocus: false,
+    refetchOnReconnect: false,
+  });
 
   const loadingRef = useRef(false);
   const loadedUserRef = useRef<string | null>(null);

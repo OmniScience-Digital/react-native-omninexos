@@ -5,13 +5,13 @@ import { useAppDispatch, useAppSelector } from "@/src/state/redux";
 import { ChevronDown, Search, X } from "lucide-react-native";
 import { useState } from "react";
 import {
-    FlatList,
-    Modal,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  FlatList,
+  Modal,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import { ThemedText } from "../screens/screen";
 import BooleanQuestion from "./BooleanQuestion";
@@ -299,6 +299,7 @@ export default function VifForm({
                     dispatch(setBooleanAnswer({ index: i, value: val }))
                   }
                   previousAnswer={getPreviousAnswer(i)}
+                  previousDate={recentInspection?.inspectionDate}
                 />
               ))}
             </View>
