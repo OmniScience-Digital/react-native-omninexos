@@ -141,10 +141,10 @@ const darkTheme: Theme = {
 // ─────────────────────────────────────────────
 
 const ThemeContext = createContext<ThemeCtx>({
-  theme: darkTheme,
+  theme: lightTheme,
   preference: "system",
   setPreference: () => {},
-  resolvedScheme: "dark",
+  resolvedScheme: "light",
   isReady: false,
 });
 
@@ -157,7 +157,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({
 }) => {
   // Live OS-level color scheme — updates if user changes device settings
   // while the app is open. Can be null on older Android.
-  const systemScheme = useColorScheme() ?? "dark";
+  const systemScheme = useColorScheme() ?? "light";
 
   // What the user has explicitly chosen — "system" means no override
   const [preference, setPreferenceState] = useState<Preference>("system");
