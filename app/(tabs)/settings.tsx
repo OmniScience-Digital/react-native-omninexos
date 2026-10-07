@@ -17,8 +17,11 @@ import { useTheme } from "@/src/contexts/theme-context";
 import { resetVifForm, showResponseModal } from "@/src/state";
 import { api } from "@/src/state/api";
 import { useAppDispatch } from "@/src/state/redux";
+import * as Application from "expo-application";
+import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
+import * as Updates from "expo-updates";
 import {
   Settings as Appsettings,
   ChevronRight,
@@ -33,15 +36,22 @@ import {
   User,
 } from "lucide-react-native";
 import { useState } from "react";
-import {
-  Image,
-  Pressable,
-  RefreshControl,
-  StyleSheet,
-  View,
-} from "react-native";
+import { Pressable, RefreshControl, StyleSheet, View } from "react-native";
 
 const IShieldAlert = ShieldAlert as any;
+
+/**
+ * Real version info, read from the installed native binary.
+ * - nativeApplicationVersion: CFBundleShortVersionString (iOS) / versionName (Android)
+ * - nativeBuildVersion:       CFBundleVersion (iOS) / versionCode (Android)
+ */
+const APP_VERSION = Application.nativeApplicationVersion ?? "unknown";
+const BUILD_NUMBER = Application.nativeBuildVersion ?? "unknown";
+
+/** OTA update id (null when running the embedded bundle or in dev builds). */
+const UPDATE_ID = Updates.updateId ? Updates.updateId.slice(0, 8) : null;
+
+const VERSION_LABEL = `${APP_VERSION} (build ${BUILD_NUMBER})`;
 
 /** Theme Toggle */
 const ThemeToggle = () => {
@@ -69,7 +79,7 @@ const ThemeToggle = () => {
 export default function Settings() {
   const { user, logout, isAdmin } = useAuth();
   const userId = (user as any)?.email ?? (user as any)?.username ?? "anonymous";
-  const { photoUri } = useReferencePhotoContext();
+  const { photoUri, photoVersion } = useReferencePhotoContext();
   const { onScroll } = useTabBar();
   const dispatch = useAppDispatch();
   const { theme, preference, setPreference } = useTheme();
@@ -182,7 +192,18 @@ export default function Settings() {
               ]}
             >
               {photoUri ? (
-                <Image source={{ uri: photoUri }} style={styles.avatarImage} />
+                <Image
+                  source={{
+                    uri: photoUri,
+                    cacheKey: photoUri.startsWith("http")
+                      ? `profile-${userId}-${photoVersion}`
+                      : undefined,
+                  }}
+                  style={styles.avatarImage}
+                  cachePolicy="memory-disk"
+                  contentFit="cover"
+                  transition={150}
+                />
               ) : (
                 <User size={26} color={theme.colors.accent} />
               )}
@@ -271,7 +292,8 @@ export default function Settings() {
           <SectionHeader title="About" />
           <AppCard title="Version">
             <ThemedText muted variant="small">
-              2.1.0 (build 42)
+              {VERSION_LABEL}
+              {UPDATE_ID ? ` · update ${UPDATE_ID}` : ""}
             </ThemedText>
           </AppCard>
           <AppCard title="Environment">
@@ -284,7 +306,7 @@ export default function Settings() {
                 variant="small"
                 style={{ color: theme.colors.success }}
               >
-                Production
+                {__DEV__ ? "Development" : "Production"}
               </ThemedText>
             </View>
           </AppCard>

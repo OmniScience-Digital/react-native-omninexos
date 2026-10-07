@@ -2,6 +2,7 @@
 import { useRealtimeSync } from "@/hooks/useRealtimeSync";
 import { useSyncEngine } from "@/hooks/useSyncEngine";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/src/contexts/auth-context";
 import {
   ClockInProvider,
   useClockInContext,
@@ -199,6 +200,13 @@ function SyncManager() {
 }
 
 export default function TabLayout() {
+  // Don't mount the tabs (and with them the live sync, the offline-queue sync
+  // and every screen's data queries) until a user is signed in. These calls
+  // now require a Cognito session, so running them on the sign-in screen's
+  // first frame is what produced "No federated user" errors on app open.
+  const { isAuthenticated } = useAuth();
+  if (!isAuthenticated) return null;
+
   return (
     <ClockInProvider>
       <ReferencePhotoProvider>

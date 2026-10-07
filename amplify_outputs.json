@@ -46,7 +46,8 @@
         "https://main.d2ib10qin54ac6.amplifyapp.com/landing",
         "reactnativeomninexos://",
         "https://omninexos.fray.co.za/landing",
-        "https://test.omninexos.fray.co.za/landing"
+        "https://test.omninexos.fray.co.za/landing",
+        "https://test.d2ib10qin54ac6.amplifyapp.com/landing"
       ],
       "redirect_sign_out_uri": [
         "http://localhost:5173/",
@@ -55,7 +56,8 @@
         "https://main.d2ib10qin54ac6.amplifyapp.com/",
         "reactnativeomninexos://",
         "https://omninexos.fray.co.za/",
-        "https://test.omninexos.fray.co.za/"
+        "https://test.omninexos.fray.co.za/",
+        "https://test.d2ib10qin54ac6.amplifyapp.com/"
       ],
       "response_type": "code",
       "scopes": [
@@ -72,10 +74,8 @@
   "data": {
     "url": "https://gfbjmnpv4rbrhft2zlwgetjvde.appsync-api.us-east-1.amazonaws.com/graphql",
     "aws_region": "us-east-1",
-    "api_key": "da2-lhp3amfawfcb7lmexmbcmgs7jq",
-    "default_authorization_type": "API_KEY",
+    "default_authorization_type": "AMAZON_COGNITO_USER_POOLS",
     "authorization_types": [
-      "AMAZON_COGNITO_USER_POOLS",
       "AWS_IAM"
     ],
     "model_introspection": {
@@ -2078,7 +2078,7 @@
               "name": "updatedBy",
               "isArray": false,
               "type": "String",
-              "isRequired": true,
+              "isRequired": false,
               "attributes": []
             },
             "details": {
@@ -4831,7 +4831,27 @@
           ]
         }
       },
-      "nonModels": {},
+      "nonModels": {
+        "InviteUserAccountReturnType": {
+          "name": "InviteUserAccountReturnType",
+          "fields": {
+            "success": {
+              "name": "success",
+              "isArray": false,
+              "type": "Boolean",
+              "isRequired": true,
+              "attributes": []
+            },
+            "reason": {
+              "name": "reason",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            }
+          }
+        }
+      },
       "queries": {
         "usersList": {
           "name": "usersList",
@@ -4862,6 +4882,48 @@
               "isRequired": true
             }
           }
+        },
+        "manageUserAccount": {
+          "name": "manageUserAccount",
+          "isArray": false,
+          "type": "AWSJSON",
+          "isRequired": false,
+          "arguments": {
+            "username": {
+              "name": "username",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true
+            },
+            "action": {
+              "name": "action",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true
+            }
+          }
+        },
+        "inviteUserAccount": {
+          "name": "inviteUserAccount",
+          "isArray": false,
+          "type": {
+            "nonModel": "InviteUserAccountReturnType"
+          },
+          "isRequired": false,
+          "arguments": {
+            "email": {
+              "name": "email",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true
+            },
+            "name": {
+              "name": "name",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true
+            }
+          }
         }
       }
     }
@@ -4887,10 +4949,6 @@
               "list",
               "write",
               "delete"
-            ],
-            "guest": [
-              "get",
-              "list"
             ]
           },
           "documents/*": {
@@ -4905,10 +4963,6 @@
               "list",
               "write",
               "delete"
-            ],
-            "guest": [
-              "get",
-              "list"
             ]
           },
           "hr/*": {
@@ -4923,10 +4977,6 @@
               "list",
               "write",
               "delete"
-            ],
-            "guest": [
-              "get",
-              "list"
             ]
           }
         }

@@ -10,10 +10,7 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.reactnativeomninexos",
-      "entitlements": {
-        "com.apple.developer.networking.wifi-info": true
-      }
+      "bundleIdentifier": "com.omniscience.omninexos"
     },
     "android": {
       "adaptiveIcon": {
@@ -23,9 +20,8 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.anonymous.reactnativeomninexos"
+      "package": "com.omniscience.omninexos"
     },
-
     "web": {
       "output": "static",
       "favicon": "./assets/images/play_store_512.png"
@@ -57,12 +53,46 @@
           ]
         }
       ],
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "Omni-Nexos uses the camera to take inspection photos and to verify your face when you clock in.",
+          "photosPermission": "Omni-Nexos accesses your photos so you can attach images to inspection forms.",
+          "microphonePermission": false
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Omni-Nexos uses your location to record where you clock in and out.",
+          "locationAlwaysAndWhenInUsePermission": "Omni-Nexos uses your location to record where you clock in and out.",
+          "isIosBackgroundLocationEnabled": false,
+          "isAndroidBackgroundLocationEnabled": false,
+          "isAndroidForegroundServiceEnabled": false
+        }
+      ],
+      "expo-notifications",
       "expo-web-browser",
-      "expo-sqlite"
+      "expo-sqlite",
+      "expo-updates",
+      "./plugins/withGradleMemory.js"
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "0d2018e0-f9ab-42b2-8a30-7a044647cd9d"
+      }
+    },
+    "owner": "omniscience",
+    "updates": {
+      "url": "https://u.expo.dev/0d2018e0-f9ab-42b2-8a30-7a044647cd9d"
     }
   }
 }

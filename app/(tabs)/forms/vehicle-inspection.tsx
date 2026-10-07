@@ -1,8 +1,11 @@
+//app/(tabs)/forms/vehicle-inspection.tsx
 import { NonTabScreen } from "@/components/screens/non-tab-screen";
 import { ThemedText } from "@/components/screens/screen";
+import { AnimatedPressable } from "@/components/ui/animated-pressable";
 import { CustomScrollView } from "@/components/ui/scrollView";
 import ResponseModal from "@/components/viFComponents/ResponseModal";
 import VifForm from "@/components/viFComponents/VifForm";
+import { haptics } from "@/lib/haptics";
 import { calculateCustomFields, getJhbTimestamp } from "@/lib/utils";
 import { enqueue } from "@/services/submissionQueue";
 import {
@@ -39,7 +42,6 @@ import {
   ActivityIndicator,
   RefreshControl,
   StyleSheet,
-  TouchableOpacity,
   View,
 } from "react-native";
 
@@ -204,12 +206,16 @@ export default function VehicleInspectionForm() {
     }
   };
 
+  // A vehicle needs a registration to be inspected (it identifies the vehicle
+  // and names the photo folder). The VIN is optional in the schema, so a
+  // vehicle added without one must still appear here, same as in fleet
+  // management; its VIN just shows blank.
   const vehiclesForForm = vehicles
-    .filter((v) => v.vehicleReg !== null && v.vehicleVin !== null)
+    .filter((v) => !!v.vehicleReg?.trim())
     .map((v) => ({
       id: v.id,
       vehicleReg: v.vehicleReg as string,
-      vehicleVin: v.vehicleVin as string,
+      vehicleVin: v.vehicleVin ?? "",
     }));
 
   const photosReady = isOnline
@@ -651,13 +657,14 @@ export default function VehicleInspectionForm() {
               recentInspection={recentInspection}
             />
 
-            <TouchableOpacity
+            <AnimatedPressable
               style={[
                 styles.submitBtn,
                 (!canSubmit || submitting) && styles.submitBtnDisabled,
               ]}
               onPress={handleSubmit}
               disabled={submitting}
+              haptic={haptics.action}
             >
               {submitting ? (
                 <ActivityIndicator color={theme.colors.primaryText} />
@@ -666,7 +673,7 @@ export default function VehicleInspectionForm() {
                   {isOnline ? "Submit Inspection" : "Save Offline"}
                 </ThemedText>
               )}
-            </TouchableOpacity>
+            </AnimatedPressable>
           </View>
         </View>
       </CustomScrollView>

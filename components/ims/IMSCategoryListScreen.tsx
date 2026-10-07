@@ -1,6 +1,7 @@
 // components/ims/IMSCategoryListScreen.tsx
 import { NonTabScreen } from "@/components/screens/non-tab-screen";
 import { CustomScrollView } from "@/components/ui/scrollView";
+import { ListSkeleton } from "@/components/ui/skeleton";
 import { useTheme } from "@/src/contexts/theme-context";
 import {
   useLazyListComponentsBySubcategoryQuery,
@@ -10,7 +11,6 @@ import {
 import { ChevronRight, Package } from "lucide-react-native";
 import { useCallback, useEffect, useState } from "react";
 import {
-  ActivityIndicator,
   RefreshControl,
   StatusBar,
   StyleSheet,
@@ -155,10 +155,8 @@ export default function IMSCategoryListScreen({
         showBack
         scrollable
       >
-        <View
-          style={{ flex: 1, justifyContent: "center", alignItems: "center" }}
-        >
-          <ActivityIndicator size="large" />
+        <View style={{ padding: 16 }}>
+          <ListSkeleton lines={2} />
         </View>
       </NonTabScreen>
     );

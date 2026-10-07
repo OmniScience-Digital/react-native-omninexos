@@ -9,6 +9,10 @@ import { AppState, type AppStateStatus } from "react-native";
 
 const SETUP_KEY = (uid: string) => `face:setup_complete:${uid}`;
 const PHOTO_URI_KEY = (uid: string) => `face:cached_photo_uri:${uid}`;
+// Changes whenever the profile photo changes. Used as the image cache key so
+// the picture is read from disk instead of re-downloaded on every launch
+// (signed S3 URLs change every time, so the URL itself can't be the key).
+const PHOTO_VER_KEY = (uid: string) => `face:photo_version:${uid}`;
 const S3_PATH = (uid: string) => `hr/reference-faces/${uid}/profile.jpg`;
 
 // GraphQL for PhotoChangeRequest
@@ -63,6 +67,7 @@ export interface PhotoChangeRequest {
 export function useReferencePhoto(userId: string) {
   const [isSetupComplete, setIsSetupComplete] = useState<boolean | null>(null);
   const [photoUri, setPhotoUri] = useState<string | null>(null);
+  const [photoVersion, setPhotoVersion] = useState<string>("0");
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pendingRequest, setPendingRequest] =
@@ -70,6 +75,28 @@ export function useReferencePhoto(userId: string) {
   const [approvedRequest, setApprovedRequest] =
     useState<PhotoChangeRequest | null>(null);
   const [requestLoading, setRequestLoading] = useState(false);
+
+  // ── Show the cached photo instantly on launch (before any network call) ──
+  useEffect(() => {
+    if (!userId || userId === "anonymous" || !userId.includes("@")) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const [cached, ver] = await Promise.all([
+          AsyncStorage.getItem(PHOTO_URI_KEY(userId)),
+          AsyncStorage.getItem(PHOTO_VER_KEY(userId)),
+        ]);
+        if (cancelled) return;
+        if (ver) setPhotoVersion(ver);
+        if (cached) setPhotoUri((current) => current ?? cached);
+      } catch {
+        // ignore - the network path below will still load the photo
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
 
   // ── Check setup status on mount ─────────────────────────────────────────
   useEffect(() => {
@@ -110,6 +137,12 @@ export function useReferencePhoto(userId: string) {
           const freshUrl = url.toString();
           setPhotoUri(freshUrl);
           AsyncStorage.setItem(PHOTO_URI_KEY(userId), freshUrl).catch(() => {});
+          const lm = result.items?.[0]?.lastModified;
+          if (lm) {
+            const ver = String(new Date(lm).getTime());
+            setPhotoVersion(ver);
+            AsyncStorage.setItem(PHOTO_VER_KEY(userId), ver).catch(() => {});
+          }
           if (localFlag !== "true") {
             await AsyncStorage.setItem(SETUP_KEY(userId), "true");
           }
@@ -176,7 +209,7 @@ export function useReferencePhoto(userId: string) {
       const { data, errors } = (await client.graphql({
         query: REQUESTS_BY_USER,
         variables: { userId },
-        authMode: "apiKey",
+        authMode: "userPool",
       })) as any;
 
       if (!errors) {
@@ -235,7 +268,7 @@ export function useReferencePhoto(userId: string) {
             requestedAt: new Date().toISOString(),
           },
         },
-        authMode: "apiKey",
+        authMode: "userPool",
       })) as any;
       if (errors) throw new Error(errors[0].message);
       setPendingRequest(data.createPhotoChangeRequest);
@@ -272,6 +305,9 @@ export function useReferencePhoto(userId: string) {
 
     const localUri = result.assets[0].uri;
     setPhotoUri(localUri);
+    const newVersion = String(Date.now());
+    setPhotoVersion(newVersion);
+    AsyncStorage.setItem(PHOTO_VER_KEY(userId), newVersion).catch(() => {});
     // Cache locally first so the photo is visible even before upload completes
     // and remains visible offline (same pattern as Facebook profile photos).
     AsyncStorage.setItem(PHOTO_URI_KEY(userId), localUri).catch(() => {});
@@ -302,7 +338,7 @@ export function useReferencePhoto(userId: string) {
           variables: {
             input: { id: requestId, status: "COMPLETED" },
           },
-          authMode: "apiKey",
+          authMode: "userPool",
         });
       }
 
@@ -338,6 +374,7 @@ export function useReferencePhoto(userId: string) {
   return {
     isSetupComplete,
     photoUri,
+    photoVersion,
     uploading,
     error,
     clearError,

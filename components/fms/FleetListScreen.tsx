@@ -1,6 +1,7 @@
-// src/screens/FleetListScreen.tsx
+// components/fms/FleetListScreen.tsx
 import { ThemedText } from "@/components/screens/screen";
 import { CustomScrollView } from "@/components/ui/scrollView";
+import { ListSkeleton } from "@/components/ui/skeleton";
 import { useTheme } from "@/src/contexts/theme-context";
 import {
   useCreateFleetMutation,
@@ -19,7 +20,6 @@ import {
 } from "lucide-react-native";
 import { useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
   Modal,
   RefreshControl,
@@ -286,7 +286,11 @@ export default function FleetListScreen({
   };
 
   if (isLoading)
-    return <ActivityIndicator size="large" style={{ marginTop: 50 }} />;
+    return (
+      <CustomScrollView style={styles.content}>
+        <ListSkeleton lines={3} />
+      </CustomScrollView>
+    );
 
   return (
     <>

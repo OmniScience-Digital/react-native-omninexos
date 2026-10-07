@@ -4,6 +4,7 @@ import { NonTabScreen } from "@/components/screens/non-tab-screen";
 import ComponentItem from "@/components/stockcontrolComponents/componentitem";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { CustomScrollView } from "@/components/ui/scrollView";
+import { ListSkeleton } from "@/components/ui/skeleton";
 import { useSeedCategoryCache } from "@/hooks/useCategoryCache";
 import { SCF_clickUpService } from "@/services/scf.clickUp.service";
 import { enqueue } from "@/services/submissionQueue";
@@ -177,10 +178,8 @@ export default function StockControlForm() {
         showBack
         scrollable
       >
-        <View
-          style={{ flex: 1, justifyContent: "center", alignItems: "center" }}
-        >
-          <ActivityIndicator size="large" />
+        <View style={{ padding: 16 }}>
+          <ListSkeleton lines={2} />
         </View>
       </NonTabScreen>
     );

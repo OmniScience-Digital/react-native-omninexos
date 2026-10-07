@@ -1,22 +1,5 @@
 // src/state/realtime.ts
-//
-// Phase 3 – live auto-sync. When the web app (or another phone) creates,
-// updates or deletes a Fleet / Category / SubCategory / Component / Inspection,
-// AppSync pushes an event here and we refetch just the cached queries that
-// event affects. The vehicle you add on the web shows up on the phone in
-// seconds, without pulling to refresh.
-//
-// Design rules (offline-first app):
-//  • Best effort only. Any failure here is silent and never shows a modal; the
-//    freshness policy in api.ts (refetch on mount / foreground / reconnect) is
-//    still the safety net, so the app is correct even if this never connects.
-//  • Only runs while the app is in the foreground AND online.
-//  • Refetches matching cache entries in place. It deliberately does NOT use
-//    `invalidateTags`: RTK Query *removes* invalidated entries that have no
-//    active subscriber, and those entries are our offline data.
-//  • Events are coalesced (a bulk import on the web = one refetch, not 500).
-//  • Paginated lists (fleet inspection history, inventory component list) keep
-//    their own local state and are excluded; they refresh on open / pull.
+
 import { client } from "@/src/amplify";
 import { api } from "@/src/state/api";
 import NetInfo from "@react-native-community/netinfo";
@@ -185,7 +168,7 @@ export function startRealtimeSync(
       for (const feed of FEEDS) {
         const observable: any = client.graphql({
           query: feed.doc,
-          authMode: "apiKey",
+          authMode: "userPool",
         } as any);
         subs.push(
           observable.subscribe({

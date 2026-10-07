@@ -1,0 +1,91 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    name: Code checks
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Stub amplify_outputs.json
+        run: echo '{}' > amplify_outputs.json
+
+      - run: npm ci
+
+      - name: Secret scan
+        run: |
+          if git ls-files | grep -q "amplify_outputs.json"; then
+            echo "amplify_outputs.json must not be committed"
+            exit 1
+          fi
+
+          if git grep -nE "da2-[a-z0-9]{20,}" -- . ':!package-lock.json'; then
+            echo "Possible AppSync API key found in source"
+            exit 1
+          fi
+
+      - name: Lint
+        run: npx expo lint
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Tests
+        run: npx jest --passWithNoTests
+
+  android:
+    name: Android build
+    needs: check
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build Android
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - run: eas build --platform android --profile preview --non-interactive
+
+  # ios:
+  #   name: iOS build
+  #   needs: check
+  #   runs-on: ubuntu-latest
+
+  #   steps:
+  #     - uses: actions/checkout@v4
+
+  #     - uses: actions/setup-node@v4
+  #       with:
+  #         node-version: 20
+  #         cache: npm
+
+  #     - run: npm ci
+
+  #     - name: Build iOS
+  #       uses: expo/expo-github-action@v8
+  #       with:
+  #         eas-version: latest
+  #         token: ${{ secrets.EXPO_TOKEN }}
+
+  #     - run: eas build --platform ios --profile preview --non-interactive

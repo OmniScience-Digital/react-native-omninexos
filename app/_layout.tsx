@@ -1,11 +1,15 @@
 // app/_layout.tsx
 import ResponseModal from "@/components/responsemodal";
+import { UpdateBanner } from "@/components/ui/update-banner";
 import "@/global.css";
 
+import ErrorBoundary from "@/components/ui/ErrorBoundary";
 import { warmDbConnection } from "@/services/submissionQueue";
 import { AuthProvider, useAuth } from "@/src/contexts/auth-context";
 import { NotificationProvider } from "@/src/contexts/notification-context";
 import { ThemeProvider, useTheme } from "@/src/contexts/theme-context";
+import { initMonitoring } from "@/src/monitoring/sentry";
+import { applyPendingUpdate, checkForUpdate } from "@/src/services/appUpdates";
 import { hideResponseModal } from "@/src/state";
 import StoreProvider, {
   useAppDispatch,
@@ -24,10 +28,15 @@ import {
   Animated,
   AppState,
   AppStateStatus,
+  BackHandler,
   Easing,
+  Platform,
+  ToastAndroid,
   View,
 } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+
+initMonitoring();
 
 // Amplify is configured once in src/amplify.ts — do NOT call configure() again
 // here or the generated client and the auth provider end up with split state.
@@ -63,16 +72,34 @@ function LayoutInner() {
   // database so it is ready before the user taps "Save Offline". This used to
   // close the connection on every resume, which could break a connection that
   // was still in use.
+  //
+  // Also checks for an OTA update on the same foreground transition — one
+  // listener covering both, rather than a second AppState subscription. Never
+  // blocking: a found update just shows the banner below; the user decides
+  // when (or whether) to restart onto it.
+  const [updateReady, setUpdateReady] = useState(false);
   const appState = useRef(AppState.currentState);
   useEffect(() => {
     const sub = AppState.addEventListener("change", (next: AppStateStatus) => {
       if (appState.current.match(/inactive|background/) && next === "active") {
         warmDbConnection();
+        checkForUpdate().then((r) => {
+          if (r.status === "fetched") setUpdateReady(true);
+        });
       }
       appState.current = next;
     });
     return () => sub.remove();
   }, []);
+
+  // Same check on cold launch, once splash/fonts/theme are ready — no point
+  // checking while still showing the splash screen.
+  useEffect(() => {
+    if (!fontsLoaded || !themeReady) return;
+    checkForUpdate().then((r) => {
+      if (r.status === "fetched") setUpdateReady(true);
+    });
+  }, [fontsLoaded, themeReady]);
 
   // Hide splash once fonts + theme ready
   const [splashHidden, setSplashHidden] = useState(false);
@@ -85,6 +112,27 @@ function LayoutInner() {
       return () => clearTimeout(t);
     }
   }, [fontsLoaded, themeReady, splashHidden]);
+
+  // Android hardware back: when there's nothing left to pop (a root tab),
+  // require a second press within 2s to exit instead of silently backing
+  // out of the app. No-op on iOS (no hardware back button there).
+  const lastBackPress = useRef(0);
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (router.canGoBack()) return false; // let the normal back happen
+
+      const now = Date.now();
+      if (now - lastBackPress.current < 2000) {
+        BackHandler.exitApp();
+        return true;
+      }
+      lastBackPress.current = now;
+      ToastAndroid.show("Press back again to exit", ToastAndroid.SHORT);
+      return true; // swallow this first press
+    });
+    return () => sub.remove();
+  }, [router]);
 
   // ── Auth routing ──────────────────────────────────────────────────────────
   // Only redirect to sign-in when we are CERTAIN the user is not authenticated.
@@ -146,6 +194,12 @@ function LayoutInner() {
           style={theme.name === "light" ? "dark" : "light"}
           backgroundColor={theme.colors.background}
         />
+        {updateReady && (
+          <UpdateBanner
+            onRestart={() => applyPendingUpdate()}
+            onDismiss={() => setUpdateReady(false)}
+          />
+        )}
         <Stack
           screenOptions={{
             headerShown: false,
@@ -175,14 +229,16 @@ function LayoutInner() {
 
 export default function RootLayout() {
   return (
-    <StoreProvider>
-      <ThemeProvider>
-        <SafeAreaProvider>
-          <AuthProvider>
-            <LayoutInner />
-          </AuthProvider>
-        </SafeAreaProvider>
-      </ThemeProvider>
-    </StoreProvider>
+    <ErrorBoundary>
+      <StoreProvider>
+        <ThemeProvider>
+          <SafeAreaProvider>
+            <AuthProvider>
+              <LayoutInner />
+            </AuthProvider>
+          </SafeAreaProvider>
+        </ThemeProvider>
+      </StoreProvider>
+    </ErrorBoundary>
   );
 }

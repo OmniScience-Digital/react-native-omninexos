@@ -176,7 +176,7 @@ const getLatestInspectionNo = async (
     const result = (await client.graphql({
       query: INSPECTIONS_BY_FLEET_LATEST,
       variables: { fleetid: fleetId, sortDirection: "DESC", limit: 1 },
-      authMode: "apiKey",
+      authMode: "userPool",
     })) as any;
     const items = result?.data?.inspectionsByFleetAndNumber?.items ?? [];
     return (items[0]?.inspectionNo ?? 0) + 1;
@@ -263,7 +263,7 @@ const submitVif = async (payload: any): Promise<void> => {
     const result = (await client.graphql({
       query: UPDATE_FLEET,
       variables: { input: fleetKmUpdate },
-      authMode: "apiKey",
+      authMode: "userPool",
     })) as any;
     if (result.errors) throw new Error(result.errors[0].message);
     console.log("[SyncEngine] Fleet km updated ✓");
@@ -286,7 +286,7 @@ const submitVif = async (payload: any): Promise<void> => {
     const result = (await client.graphql({
       query: CREATE_INSPECTION,
       variables: { input: fullInspectionData },
-      authMode: "apiKey",
+      authMode: "userPool",
     })) as any;
     if (result.errors) throw new Error(result.errors[0].message);
     console.log(
@@ -406,7 +406,7 @@ const submitClockIn = async (payload: any): Promise<void> => {
           : input.verificationStatus,
       },
     },
-    authMode: "apiKey",
+    authMode: "userPool",
   })) as any;
 
   if (errors) throw new Error(errors[0].message);
@@ -432,7 +432,7 @@ const submitClockIn = async (payload: any): Promise<void> => {
           similarityScore: verifyResult.similarity,
         },
       },
-      authMode: "apiKey",
+      authMode: "userPool",
     });
     try {
       await deleteAsync(localSelfieUri, { idempotent: true });
@@ -469,7 +469,7 @@ const submitClockOut = async (
           userId: originalClockIn.userId,
           clockInTime: originalClockIn.clockInTime,
         },
-        authMode: "apiKey",
+        authMode: "userPool",
       })) as any;
       if (findErrors) {
         log(
@@ -519,7 +519,7 @@ const submitClockOut = async (
   const { data: mutData, errors } = (await client.graphql({
     query: UPDATE_CLOCK_RECORD_MUTATION,
     variables: { input: mutationInput },
-    authMode: "apiKey",
+    authMode: "userPool",
   })) as any;
 
   if (errors) {

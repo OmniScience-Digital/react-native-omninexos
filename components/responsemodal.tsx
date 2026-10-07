@@ -1,5 +1,7 @@
+import { haptics } from "@/lib/haptics";
 import { useTheme } from "@/src/contexts/theme-context";
 import { CheckCircle, X, XCircle } from "lucide-react-native";
+import { useEffect } from "react";
 import { Modal, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 
 interface ResponseModalProps {
@@ -17,6 +19,16 @@ export default function ResponseModal({
 }: ResponseModalProps) {
   const { theme } = useTheme();
   const { colors, radius } = theme;
+
+  useEffect(() => {
+    if (!visible) return;
+    if (successful) {
+      haptics.success();
+    } else {
+      haptics.error();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]);
 
   return (
     <Modal transparent animationType="fade" visible={visible}>
