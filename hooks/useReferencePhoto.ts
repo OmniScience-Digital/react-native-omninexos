@@ -88,7 +88,9 @@ export function useReferencePhoto(userId: string) {
         ]);
         if (cancelled) return;
         if (ver) setPhotoVersion(ver);
-        if (cached) setPhotoUri((current) => current ?? cached);
+        if (cached && cached.startsWith("http")) {
+          setPhotoUri((current) => current ?? cached);
+        }
       } catch {
         // ignore - the network path below will still load the photo
       }
@@ -155,7 +157,8 @@ export function useReferencePhoto(userId: string) {
           setPhotoUri(null);
           setIsSetupComplete(false);
         }
-      } catch {
+      } catch (e) {
+        console.warn("[photo] could not verify profile photo in storage:", e);
         // Network error during list — fall back to local flag so a brief
         // connectivity blip doesn't force a re-setup.
         setIsSetupComplete(localFlag === "true");
@@ -176,7 +179,7 @@ export function useReferencePhoto(userId: string) {
     // 1. Show cached URI immediately (works offline, like Facebook)
     try {
       const cached = await AsyncStorage.getItem(PHOTO_URI_KEY(userId));
-      if (cached) setPhotoUri(cached);
+      if (cached && cached.startsWith("http")) setPhotoUri(cached);
     } catch {
       // ignore
     }
@@ -187,7 +190,8 @@ export function useReferencePhoto(userId: string) {
       const fresh = url.toString();
       setPhotoUri(fresh);
       AsyncStorage.setItem(PHOTO_URI_KEY(userId), fresh).catch(() => {});
-    } catch {
+    } catch (e) {
+      console.warn("[photo] could not get a fresh photo URL:", e);
       // Network unavailable — cached URI already set above, nothing to do.
     }
   }, [userId]);
@@ -308,9 +312,10 @@ export function useReferencePhoto(userId: string) {
     const newVersion = String(Date.now());
     setPhotoVersion(newVersion);
     AsyncStorage.setItem(PHOTO_VER_KEY(userId), newVersion).catch(() => {});
-    // Cache locally first so the photo is visible even before upload completes
-    // and remains visible offline (same pattern as Facebook profile photos).
-    AsyncStorage.setItem(PHOTO_URI_KEY(userId), localUri).catch(() => {});
+    // Show the new photo straight away, but do NOT save this path for later:
+    // it points into the camera's temporary cache, which the OS clears, so it
+    // would show once and then be blank on the next launch. The durable copy
+    // is saved below once the upload has succeeded.
     setUploading(true);
 
     try {

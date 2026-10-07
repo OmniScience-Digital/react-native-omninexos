@@ -35,7 +35,7 @@ import {
   Trash2,
   User,
 } from "lucide-react-native";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Pressable, RefreshControl, StyleSheet, View } from "react-native";
 
 const IShieldAlert = ShieldAlert as any;
@@ -84,6 +84,12 @@ export default function Settings() {
   const dispatch = useAppDispatch();
   const { theme, preference, setPreference } = useTheme();
   const [refresh, setRefresh] = useState(false);
+  // If the profile photo URL fails to load (expired, missing, no permission),
+  // fall back to the user icon instead of a blank circle.
+  const [imageFailed, setImageFailed] = useState(false);
+  useEffect(() => {
+    setImageFailed(false);
+  }, [photoUri]);
 
   const [dialogConfig, setDialogConfig] = useState<{
     visible: boolean;
@@ -191,7 +197,7 @@ export default function Settings() {
                 },
               ]}
             >
-              {photoUri ? (
+              {photoUri && !imageFailed ? (
                 <Image
                   source={{
                     uri: photoUri,
@@ -203,6 +209,7 @@ export default function Settings() {
                   cachePolicy="memory-disk"
                   contentFit="cover"
                   transition={150}
+                  onError={() => setImageFailed(true)}
                 />
               ) : (
                 <User size={26} color={theme.colors.accent} />
