@@ -62,7 +62,7 @@ export function Screen({
   children,
   className,
   scrollable = false,
-  showsVerticalScrollIndicator = false, // 👈 default false
+  showsVerticalScrollIndicator = false,
   onScroll,
   refreshControl,
   ...props

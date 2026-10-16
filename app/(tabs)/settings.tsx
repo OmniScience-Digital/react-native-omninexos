@@ -26,7 +26,6 @@ import {
   Settings as Appsettings,
   ChevronRight,
   Info,
-  LogOut,
   LucideIcon,
   Moon,
   RotateCcw,
@@ -77,7 +76,7 @@ const ThemeToggle = () => {
 };
 
 export default function Settings() {
-  const { user, logout, isAdmin } = useAuth();
+  const { user, isAdmin } = useAuth();
   const userId = (user as any)?.email ?? (user as any)?.username ?? "anonymous";
   const { photoUri, photoVersion } = useReferencePhotoContext();
   const { onScroll } = useTabBar();
@@ -140,14 +139,6 @@ export default function Settings() {
         setDialogConfig(null);
       },
     });
-  };
-
-  const handleLogout = async () => {
-    try {
-      await logout();
-    } catch (error) {
-      console.error("Logout failed:", error);
-    }
   };
 
   const handleRefresh = async () => {
@@ -342,21 +333,6 @@ export default function Settings() {
             onCancel={() => setDialogConfig(null)}
           />
         )}
-
-        {/* Logout */}
-        <Pressable
-          onPress={handleLogout}
-          className="flex-row items-center justify-center gap-2 p-4 rounded-2xl border mt-4"
-          style={{
-            backgroundColor: theme.colors.accent,
-            borderColor: theme.colors.accent,
-          }}
-        >
-          <LogOut size={20} color={theme.colors.primaryText} />
-          <ThemedText weight="600" style={{ color: theme.colors.primaryText }}>
-            Log Out
-          </ThemedText>
-        </Pressable>
 
         {/* Footer */}
         <View className="mt-8 pt-4 items-center">

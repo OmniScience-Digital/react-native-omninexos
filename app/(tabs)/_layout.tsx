@@ -16,7 +16,7 @@ import { api } from "@/src/state/api";
 import { useAppDispatch } from "@/src/state/redux";
 import { tabs } from "@/src/tabs";
 import { Tabs } from "expo-router";
-import { Text, View } from "react-native";
+import { Platform, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 interface TabIconProps {
@@ -30,7 +30,7 @@ const TabIcon = ({ focused, icon: Icon, badgeCount }: TabIconProps) => {
     <View className="tabs-icon">
       <View className={cn("tabs-pill", focused && "tabs-active")}>
         <Icon
-          size={20}
+          size={18}
           color={focused ? "#393E46" : "#fff"}
           strokeWidth={focused ? 2.2 : 1.8}
         />
@@ -92,7 +92,12 @@ function TabLayoutInner() {
         lazy: false,
         tabBarStyle: {
           position: "absolute",
-          bottom: Math.max(insets.bottom, tabBar.horizontalInset) + 2,
+          // Android (immersive): small minimum gap so the bar sits low when the
+          // system nav bar is hidden. Raise the 6 to lift it.
+          bottom:
+            Platform.OS === "android"
+              ? Math.max(insets.bottom, 6) + 2
+              : Math.max(insets.bottom, tabBar.horizontalInset),
           height: tabBar.height,
           marginHorizontal: tabBar.horizontalInset,
           borderRadius: tabBar.radius,
@@ -131,6 +136,8 @@ function TabLayoutInner() {
           }}
         />
       ))}
+      {/* SIDEMENU: Settings is opened from the side menu, so it gets no tab button */}
+      <Tabs.Screen name="settings" options={{ href: null }} />
     </Tabs>
   );
 }

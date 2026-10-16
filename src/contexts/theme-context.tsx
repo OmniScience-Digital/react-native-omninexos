@@ -96,10 +96,10 @@ const lightTheme: Theme = {
   typography: { h1: 30, h2: 20, body: 16, small: 13 },
   components: {
     tabBar: {
-      height: 72,
+      height: 64,
       horizontalInset: 20,
       radius: 32,
-      iconFrame: 48,
+      iconFrame: 24,
       itemPaddingVertical: 8,
     },
   },
