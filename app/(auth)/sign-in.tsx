@@ -1,6 +1,7 @@
 // app/(auth)/sign-in.tsx
 import { ThemedText } from "@/components/screens/screen";
 import { GoogleIcon } from "@/components/ui/googleicon";
+import { useAuthInputStyle } from "@/hooks/useAuthInputStyle";
 import { useAuth } from "@/src/contexts/auth-context";
 import { useTheme } from "@/src/contexts/theme-context";
 import { signIn, signInWithRedirect } from "aws-amplify/auth";
@@ -105,11 +106,7 @@ const SignIn = () => {
     }
   };
 
-  const getInputStyle = (hasError: boolean) => ({
-    borderColor: hasError ? theme.colors.warning : theme.colors.border,
-    backgroundColor: theme.colors.background,
-    color: theme.colors.text,
-  });
+  const getInputStyle = useAuthInputStyle();
 
   return (
     <AuthFormLayout

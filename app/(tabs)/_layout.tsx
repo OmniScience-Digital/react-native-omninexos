@@ -1,7 +1,6 @@
 // app/(tabs)/_layout.tsx
 import { useRealtimeSync } from "@/hooks/useRealtimeSync";
 import { useSyncEngine } from "@/hooks/useSyncEngine";
-import { cn } from "@/lib/utils";
 import { useAuth } from "@/src/contexts/auth-context";
 import {
   ClockInProvider,
@@ -9,14 +8,20 @@ import {
 } from "@/src/contexts/clockin-context";
 import { useNotifications } from "@/src/contexts/notification-context";
 import { ReferencePhotoProvider } from "@/src/contexts/reference-photo-context";
-import { TabBarProvider, useTabBar } from "@/src/contexts/tabbar-context";
+import {
+  getTabBarBottom,
+  TabBarProvider,
+  useTabBar,
+} from "@/src/contexts/tabbar-context";
 import { useTheme } from "@/src/contexts/theme-context";
 import { showResponseModal } from "@/src/state";
 import { api } from "@/src/state/api";
 import { useAppDispatch } from "@/src/state/redux";
 import { tabs } from "@/src/tabs";
+import { BottomTabBar, BottomTabBarProps } from "@react-navigation/bottom-tabs";
+import { LinearGradient } from "expo-linear-gradient";
 import { Tabs } from "expo-router";
-import { Platform, Text, View } from "react-native";
+import { Animated, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 interface TabIconProps {
@@ -26,12 +31,24 @@ interface TabIconProps {
 }
 
 const TabIcon = ({ focused, icon: Icon, badgeCount }: TabIconProps) => {
+  const { theme } = useTheme();
+  const fg = "#fff";
   return (
-    <View className="tabs-icon">
-      <View className={cn("tabs-pill", focused && "tabs-active")}>
+    <View style={{ width: 64, alignItems: "center" }}>
+      {/* Softer, smaller active circle */}
+      <View
+        style={{
+          width: 40,
+          height: 40,
+          borderRadius: 20,
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: focused ? "#D3DAD9" : "transparent",
+        }}
+      >
         <Icon
           size={18}
-          color={focused ? "#393E46" : "#fff"}
+          color={focused ? "#393E46" : fg}
           strokeWidth={focused ? 2.2 : 1.8}
         />
         {/* Red badge */}
@@ -40,11 +57,11 @@ const TabIcon = ({ focused, icon: Icon, badgeCount }: TabIconProps) => {
             style={{
               position: "absolute",
               top: -4,
-              right: -1,
+              right: -4,
               backgroundColor: "red",
               borderRadius: 12,
-              minWidth: 20,
-              height: 20,
+              minWidth: 18,
+              height: 18,
               justifyContent: "center",
               alignItems: "center",
               paddingHorizontal: 4,
@@ -53,7 +70,7 @@ const TabIcon = ({ focused, icon: Icon, badgeCount }: TabIconProps) => {
             <Text
               style={{
                 color: "white",
-                fontSize: 12,
+                fontSize: 11,
                 fontWeight: "bold",
                 textAlign: "center",
               }}
@@ -63,6 +80,48 @@ const TabIcon = ({ focused, icon: Icon, badgeCount }: TabIconProps) => {
           </View>
         )}
       </View>
+    </View>
+  );
+};
+
+// Default tab bar + a soft fade behind it so scrolling content doesn't clutter the edges
+const FadeTabBar = (props: BottomTabBarProps) => {
+  const { theme } = useTheme();
+  const insets = useSafeAreaInsets();
+  const { scrollY } = useTabBar();
+  const tabBar = theme.components.tabBar;
+
+  const fadeHeight =
+    getTabBarBottom(insets.bottom, tabBar.horizontalInset) + tabBar.height + 28;
+
+  const translateY = scrollY.interpolate({
+    inputRange: [0, 80],
+    outputRange: [0, fadeHeight],
+    extrapolate: "clamp",
+  });
+
+  return (
+    <View pointerEvents="box-none" style={StyleSheet.absoluteFill}>
+      <Animated.View
+        pointerEvents="none"
+        style={{
+          position: "absolute",
+          left: 0,
+          right: 0,
+          bottom: 0,
+          height: fadeHeight,
+          transform: [{ translateY }],
+        }}
+      >
+        <LinearGradient
+          colors={[
+            theme.colors.background + "00",
+            theme.colors.background + "F2",
+          ]}
+          style={StyleSheet.absoluteFill}
+        />
+      </Animated.View>
+      <BottomTabBar {...props} />
     </View>
   );
 };
@@ -92,14 +151,10 @@ function TabLayoutInner() {
         lazy: false,
         tabBarStyle: {
           position: "absolute",
-          // Android (immersive): small minimum gap so the bar sits low when the
-          // system nav bar is hidden. Raise the 6 to lift it.
-          bottom:
-            Platform.OS === "android"
-              ? Math.max(insets.bottom, 6) + 2
-              : Math.max(insets.bottom, tabBar.horizontalInset),
+          bottom: getTabBarBottom(insets.bottom, tabBar.horizontalInset),
           height: tabBar.height,
-          marginHorizontal: tabBar.horizontalInset,
+          // Same side inset as the page cards (theme.spacing.sm)
+          marginHorizontal: theme.spacing.sm,
           borderRadius: tabBar.radius,
           backgroundColor: theme.colors.primary,
           borderTopWidth: 0,
@@ -111,14 +166,17 @@ function TabLayoutInner() {
           transform: [{ translateY }],
         },
         tabBarItemStyle: {
-          paddingVertical: tabBar.height / 2 - tabBar.iconFrame / 1.6,
+          paddingVertical: 0,
+          justifyContent: "center",
         },
         tabBarIconStyle: {
-          width: tabBar.iconFrame,
-          height: tabBar.iconFrame,
+          width: 64,
+          height: 52,
           alignItems: "center",
+          justifyContent: "center",
         },
       }}
+      tabBar={(props) => <FadeTabBar {...props} />}
     >
       {tabs.map((tab) => (
         <Tabs.Screen

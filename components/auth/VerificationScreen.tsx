@@ -1,13 +1,14 @@
 // components/auth/VerificationScreen.tsx
 import { Screen, ThemedText } from "@/components/screens/screen";
 import { CustomScrollView } from "@/components/ui/scrollView";
+import { useAuthInputStyle } from "@/hooks/useAuthInputStyle";
 import { useTheme } from "@/src/contexts/theme-context";
 import {
-    KeyboardAvoidingView,
-    Platform,
-    Pressable,
-    TextInput,
-    View,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  TextInput,
+  View,
 } from "react-native";
 
 interface VerificationScreenProps {
@@ -37,11 +38,7 @@ export const VerificationScreen = ({
 }: VerificationScreenProps) => {
   const { theme } = useTheme();
 
-  const getInputStyle = (hasError: boolean) => ({
-    borderColor: hasError ? theme.colors.warning : theme.colors.border,
-    backgroundColor: theme.colors.background,
-    color: theme.colors.text,
-  });
+  const getInputStyle = useAuthInputStyle();
 
   const getButtonStyle = (disabled: boolean) => ({
     backgroundColor: disabled

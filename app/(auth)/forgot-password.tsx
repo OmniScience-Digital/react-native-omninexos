@@ -1,4 +1,5 @@
 import { ThemedText } from "@/components/screens/screen";
+import { useAuthInputStyle } from "@/hooks/useAuthInputStyle";
 import { useTheme } from "@/src/contexts/theme-context";
 import { resetPassword } from "aws-amplify/auth";
 import { useRouter } from "expo-router";
@@ -33,11 +34,7 @@ const ForgotPassword = () => {
     }
   };
 
-  const getInputStyle = (hasError: boolean) => ({
-    borderColor: hasError ? theme.colors.warning : theme.colors.border,
-    backgroundColor: theme.colors.background,
-    color: theme.colors.text,
-  });
+  const getInputStyle = useAuthInputStyle();
 
   return (
     <AuthFormLayout

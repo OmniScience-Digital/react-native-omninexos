@@ -1,10 +1,17 @@
 // components/screens/tabs-screen.tsx
 import { cn } from "@/lib/utils";
+import {
+  getTabBarBottom,
+  useOptionalTabBar,
+} from "@/src/contexts/tabbar-context";
 import { useTheme } from "@/src/contexts/theme-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { ReactNode } from "react";
 import { Animated, RefreshControl, Text, View, ViewProps } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
 interface ScreenProps extends ViewProps {
   children: ReactNode;
@@ -68,6 +75,15 @@ export function Screen({
   ...props
 }: ScreenProps) {
   const { theme } = useTheme();
+  const insets = useSafeAreaInsets();
+
+  // Inside the tabs, let the last items scroll fully clear of the floating tab bar
+  const tabBarCtx = useOptionalTabBar();
+  const tabBarClearance = tabBarCtx
+    ? theme.components.tabBar.height +
+      getTabBarBottom(insets.bottom, theme.components.tabBar.horizontalInset) +
+      24
+    : 0;
 
   const content = (
     <View
@@ -91,7 +107,10 @@ export function Screen({
             onScroll={onScroll}
             scrollEventThrottle={16}
             refreshControl={refreshControl}
-            contentContainerStyle={{ padding: theme.spacing.sm }}
+            contentContainerStyle={{
+              padding: theme.spacing.sm,
+              paddingBottom: theme.spacing.sm + tabBarClearance,
+            }}
             className={cn(className)}
             showsVerticalScrollIndicator={showsVerticalScrollIndicator} // 👈 pass it down
           >
