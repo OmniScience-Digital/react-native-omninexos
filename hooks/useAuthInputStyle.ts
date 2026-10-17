@@ -8,8 +8,8 @@ export function useAuthInputStyle() {
     backgroundColor: theme.colors.background,
     color: theme.colors.text,
     // Explicit so Android's default TextInput padding/font don't take over
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
     fontSize: 14,
     fontFamily: "sans-medium",
     textAlignVertical: "center" as const,
