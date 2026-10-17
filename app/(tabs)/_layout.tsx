@@ -21,7 +21,13 @@ import { tabs } from "@/src/tabs";
 import { BottomTabBar, BottomTabBarProps } from "@react-navigation/bottom-tabs";
 import { LinearGradient } from "expo-linear-gradient";
 import { Tabs } from "expo-router";
-import { useCallback, useEffect, useRef } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+} from "react";
 import {
   Animated,
   Easing,
@@ -129,7 +135,7 @@ const TabIcon = ({
           fontSize: 10,
           lineHeight: 12,
           fontFamily: focused ? "sans-bold" : "sans-semibold",
-          color: focused ? fg : fg + "99",
+          color: focused ? fg : "rgba(255, 255, 255, 0.55)", // dimmed white
         }}
       >
         {label}
@@ -138,11 +144,27 @@ const TabIcon = ({
   );
 };
 
+// 0 = full-width bar, 1 = compact pill. Shared by the bar wrapper and the icons.
+const CollapseContext = createContext<Animated.Value>(new Animated.Value(0));
+
 // Default tab bar + a soft fade behind it so scrolling content doesn't clutter the edges
 const FadeTabBar = (props: BottomTabBarProps) => {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
   const tabBar = theme.components.tabBar;
+  const collapse = useContext(CollapseContext);
+  const { width: screenWidth } = useWindowDimensions();
+
+  // The animated size lives on THIS wrapper (JS-driven), not on BottomTabBar's own
+  // style, because BottomTabBar animates natively and the two can't be mixed.
+  const marginHorizontal = collapse.interpolate({
+    inputRange: [0, 1],
+    outputRange: [theme.spacing.sm, screenWidth * 0.14], // pill ≈ 72% width
+  });
+  const barHeight = collapse.interpolate({
+    inputRange: [0, 1],
+    outputRange: [tabBar.height, tabBar.height - 8],
+  });
 
   const fadeHeight =
     getTabBarBottom(insets.bottom, tabBar.horizontalInset) + tabBar.height + 28;
@@ -167,19 +189,35 @@ const FadeTabBar = (props: BottomTabBarProps) => {
           style={StyleSheet.absoluteFill}
         />
       </Animated.View>
-      <BottomTabBar {...props} />
+      <Animated.View
+        style={{
+          position: "absolute",
+          left: 0,
+          right: 0,
+          bottom: getTabBarBottom(insets.bottom, tabBar.horizontalInset),
+          height: barHeight,
+          marginHorizontal,
+          borderRadius: tabBar.radius,
+          backgroundColor: theme.colors.primary,
+          elevation: 0,
+          shadowColor: theme.colors.shadow,
+          shadowOpacity: 1,
+          shadowRadius: 12,
+          shadowOffset: { width: 0, height: 4 },
+        }}
+      >
+        <BottomTabBar
+          {...props}
+          insets={{ top: 0, bottom: 0, left: 0, right: 0 }}
+        />
+      </Animated.View>
     </View>
   );
 };
 
 function TabLayoutInner() {
-  const insets = useSafeAreaInsets();
-  const { theme } = useTheme();
-  const tabBar = theme.components.tabBar;
   const { scrollY } = useTabBar();
   const { unreadCount } = useNotifications();
-
-  const { width: screenWidth } = useWindowDimensions();
 
   // 0 = full-width bar, 1 = compact floating pill (like Sofascore)
   const collapse = useRef(new Animated.Value(0)).current;
@@ -214,74 +252,58 @@ function TabLayoutInner() {
 
   const expand = useCallback(() => setCollapsed(false), [setCollapsed]);
 
-  // Side margin when collapsed: pill is ~72% of the screen width
-  const collapsedMargin = screenWidth * 0.14;
-  const marginHorizontal = collapse.interpolate({
-    inputRange: [0, 1],
-    outputRange: [theme.spacing.sm, collapsedMargin],
-  });
-  const barHeight = collapse.interpolate({
-    inputRange: [0, 1],
-    outputRange: [tabBar.height, tabBar.height - 8],
-  });
-
   return (
-    <Tabs
-      screenOptions={{
-        headerShown: false,
-        tabBarShowLabel: false,
-        // freezeOnBlur: true,
-        lazy: false,
-        tabBarStyle: {
-          position: "absolute",
-          bottom: getTabBarBottom(insets.bottom, tabBar.horizontalInset),
-          height: barHeight as any,
-          // Full width = same side inset as the page cards; shrinks on scroll
-          marginHorizontal: marginHorizontal as any,
-          borderRadius: tabBar.radius,
-          backgroundColor: theme.colors.primary,
-          borderTopWidth: 0,
-          elevation: 0,
-          shadowColor: theme.colors.shadow,
-          shadowOpacity: 1,
-          shadowRadius: 12,
-          shadowOffset: { width: 0, height: 4 },
-        },
-        tabBarItemStyle: {
-          paddingVertical: 0,
-          justifyContent: "center",
-        },
-        tabBarIconStyle: {
-          width: 56,
-          height: 48,
-          alignItems: "center",
-          justifyContent: "center",
-        },
-      }}
-      screenListeners={{ tabPress: expand, focus: expand }}
-      tabBar={(props) => <FadeTabBar {...props} />}
-    >
-      {tabs.map((tab) => (
-        <Tabs.Screen
-          key={tab.name}
-          name={tab.name}
-          options={{
-            title: tab.title,
-            tabBarIcon: ({ focused }) => (
-              <TabIcon
-                focused={focused}
-                icon={tab.icon}
-                label={tab.title}
-                collapse={collapse}
-                badgeCount={tab.name === "alerts" ? unreadCount : undefined}
-              />
-            ),
-          }}
-        />
-      ))}
-      {/* SIDEMENU: Settings is opened from the side menu, so it gets no tab button */}
-      <Tabs.Screen name="settings" options={{ href: null }} />
-    </Tabs>
+    <CollapseContext.Provider value={collapse}>
+      <Tabs
+        screenOptions={{
+          headerShown: false,
+          tabBarShowLabel: false,
+          // freezeOnBlur: true,
+          lazy: false,
+          // The visible bar (size, colour, shadow) is drawn by FadeTabBar's wrapper
+          tabBarStyle: {
+            height: "100%",
+            paddingBottom: 0,
+            backgroundColor: "transparent",
+            borderTopWidth: 0,
+            elevation: 0,
+          },
+          tabBarItemStyle: {
+            paddingVertical: 0,
+            justifyContent: "center",
+          },
+          tabBarIconStyle: {
+            width: 56,
+            height: 48,
+            alignItems: "center",
+            justifyContent: "center",
+          },
+        }}
+        screenListeners={{ tabPress: expand, focus: expand }}
+        tabBar={(props) => <FadeTabBar {...props} />}
+      >
+        {tabs.map((tab) => (
+          <Tabs.Screen
+            key={tab.name}
+            name={tab.name}
+            options={{
+              title: tab.title,
+              tabBarIcon: ({ focused }) => (
+                <TabIcon
+                  focused={focused}
+                  icon={tab.icon}
+                  label={tab.title}
+                  collapse={collapse}
+                  badgeCount={tab.name === "alerts" ? unreadCount : undefined}
+                />
+              ),
+            }}
+          />
+        ))}
+        {/* SIDEMENU: Settings is opened from the side menu, so it gets no tab button */}
+        <Tabs.Screen name="settings" options={{ href: null }} />
+      </Tabs>
+    </CollapseContext.Provider>
   );
 }
 
