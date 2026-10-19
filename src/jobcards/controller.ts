@@ -1,0 +1,202 @@
+// src/jobcards/controller.ts
+// The one place the screens talk to: it owns the store, the server calls and "tell me when something changed".
+import NetInfo from "@react-native-community/netinfo";
+import { useCallback, useEffect, useState } from "react";
+import { jobCardApi } from "./api";
+import { newId } from "./ids";
+import { deletePhotoFiles } from "./photos";
+import { getJobCardStore } from "./sqliteDriver";
+import { prepareSubmission, type PrepareResult } from "./submission";
+import { runSync, type SyncSummary } from "./sync";
+import type {
+    AnyForm,
+    ScaleBaseline,
+    StartTimePayload,
+    WorkItemView,
+} from "./types";
+
+// ----------------------------------------------------------- who is signed in
+export interface JobCardUser {
+  sub: string;
+  name: string;
+}
+let currentUser: JobCardUser | null = null;
+export const setJobCardUser = (u: JobCardUser | null) => {
+  currentUser = u;
+};
+
+// ------------------------------------------------------------ change notices
+const listeners = new Set<() => void>();
+export const subscribeJobCards = (l: () => void) => {
+  listeners.add(l);
+  return () => {
+    listeners.delete(l);
+  };
+};
+const notify = () => listeners.forEach((l) => l());
+
+export async function isOnline(): Promise<boolean> {
+  const s = await NetInfo.fetch();
+  return !!s.isConnected && s.isInternetReachable !== false;
+}
+
+// ---------------------------------------------------------------------- sync
+let lastSummary: SyncSummary | null = null;
+export const getLastSyncSummary = () => lastSummary;
+
+/** Send what is waiting and refresh the assigned work. Never throws: problems are kept for the next try. */
+export async function requestSync(): Promise<SyncSummary | null> {
+  if (!currentUser) return null;
+  try {
+    const store = await getJobCardStore();
+    lastSummary = await runSync(
+      {
+        store,
+        api: jobCardApi,
+        now: () => new Date(),
+        isOnline,
+        cleanupFiles: deletePhotoFiles,
+      },
+      currentUser.sub,
+    );
+    notify();
+    return lastSummary;
+  } catch (e) {
+    console.warn("[jobcards] sync failed:", e);
+    return null;
+  }
+}
+
+/** Called once at start: anything left half-sent by a crash goes back in the queue. */
+export async function startJobCards(user: JobCardUser): Promise<void> {
+  setJobCardUser(user);
+  const store = await getJobCardStore();
+  await store.recoverStuck(new Date().toISOString());
+  notify();
+}
+
+// -------------------------------------------------------------- doing the work
+/** Technician opened a work item: queue "started working" once per job card (the server also ignores repeats). */
+export async function noteWorkStarted(jobCardId: string): Promise<void> {
+  if (!currentUser) return;
+  const store = await getJobCardStore();
+  const payload: StartTimePayload = {
+    userSub: currentUser.sub,
+    userName: currentUser.name,
+    startedAt: new Date().toISOString(),
+  };
+  const queued = await store.enqueueStartTimeOnce({
+    id: newId(),
+    jobCardId,
+    payload: JSON.stringify(payload),
+    nowIso: payload.startedAt,
+    withinMs: 6 * 3_600_000,
+  });
+  if (queued) void requestSync();
+}
+
+export async function loadWorkItem(id: string) {
+  const store = await getJobCardStore();
+  const item = await store.getWorkItem(id);
+  if (!item) return null;
+  const [draft, baseline, outbox] = await Promise.all([
+    store.getDraft<AnyForm>(id),
+    store.getBaseline(item.scaleId),
+    store.outboxFor(id),
+  ]);
+  return { item, draft, baseline, outbox };
+}
+
+export async function saveDraft(
+  workItemId: string,
+  form: AnyForm,
+): Promise<void> {
+  const store = await getJobCardStore();
+  await store.saveDraft(workItemId, form, new Date().toISOString());
+}
+
+/** Validate, then save the finished work on the phone and start sending. Returns the problems if it is not complete. */
+export async function submitWorkItem(
+  item: WorkItemView,
+  form: AnyForm,
+  baseline: ScaleBaseline | null,
+): Promise<PrepareResult> {
+  if (!currentUser) throw new Error("Not signed in");
+  const nowIso = new Date().toISOString();
+  const prepared = prepareSubmission({
+    item,
+    form,
+    baseline,
+    userSub: currentUser.sub,
+    nowIso,
+    newId,
+  });
+  if (!prepared.ok) return prepared;
+  const store = await getJobCardStore();
+  await store.enqueueResult({
+    id: prepared.id,
+    workItemId: item.id,
+    jobCardId: item.jobCardId,
+    payload: JSON.stringify(prepared.payload),
+    submittedAt: prepared.submittedAt,
+    nowIso,
+  });
+  notify();
+  void requestSync(); // goes out at once if there is signal, otherwise waits in the outbox
+  return prepared;
+}
+
+export async function retryBlocked(): Promise<void> {
+  const store = await getJobCardStore();
+  await store.retryBlocked(new Date().toISOString());
+  notify();
+  void requestSync();
+}
+
+// ------------------------------------------------------------------- the data
+export interface JobCardData {
+  loaded: boolean;
+  items: WorkItemView[];
+  unsent: number;
+  blocked: number;
+  lastPullAt: string | null;
+}
+
+/** The technician's work, live: updates whenever something is saved, sent or refreshed. */
+export function useJobCardData(
+  userSub: string | undefined,
+): JobCardData & { reload: () => Promise<void> } {
+  const [data, setData] = useState<JobCardData>({
+    loaded: false,
+    items: [],
+    unsent: 0,
+    blocked: 0,
+    lastPullAt: null,
+  });
+
+  const reload = useCallback(async () => {
+    if (!userSub) return;
+    try {
+      const store = await getJobCardStore();
+      const [items, unsent, blocked, lastPullAt] = await Promise.all([
+        store.listMyWork(userSub),
+        store.unsentResultCount(),
+        store.blockedCount(),
+        store.getMeta("lastPullAt"),
+      ]);
+      setData({ loaded: true, items, unsent, blocked, lastPullAt });
+    } catch (e) {
+      console.warn("[jobcards] could not read the phone's job card data:", e);
+      setData((d) => ({ ...d, loaded: true }));
+    }
+  }, [userSub]);
+
+  useEffect(() => {
+    void reload();
+    return subscribeJobCards(() => {
+      void reload();
+    });
+  }, [reload]);
+
+  return { ...data, reload };
+}

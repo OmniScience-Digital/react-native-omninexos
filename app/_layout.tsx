@@ -7,6 +7,7 @@
 // import { warmDbConnection } from "@/services/submissionQueue";
 // import { AuthProvider, useAuth } from "@/src/contexts/auth-context";
 // import { NotificationProvider } from "@/src/contexts/notification-context";
+// import { SideMenuProvider } from "@/src/contexts/sidemenu-context"; // SIDEMENU
 // import { ThemeProvider, useTheme } from "@/src/contexts/theme-context";
 // import { initMonitoring } from "@/src/monitoring/sentry";
 // import { applyPendingUpdate, checkForUpdate } from "@/src/services/appUpdates";
@@ -18,6 +19,7 @@
 // import AsyncStorage from "@react-native-async-storage/async-storage";
 // import { cognitoUserPoolsTokenProvider } from "aws-amplify/auth/cognito";
 // import { useFonts } from "expo-font";
+// import * as NavigationBar from "expo-navigation-bar";
 // import { Stack, useRouter, useSegments } from "expo-router";
 // import * as SplashScreen from "expo-splash-screen";
 // import { StatusBar } from "expo-status-bar";
@@ -30,6 +32,7 @@
 //   AppStateStatus,
 //   BackHandler,
 //   Easing,
+//   Keyboard,
 //   Platform,
 //   ToastAndroid,
 //   View,
@@ -67,6 +70,26 @@
 //     "sans-extrabold": require("../assets/fonts/PlusJakartaSans-ExtraBold.ttf"),
 //     "sans-light": require("../assets/fonts/PlusJakartaSans-Light.ttf"),
 //   });
+
+//   // Immersive mode (Android): hide the system navigation bar (back/home/recents).
+//   // A swipe up from the bottom edge reveals it temporarily; the system hides it
+//   // again on its own. Re-applied on resume and after the keyboard closes, which
+//   // can bring the bar back.
+//   useEffect(() => {
+//     if (Platform.OS !== "android") return;
+//     const hideNavBar = () => {
+//       NavigationBar.setVisibilityAsync("hidden").catch(() => {});
+//     };
+//     hideNavBar();
+//     const appSub = AppState.addEventListener("change", (next) => {
+//       if (next === "active") hideNavBar();
+//     });
+//     const kbSub = Keyboard.addListener("keyboardDidHide", hideNavBar);
+//     return () => {
+//       appSub.remove();
+//       kbSub.remove();
+//     };
+//   }, []);
 
 //   // On foreground resume, re-validate (and repair if needed) the offline-queue
 //   // database so it is ready before the user taps "Save Offline". This used to
@@ -234,7 +257,10 @@
 //         <ThemeProvider>
 //           <SafeAreaProvider>
 //             <AuthProvider>
-//               <LayoutInner />
+//               {/* SIDEMENU: the menu is drawn above every screen */}
+//               <SideMenuProvider>
+//                 <LayoutInner />
+//               </SideMenuProvider>
 //             </AuthProvider>
 //           </SafeAreaProvider>
 //         </ThemeProvider>
@@ -249,10 +275,12 @@ import { UpdateBanner } from "@/components/ui/update-banner";
 import "@/global.css";
 
 import ErrorBoundary from "@/components/ui/ErrorBoundary";
+import { useJobCardNotificationLinks } from "@/hooks/useJobCardNotificationLinks"; // JOBCARDS
+import { useJobCardSync } from "@/hooks/useJobCardSync"; // JOBCARDS // SIDEMENU
 import { warmDbConnection } from "@/services/submissionQueue";
 import { AuthProvider, useAuth } from "@/src/contexts/auth-context";
 import { NotificationProvider } from "@/src/contexts/notification-context";
-import { SideMenuProvider } from "@/src/contexts/sidemenu-context"; // SIDEMENU
+import { SideMenuProvider } from "@/src/contexts/sidemenu-context";
 import { ThemeProvider, useTheme } from "@/src/contexts/theme-context";
 import { initMonitoring } from "@/src/monitoring/sentry";
 import { applyPendingUpdate, checkForUpdate } from "@/src/services/appUpdates";
@@ -302,6 +330,13 @@ function LayoutInner() {
     user,
   } = useAuth();
   const userId = (user as any)?.email ?? (user as any)?.username ?? "anonymous";
+  // JOBCARDS: keep job cards in step with the server in the background, and open work items from push taps
+  const jobCardUser =
+    isAuthenticated && user?.username
+      ? { sub: user.username, name: user.name || user.email || "" }
+      : null;
+  useJobCardSync(jobCardUser);
+  useJobCardNotificationLinks(!!jobCardUser);
   const segments = useSegments();
   const router = useRouter();
   const dispatch = useAppDispatch();

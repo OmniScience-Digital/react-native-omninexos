@@ -1,4 +1,11 @@
-import { Car, CarFront, ClipboardList, Package } from "lucide-react-native";
+// src/dashboardLists.tsx  (MODIFIED - search "JOBCARDS" for the addition)
+import {
+  Car,
+  CarFront,
+  ClipboardCheck,
+  ClipboardList,
+  Package,
+} from "lucide-react-native";
 
 export const Tabforms: AppTab[] = [
   {
@@ -23,5 +30,11 @@ export const TabOperations: AppTab[] = [
     name: "Inventory Management System",
     title: "Manage your inventory",
     icon: ClipboardList,
+  },
+  // JOBCARDS: calibration work assigned to the signed-in technician (works offline)
+  {
+    name: "Job Cards",
+    title: "Your assigned calibration work",
+    icon: ClipboardCheck,
   },
 ];

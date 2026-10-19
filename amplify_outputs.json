@@ -1,9 +1,9 @@
 {
   "auth": {
-    "user_pool_id": "us-east-1_ikyV5OzW3",
+    "user_pool_id": "us-east-1_kVFzmMKzz",
     "aws_region": "us-east-1",
-    "user_pool_client_id": "3bj2dd36shet2pbhlans0uuof7",
-    "identity_pool_id": "us-east-1:46905546-fbdb-4e16-b7c7-8340ef465117",
+    "user_pool_client_id": "2k14mmqslvb6mnd5ds3brn2ok1",
+    "identity_pool_id": "us-east-1:718f28db-6cfe-4334-a359-38a6d15631b2",
     "mfa_methods": [],
     "standard_required_attributes": [
       "email",
@@ -67,12 +67,12 @@
         "profile",
         "aws.cognito.signin.user.admin"
       ],
-      "domain": "79d5b637818b3385b712.auth.us-east-1.amazoncognito.com"
+      "domain": "8e0c8607280166b99e47.auth.us-east-1.amazoncognito.com"
     },
     "unauthenticated_identities_enabled": true
   },
   "data": {
-    "url": "https://gfbjmnpv4rbrhft2zlwgetjvde.appsync-api.us-east-1.amazonaws.com/graphql",
+    "url": "https://kttopm7vhnbr5jxo4cp27v4po4.appsync-api.us-east-1.amazonaws.com/graphql",
     "aws_region": "us-east-1",
     "default_authorization_type": "AMAZON_COGNITO_USER_POOLS",
     "authorization_types": [
@@ -81,6 +81,1349 @@
     "model_introspection": {
       "version": 1,
       "models": {
+        "TelegramGroup": {
+          "name": "TelegramGroup",
+          "fields": {
+            "id": {
+              "name": "id",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "chatId": {
+              "name": "chatId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "groupName": {
+              "name": "groupName",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "active": {
+              "name": "active",
+              "isArray": false,
+              "type": "Boolean",
+              "isRequired": false,
+              "attributes": []
+            },
+            "addedAt": {
+              "name": "addedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": []
+            },
+            "jobCards": {
+              "name": "jobCards",
+              "isArray": true,
+              "type": {
+                "model": "JobCard"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true,
+              "association": {
+                "connectionType": "HAS_MANY",
+                "associatedWith": [
+                  "telegramGroupId"
+                ]
+              }
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "TelegramGroups",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "telegramGroupsByChatId",
+                "queryField": "telegramGroupsByChatId",
+                "fields": [
+                  "chatId"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "allow": "private",
+                    "operations": [
+                      "create",
+                      "update",
+                      "delete",
+                      "read"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": false,
+            "primaryKeyFieldName": "id",
+            "sortKeyFieldNames": []
+          }
+        },
+        "JobCard": {
+          "name": "JobCard",
+          "fields": {
+            "id": {
+              "name": "id",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "jcNumber": {
+              "name": "jcNumber",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "quoteId": {
+              "name": "quoteId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "quoteNumber": {
+              "name": "quoteNumber",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "customerName": {
+              "name": "customerName",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "customerSiteId": {
+              "name": "customerSiteId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
+            "title": {
+              "name": "title",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "status": {
+              "name": "status",
+              "isArray": false,
+              "type": {
+                "enum": "JobCardStatus"
+              },
+              "isRequired": true,
+              "attributes": []
+            },
+            "openedAt": {
+              "name": "openedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": []
+            },
+            "closedAt": {
+              "name": "closedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": []
+            },
+            "closedBy": {
+              "name": "closedBy",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "clickupTaskId": {
+              "name": "clickupTaskId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "totalMinutes": {
+              "name": "totalMinutes",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "telegramGroupId": {
+              "name": "telegramGroupId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
+            "telegramGroup": {
+              "name": "telegramGroup",
+              "isArray": false,
+              "type": {
+                "model": "TelegramGroup"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "association": {
+                "connectionType": "BELONGS_TO",
+                "targetNames": [
+                  "telegramGroupId"
+                ]
+              }
+            },
+            "scales": {
+              "name": "scales",
+              "isArray": true,
+              "type": {
+                "model": "JobCardScale"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true,
+              "association": {
+                "connectionType": "HAS_MANY",
+                "associatedWith": [
+                  "jobCardId"
+                ]
+              }
+            },
+            "timeEntries": {
+              "name": "timeEntries",
+              "isArray": true,
+              "type": {
+                "model": "JobCardTimeEntry"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true,
+              "association": {
+                "connectionType": "HAS_MANY",
+                "associatedWith": [
+                  "jobCardId"
+                ]
+              }
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "JobCards",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "jobCardsByJcNumber",
+                "queryField": "jobCardsByNumber",
+                "fields": [
+                  "jcNumber"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "jobCardsByQuoteNumber",
+                "queryField": "jobCardsByQuoteNumber",
+                "fields": [
+                  "quoteNumber"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "jobCardsByStatusAndOpenedAt",
+                "queryField": "jobCardsByStatus",
+                "fields": [
+                  "status",
+                  "openedAt"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "allow": "private",
+                    "operations": [
+                      "create",
+                      "update",
+                      "delete",
+                      "read"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": false,
+            "primaryKeyFieldName": "id",
+            "sortKeyFieldNames": []
+          }
+        },
+        "JobCardScale": {
+          "name": "JobCardScale",
+          "fields": {
+            "id": {
+              "name": "id",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "jobCardId": {
+              "name": "jobCardId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "jobCard": {
+              "name": "jobCard",
+              "isArray": false,
+              "type": {
+                "model": "JobCard"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "association": {
+                "connectionType": "BELONGS_TO",
+                "targetNames": [
+                  "jobCardId"
+                ]
+              }
+            },
+            "scaleName": {
+              "name": "scaleName",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "assetId": {
+              "name": "assetId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
+            "monitoringScaleId": {
+              "name": "monitoringScaleId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "createdBy": {
+              "name": "createdBy",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "modules": {
+              "name": "modules",
+              "isArray": true,
+              "type": {
+                "model": "JobCardModule"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true,
+              "association": {
+                "connectionType": "HAS_MANY",
+                "associatedWith": [
+                  "scaleId"
+                ]
+              }
+            },
+            "certificates": {
+              "name": "certificates",
+              "isArray": true,
+              "type": {
+                "model": "CalibrationCertificate"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true,
+              "association": {
+                "connectionType": "HAS_MANY",
+                "associatedWith": [
+                  "scaleId"
+                ]
+              }
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "JobCardScales",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "jobCardScalesByJobCardIdAndScaleName",
+                "queryField": "scalesByJobCard",
+                "fields": [
+                  "jobCardId",
+                  "scaleName"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "allow": "private",
+                    "operations": [
+                      "create",
+                      "update",
+                      "delete",
+                      "read"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": false,
+            "primaryKeyFieldName": "id",
+            "sortKeyFieldNames": []
+          }
+        },
+        "JobCardModule": {
+          "name": "JobCardModule",
+          "fields": {
+            "id": {
+              "name": "id",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "scaleId": {
+              "name": "scaleId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "scale": {
+              "name": "scale",
+              "isArray": false,
+              "type": {
+                "model": "JobCardScale"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "association": {
+                "connectionType": "BELONGS_TO",
+                "targetNames": [
+                  "scaleId"
+                ]
+              }
+            },
+            "jobCardId": {
+              "name": "jobCardId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "moduleType": {
+              "name": "moduleType",
+              "isArray": false,
+              "type": {
+                "enum": "JobCardModuleType"
+              },
+              "isRequired": true,
+              "attributes": []
+            },
+            "status": {
+              "name": "status",
+              "isArray": false,
+              "type": {
+                "enum": "JobCardModuleStatus"
+              },
+              "isRequired": true,
+              "attributes": []
+            },
+            "sequence": {
+              "name": "sequence",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "addedBy": {
+              "name": "addedBy",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "addedAt": {
+              "name": "addedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": []
+            },
+            "submittedBy": {
+              "name": "submittedBy",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "submittedAt": {
+              "name": "submittedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": []
+            },
+            "assignedTo": {
+              "name": "assignedTo",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "assignedToName": {
+              "name": "assignedToName",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "submissions": {
+              "name": "submissions",
+              "isArray": true,
+              "type": {
+                "model": "JobCardSubmission"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true,
+              "association": {
+                "connectionType": "HAS_MANY",
+                "associatedWith": [
+                  "moduleId"
+                ]
+              }
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "JobCardModules",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "jobCardModulesByScaleIdAndSequence",
+                "queryField": "modulesByScale",
+                "fields": [
+                  "scaleId",
+                  "sequence"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "jobCardModulesByJobCardId",
+                "queryField": "modulesByJobCard",
+                "fields": [
+                  "jobCardId"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "jobCardModulesByAssignedTo",
+                "queryField": "modulesByAssignee",
+                "fields": [
+                  "assignedTo"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "allow": "private",
+                    "operations": [
+                      "create",
+                      "update",
+                      "delete",
+                      "read"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": false,
+            "primaryKeyFieldName": "id",
+            "sortKeyFieldNames": []
+          }
+        },
+        "JobCardSubmission": {
+          "name": "JobCardSubmission",
+          "fields": {
+            "id": {
+              "name": "id",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "moduleId": {
+              "name": "moduleId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "module": {
+              "name": "module",
+              "isArray": false,
+              "type": {
+                "model": "JobCardModule"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "association": {
+                "connectionType": "BELONGS_TO",
+                "targetNames": [
+                  "moduleId"
+                ]
+              }
+            },
+            "scaleId": {
+              "name": "scaleId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "jobCardId": {
+              "name": "jobCardId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "moduleType": {
+              "name": "moduleType",
+              "isArray": false,
+              "type": {
+                "enum": "JobCardModuleType"
+              },
+              "isRequired": true,
+              "attributes": []
+            },
+            "scaleTypeKey": {
+              "name": "scaleTypeKey",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "submittedBy": {
+              "name": "submittedBy",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "submittedAt": {
+              "name": "submittedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": true,
+              "attributes": []
+            },
+            "schemaVersion": {
+              "name": "schemaVersion",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "payload": {
+              "name": "payload",
+              "isArray": false,
+              "type": "AWSJSON",
+              "isRequired": true,
+              "attributes": []
+            },
+            "deliveryState": {
+              "name": "deliveryState",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "clickupStatus": {
+              "name": "clickupStatus",
+              "isArray": false,
+              "type": {
+                "enum": "DeliveryStatus"
+              },
+              "isRequired": false,
+              "attributes": []
+            },
+            "telegramStatus": {
+              "name": "telegramStatus",
+              "isArray": false,
+              "type": {
+                "enum": "DeliveryStatus"
+              },
+              "isRequired": false,
+              "attributes": []
+            },
+            "deliveryError": {
+              "name": "deliveryError",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "deliveryAttempts": {
+              "name": "deliveryAttempts",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "nextAttemptAt": {
+              "name": "nextAttemptAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": []
+            },
+            "deliveredAt": {
+              "name": "deliveredAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": []
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "JobCardSubmissions",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "jobCardSubmissionsByModuleIdAndSubmittedAt",
+                "queryField": "submissionsByModule",
+                "fields": [
+                  "moduleId",
+                  "submittedAt"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "jobCardSubmissionsByJobCardIdAndSubmittedAt",
+                "queryField": "submissionsByJobCard",
+                "fields": [
+                  "jobCardId",
+                  "submittedAt"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "jobCardSubmissionsByScaleTypeKeyAndSubmittedAt",
+                "queryField": "submissionsByScaleType",
+                "fields": [
+                  "scaleTypeKey",
+                  "submittedAt"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "jobCardSubmissionsByDeliveryStateAndSubmittedAt",
+                "queryField": "submissionsByDeliveryState",
+                "fields": [
+                  "deliveryState",
+                  "submittedAt"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "allow": "private",
+                    "operations": [
+                      "create",
+                      "update",
+                      "delete",
+                      "read"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": false,
+            "primaryKeyFieldName": "id",
+            "sortKeyFieldNames": []
+          }
+        },
+        "JobCardTimeEntry": {
+          "name": "JobCardTimeEntry",
+          "fields": {
+            "id": {
+              "name": "id",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "jobCardId": {
+              "name": "jobCardId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "jobCard": {
+              "name": "jobCard",
+              "isArray": false,
+              "type": {
+                "model": "JobCard"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "association": {
+                "connectionType": "BELONGS_TO",
+                "targetNames": [
+                  "jobCardId"
+                ]
+              }
+            },
+            "moduleId": {
+              "name": "moduleId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": false,
+              "attributes": []
+            },
+            "userId": {
+              "name": "userId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "userName": {
+              "name": "userName",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "startedAt": {
+              "name": "startedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": true,
+              "attributes": []
+            },
+            "endedAt": {
+              "name": "endedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": []
+            },
+            "minutes": {
+              "name": "minutes",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": false,
+              "attributes": []
+            },
+            "startReason": {
+              "name": "startReason",
+              "isArray": false,
+              "type": {
+                "enum": "TimeEntryStartReason"
+              },
+              "isRequired": false,
+              "attributes": []
+            },
+            "endReason": {
+              "name": "endReason",
+              "isArray": false,
+              "type": {
+                "enum": "TimeEntryEndReason"
+              },
+              "isRequired": false,
+              "attributes": []
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "JobCardTimeEntries",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "jobCardTimeEntriesByJobCardIdAndStartedAt",
+                "queryField": "timeEntriesByJobCard",
+                "fields": [
+                  "jobCardId",
+                  "startedAt"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "jobCardTimeEntriesByUserIdAndStartedAt",
+                "queryField": "timeEntriesByUser",
+                "fields": [
+                  "userId",
+                  "startedAt"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "allow": "private",
+                    "operations": [
+                      "create",
+                      "update",
+                      "delete",
+                      "read"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": false,
+            "primaryKeyFieldName": "id",
+            "sortKeyFieldNames": []
+          }
+        },
+        "CalibrationCertificate": {
+          "name": "CalibrationCertificate",
+          "fields": {
+            "id": {
+              "name": "id",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "certificateNumber": {
+              "name": "certificateNumber",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "jobCardId": {
+              "name": "jobCardId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "scaleId": {
+              "name": "scaleId",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "scale": {
+              "name": "scale",
+              "isArray": false,
+              "type": {
+                "model": "JobCardScale"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "association": {
+                "connectionType": "BELONGS_TO",
+                "targetNames": [
+                  "scaleId"
+                ]
+              }
+            },
+            "status": {
+              "name": "status",
+              "isArray": false,
+              "type": {
+                "enum": "CertificateStatus"
+              },
+              "isRequired": true,
+              "attributes": []
+            },
+            "version": {
+              "name": "version",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "issuedAt": {
+              "name": "issuedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": true,
+              "attributes": []
+            },
+            "issuedBy": {
+              "name": "issuedBy",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "sourceSubmissionIds": {
+              "name": "sourceSubmissionIds",
+              "isArray": true,
+              "type": "String",
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": true
+            },
+            "dataSnapshot": {
+              "name": "dataSnapshot",
+              "isArray": false,
+              "type": "AWSJSON",
+              "isRequired": false,
+              "attributes": []
+            },
+            "pdfKey": {
+              "name": "pdfKey",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "pdfStored": {
+              "name": "pdfStored",
+              "isArray": false,
+              "type": "Boolean",
+              "isRequired": false,
+              "attributes": []
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "CalibrationCertificates",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "calibrationCertificatesByCertificateNumber",
+                "queryField": "certificatesByNumber",
+                "fields": [
+                  "certificateNumber"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "calibrationCertificatesByJobCardIdAndIssuedAt",
+                "queryField": "certificatesByJobCard",
+                "fields": [
+                  "jobCardId",
+                  "issuedAt"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "calibrationCertificatesByScaleIdAndIssuedAt",
+                "queryField": "certificatesByScale",
+                "fields": [
+                  "scaleId",
+                  "issuedAt"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "allow": "private",
+                    "operations": [
+                      "read"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": false,
+            "primaryKeyFieldName": "id",
+            "sortKeyFieldNames": []
+          }
+        },
+        "CertificateCounter": {
+          "name": "CertificateCounter",
+          "fields": {
+            "id": {
+              "name": "id",
+              "isArray": false,
+              "type": "ID",
+              "isRequired": true,
+              "attributes": []
+            },
+            "counterKey": {
+              "name": "counterKey",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "lastNumber": {
+              "name": "lastNumber",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "createdAt": {
+              "name": "createdAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            },
+            "updatedAt": {
+              "name": "updatedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": [],
+              "isReadOnly": true
+            }
+          },
+          "syncable": true,
+          "pluralName": "CertificateCounters",
+          "attributes": [
+            {
+              "type": "model",
+              "properties": {}
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "certificateCountersByCounterKey",
+                "queryField": "listCertificateCounterByCounterKey",
+                "fields": [
+                  "counterKey"
+                ]
+              }
+            },
+            {
+              "type": "auth",
+              "properties": {
+                "rules": [
+                  {
+                    "allow": "private",
+                    "operations": [
+                      "read"
+                    ]
+                  }
+                ]
+              }
+            }
+          ],
+          "primaryKeyInfo": {
+            "isCustomPrimaryKey": false,
+            "primaryKeyFieldName": "id",
+            "sortKeyFieldNames": []
+          }
+        },
         "Landing": {
           "name": "Landing",
           "fields": {
@@ -134,8 +1477,7 @@
               "properties": {
                 "rules": [
                   {
-                    "allow": "public",
-                    "provider": "apiKey",
+                    "allow": "private",
                     "operations": [
                       "create",
                       "update",
@@ -225,8 +1567,7 @@
               "properties": {
                 "rules": [
                   {
-                    "allow": "public",
-                    "provider": "apiKey",
+                    "allow": "private",
                     "operations": [
                       "create",
                       "update",
@@ -339,8 +1680,7 @@
               "properties": {
                 "rules": [
                   {
-                    "allow": "public",
-                    "provider": "apiKey",
+                    "allow": "private",
                     "operations": [
                       "create",
                       "update",
@@ -525,8 +1865,7 @@
               "properties": {
                 "rules": [
                   {
-                    "allow": "public",
-                    "provider": "apiKey",
+                    "allow": "private",
                     "operations": [
                       "create",
                       "update",
@@ -753,8 +2092,7 @@
               "properties": {
                 "rules": [
                   {
-                    "allow": "public",
-                    "provider": "apiKey",
+                    "allow": "private",
                     "operations": [
                       "create",
                       "update",
@@ -1038,8 +2376,7 @@
               "properties": {
                 "rules": [
                   {
-                    "allow": "public",
-                    "provider": "apiKey",
+                    "allow": "private",
                     "operations": [
                       "create",
                       "update",
@@ -1140,8 +2477,7 @@
               "properties": {
                 "rules": [
                   {
-                    "allow": "public",
-                    "provider": "apiKey",
+                    "allow": "private",
                     "operations": [
                       "create",
                       "update",
@@ -1291,8 +2627,7 @@
               "properties": {
                 "rules": [
                   {
-                    "allow": "public",
-                    "provider": "apiKey",
+                    "allow": "private",
                     "operations": [
                       "create",
                       "update",
@@ -1570,8 +2905,7 @@
               "properties": {
                 "rules": [
                   {
-                    "allow": "public",
-                    "provider": "apiKey",
+                    "allow": "private",
                     "operations": [
                       "create",
                       "update",
@@ -1694,8 +3028,7 @@
               "properties": {
                 "rules": [
                   {
-                    "allow": "public",
-                    "provider": "apiKey",
+                    "allow": "private",
                     "operations": [
                       "create",
                       "update",
@@ -1828,8 +3161,7 @@
               "properties": {
                 "rules": [
                   {
-                    "allow": "public",
-                    "provider": "apiKey",
+                    "allow": "private",
                     "operations": [
                       "create",
                       "update",
@@ -1950,8 +3282,7 @@
               "properties": {
                 "rules": [
                   {
-                    "allow": "public",
-                    "provider": "apiKey",
+                    "allow": "private",
                     "operations": [
                       "create",
                       "update",
@@ -2015,8 +3346,7 @@
               "properties": {
                 "rules": [
                   {
-                    "allow": "public",
-                    "provider": "apiKey",
+                    "allow": "private",
                     "operations": [
                       "create",
                       "update",
@@ -2139,8 +3469,7 @@
               "properties": {
                 "rules": [
                   {
-                    "allow": "public",
-                    "provider": "apiKey",
+                    "allow": "private",
                     "operations": [
                       "create",
                       "update",
@@ -2451,8 +3780,7 @@
               "properties": {
                 "rules": [
                   {
-                    "allow": "public",
-                    "provider": "apiKey",
+                    "allow": "private",
                     "operations": [
                       "create",
                       "update",
@@ -2705,8 +4033,7 @@
               "properties": {
                 "rules": [
                   {
-                    "allow": "public",
-                    "provider": "apiKey",
+                    "allow": "private",
                     "operations": [
                       "create",
                       "update",
@@ -3123,8 +4450,7 @@
               "properties": {
                 "rules": [
                   {
-                    "allow": "public",
-                    "provider": "apiKey",
+                    "allow": "private",
                     "operations": [
                       "create",
                       "update",
@@ -3251,8 +4577,7 @@
               "properties": {
                 "rules": [
                   {
-                    "allow": "public",
-                    "provider": "apiKey",
+                    "allow": "private",
                     "operations": [
                       "create",
                       "update",
@@ -3334,8 +4659,7 @@
               "properties": {
                 "rules": [
                   {
-                    "allow": "public",
-                    "provider": "apiKey",
+                    "allow": "private",
                     "operations": [
                       "create",
                       "update",
@@ -3652,8 +4976,7 @@
               "properties": {
                 "rules": [
                   {
-                    "allow": "public",
-                    "provider": "apiKey",
+                    "allow": "private",
                     "operations": [
                       "create",
                       "update",
@@ -3748,8 +5071,7 @@
               "properties": {
                 "rules": [
                   {
-                    "allow": "public",
-                    "provider": "apiKey",
+                    "allow": "private",
                     "operations": [
                       "create",
                       "update",
@@ -4030,8 +5352,7 @@
               "properties": {
                 "rules": [
                   {
-                    "allow": "public",
-                    "provider": "apiKey",
+                    "allow": "private",
                     "operations": [
                       "create",
                       "update",
@@ -4311,8 +5632,7 @@
               "properties": {
                 "rules": [
                   {
-                    "allow": "public",
-                    "provider": "apiKey",
+                    "allow": "private",
                     "operations": [
                       "create",
                       "update",
@@ -4435,8 +5755,7 @@
               "properties": {
                 "rules": [
                   {
-                    "allow": "public",
-                    "provider": "apiKey",
+                    "allow": "private",
                     "operations": [
                       "create",
                       "update",
@@ -4525,8 +5844,7 @@
               "properties": {
                 "rules": [
                   {
-                    "allow": "public",
-                    "provider": "apiKey",
+                    "allow": "private",
                     "operations": [
                       "create",
                       "update",
@@ -4719,8 +6037,7 @@
               "properties": {
                 "rules": [
                   {
-                    "allow": "public",
-                    "provider": "apiKey",
+                    "allow": "private",
                     "operations": [
                       "create",
                       "update",
@@ -4740,6 +6057,59 @@
         }
       },
       "enums": {
+        "JobCardStatus": {
+          "name": "JobCardStatus",
+          "values": [
+            "OPEN",
+            "CLOSED"
+          ]
+        },
+        "JobCardModuleType": {
+          "name": "JobCardModuleType",
+          "values": [
+            "INSPECTION",
+            "ZERO_CALIBRATION",
+            "SPAN_CALIBRATION"
+          ]
+        },
+        "JobCardModuleStatus": {
+          "name": "JobCardModuleStatus",
+          "values": [
+            "PENDING",
+            "SUBMITTED"
+          ]
+        },
+        "DeliveryStatus": {
+          "name": "DeliveryStatus",
+          "values": [
+            "PENDING",
+            "SENT",
+            "FAILED"
+          ]
+        },
+        "CertificateStatus": {
+          "name": "CertificateStatus",
+          "values": [
+            "ISSUED",
+            "SUPERSEDED"
+          ]
+        },
+        "TimeEntryStartReason": {
+          "name": "TimeEntryStartReason",
+          "values": [
+            "WORK_ITEM_ADDED",
+            "WORK_ITEM_STARTED",
+            "RESULT_SUBMITTED"
+          ]
+        },
+        "TimeEntryEndReason": {
+          "name": "TimeEntryEndReason",
+          "values": [
+            "ALL_SUBMITTED",
+            "JOB_CLOSED",
+            "NO_WORK_ITEMS"
+          ]
+        },
         "PhotoChangeRequestStatus": {
           "name": "PhotoChangeRequestStatus",
           "values": [
@@ -4810,7 +6180,8 @@
             "ASSET",
             "COMPLIANCE",
             "PERMISSIONS",
-            "SUPPLIER"
+            "SUPPLIER",
+            "JOBCARD"
           ]
         },
         "SupplierAccountType": {
@@ -4832,6 +6203,32 @@
         }
       },
       "nonModels": {
+        "TechnicianUser": {
+          "name": "TechnicianUser",
+          "fields": {
+            "id": {
+              "name": "id",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "name": {
+              "name": "name",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "email": {
+              "name": "email",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            }
+          }
+        },
         "InviteUserAccountReturnType": {
           "name": "InviteUserAccountReturnType",
           "fields": {
@@ -4859,9 +6256,63 @@
           "type": "AWSJSON",
           "isRequired": false,
           "isArrayNullable": true
+        },
+        "techniciansList": {
+          "name": "techniciansList",
+          "isArray": true,
+          "type": {
+            "nonModel": "TechnicianUser"
+          },
+          "isRequired": false,
+          "isArrayNullable": true
         }
       },
       "mutations": {
+        "notifyWorkAssigned": {
+          "name": "notifyWorkAssigned",
+          "isArray": false,
+          "type": "AWSJSON",
+          "isRequired": false,
+          "arguments": {
+            "pushTokens": {
+              "name": "pushTokens",
+              "isArray": true,
+              "type": "String",
+              "isRequired": false,
+              "isArrayNullable": false
+            },
+            "workItemId": {
+              "name": "workItemId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true
+            },
+            "jobCardId": {
+              "name": "jobCardId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true
+            },
+            "jcNumber": {
+              "name": "jcNumber",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true
+            },
+            "scaleName": {
+              "name": "scaleName",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true
+            },
+            "workItemLabel": {
+              "name": "workItemLabel",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true
+            }
+          }
+        },
         "notifyPhotoRequestStatus": {
           "name": "notifyPhotoRequestStatus",
           "isArray": false,
@@ -4930,11 +6381,11 @@
   },
   "storage": {
     "aws_region": "us-east-1",
-    "bucket_name": "amplify-d2ib10qin54ac6-ma-omninexosstoragebucketd8-w61e6stdr4lg",
+    "bucket_name": "amplify-d2ib10qin54ac6-vi-omninexosstoragebucketd8-pl0csxq3ebc5",
     "buckets": [
       {
         "name": "OmniNexos_Storage",
-        "bucket_name": "amplify-d2ib10qin54ac6-ma-omninexosstoragebucketd8-w61e6stdr4lg",
+        "bucket_name": "amplify-d2ib10qin54ac6-vi-omninexosstoragebucketd8-pl0csxq3ebc5",
         "aws_region": "us-east-1",
         "paths": {
           "inspections/*": {
@@ -4965,6 +6416,19 @@
               "delete"
             ]
           },
+          "jobcards/*": {
+            "groupsUSERS": [
+              "get",
+              "list",
+              "write"
+            ],
+            "groupsADMINS": [
+              "get",
+              "list",
+              "write",
+              "delete"
+            ]
+          },
           "hr/*": {
             "groupsUSERS": [
               "get",
@@ -4985,6 +6449,6 @@
   },
   "version": "1.4",
   "custom": {
-    "verifyFaceApiUrl": "https://gfnomfa5z6.execute-api.us-east-1.amazonaws.com/prod/"
+    "verifyFaceApiUrl": "https://um62zmi6ae.execute-api.us-east-1.amazonaws.com/prod/"
   }
 }
