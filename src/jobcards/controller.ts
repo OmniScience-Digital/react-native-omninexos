@@ -1,7 +1,7 @@
 // src/jobcards/controller.ts
 // The one place the screens talk to: it owns the store, the server calls and "tell me when something changed".
 import NetInfo from "@react-native-community/netinfo";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { jobCardApi } from "./api";
 import { newId } from "./ids";
 import { deletePhotoFiles } from "./photos";
@@ -9,10 +9,10 @@ import { getJobCardStore } from "./sqliteDriver";
 import { prepareSubmission, type PrepareResult } from "./submission";
 import { runSync, type SyncSummary } from "./sync";
 import type {
-    AnyForm,
-    ScaleBaseline,
-    StartTimePayload,
-    WorkItemView,
+  AnyForm,
+  ScaleBaseline,
+  StartTimePayload,
+  WorkItemView,
 } from "./types";
 
 // ----------------------------------------------------------- who is signed in
@@ -21,6 +21,7 @@ export interface JobCardUser {
   name: string;
 }
 let currentUser: JobCardUser | null = null;
+export const getJobCardUser = () => currentUser;
 export const setJobCardUser = (u: JobCardUser | null) => {
   currentUser = u;
 };
@@ -175,7 +176,11 @@ export function useJobCardData(
   });
 
   const reload = useCallback(async () => {
-    if (!userSub) return;
+    if (!userSub) {
+      // nobody to load for yet: show "nothing here" rather than loading forever
+      setData((d) => ({ ...d, loaded: true }));
+      return;
+    }
     try {
       const store = await getJobCardStore();
       const [items, unsent, blocked, lastPullAt] = await Promise.all([
@@ -199,4 +204,72 @@ export function useJobCardData(
   }, [reload]);
 
   return { ...data, reload };
+}
+
+// ---------------------------------------------------------- open job cards
+export interface OpenJobCardsSummary {
+  loaded: boolean;
+  /** Job cards that are still open and have work left for this user */
+  count: number;
+  /** Minutes this user has spent on those job cards (null until known) */
+  minutes: number | null;
+}
+
+export const formatMinutes = (m: number): string => {
+  if (m < 1) return "0m";
+  const h = Math.floor(m / 60);
+  const r = Math.round(m % 60);
+  return h > 0 ? `${h}h ${r}m` : `${r}m`;
+};
+
+/** For the home screen: how many job cards are open for the user, and the time they have spent on them. */
+export function useOpenJobCards(
+  userSub: string | undefined,
+): OpenJobCardsSummary {
+  const { loaded, items } = useJobCardData(userSub);
+  const [minutes, setMinutes] = useState<number | null>(null);
+
+  const openIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const w of items)
+      if (w.jobCardStatus !== "CLOSED" && w.localState !== "SUBMITTED")
+        ids.add(w.jobCardId);
+    return [...ids].sort();
+  }, [items]);
+  const key = openIds.join(",");
+
+  useEffect(() => {
+    if (!userSub || openIds.length === 0) {
+      setMinutes(openIds.length === 0 ? 0 : null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        if (!(await isOnline())) return; // keep the last known figure
+        let total = 0;
+        for (const id of openIds) {
+          const entries = await jobCardApi.listTimeEntries(id);
+          for (const e of entries) {
+            if (e.userId !== userSub) continue;
+            if (e.endedAt) total += e.minutes ?? 0;
+            else if (e.startedAt)
+              total += Math.max(
+                0,
+                (Date.now() - new Date(e.startedAt).getTime()) / 60_000,
+              );
+          }
+        }
+        if (!cancelled) setMinutes(total);
+      } catch (e) {
+        console.warn("[jobcards] could not total time spent:", e);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userSub, key]);
+
+  return { loaded, count: openIds.length, minutes };
 }

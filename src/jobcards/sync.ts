@@ -6,10 +6,10 @@
 import { computeBaseline } from "./rules";
 import type { JobCardStore } from "./store";
 import type {
-    OutboxRow,
-    StartTimePayload,
-    SubmitResultPayload,
-    WorkItemType,
+  OutboxRow,
+  StartTimePayload,
+  SubmitResultPayload,
+  WorkItemType,
 } from "./types";
 
 // ---------------------------------------------------------------- server shapes
@@ -42,6 +42,8 @@ export interface ServerSubmission {
 export interface ServerTimeEntry {
   id: string;
   userId: string;
+  startedAt?: string | null;
+  minutes?: number | null;
   endedAt?: string | null;
 }
 

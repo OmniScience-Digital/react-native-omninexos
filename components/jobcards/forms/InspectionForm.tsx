@@ -1,8 +1,8 @@
 // components/jobcards/forms/InspectionForm.tsx
 import {
-    SCALE_PHOTOS_MAX,
-    SCALE_PHOTOS_MIN,
-    type Errors,
+  SCALE_PHOTOS_MAX,
+  SCALE_PHOTOS_MIN,
+  type Errors,
 } from "@/src/jobcards/rules";
 import type { InspectionForm as Form } from "@/src/jobcards/types";
 import { View } from "react-native";
@@ -66,7 +66,7 @@ export default function InspectionForm({
     />
   );
   return (
-    <View style={{ gap: 22 }}>
+    <View style={{ gap: 12 }}>
       <Section title="As found readings">
         <TextField
           testID="asFoundTotalizer"

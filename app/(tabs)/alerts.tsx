@@ -6,11 +6,13 @@ import { InAppNotification } from "@/hooks/usePushNotifications";
 import { useNotifications } from "@/src/contexts/notification-context";
 import { useTheme } from "@/src/contexts/theme-context";
 import { format, isToday, isYesterday } from "date-fns";
+import { router } from "expo-router";
 import {
   Bell,
   BellOff,
   Camera,
   CheckCheck,
+  ClipboardList,
   Clock,
   ShieldCheck,
   Trash2,
@@ -27,6 +29,8 @@ function notificationMeta(
   const type = data?.type as string | undefined;
   if (type === "photo_request_approved" || type === "photo_change")
     return { Icon: Camera, color: theme?.colors.success ?? "#16a34a" };
+  if (type === "jobcard-assigned")
+    return { Icon: ClipboardList, color: theme?.colors.primary ?? "#3d3d3d" };
   if (type === "clock_in" || type === "clock_out")
     return { Icon: Clock, color: theme?.colors.info ?? "#0284c7" };
   if (type === "verification_failed")
@@ -52,13 +56,20 @@ function NotificationCard({
 
   return (
     <Pressable
-      onPress={() => onMarkRead(notification.id)}
+      onPress={() => {
+        onMarkRead(notification.id);
+        const wid = notification.data?.workItemId;
+        if (notification.data?.type === "jobcard-assigned" && wid)
+          router.push({
+            pathname: "/operations/jobcards",
+            params: { workItem: wid },
+          });
+      }}
       style={({ pressed }) => [
         styles.card,
         {
           backgroundColor: theme.colors.card,
           borderColor: notification.read ? theme.colors.border : color + "40",
-          borderLeftColor: notification.read ? theme.colors.border : color,
           opacity: pressed ? 0.85 : 1,
         },
       ]}
@@ -69,20 +80,21 @@ function NotificationCard({
       <View style={{ flex: 1, marginLeft: 12 }}>
         <View style={styles.cardTop}>
           <ThemedText
-            weight="700"
-            style={{ fontSize: 14, flex: 1 }}
+            style={[
+              { fontSize: 14, flex: 1 },
+              !notification.read && { fontFamily: "sans-medium" },
+            ]}
             numberOfLines={1}
           >
             {notification.title}
           </ThemedText>
-          <ThemedText muted variant="small" style={{ marginLeft: 8 }}>
+          <ThemedText muted style={{ marginLeft: 8, fontSize: 12 }}>
             {relativeTime(notification.receivedAt)}
           </ThemedText>
         </View>
         <ThemedText
           muted
-          variant="small"
-          style={{ marginTop: 2 }}
+          style={{ marginTop: 3, fontSize: 13, lineHeight: 18 }}
           numberOfLines={2}
         >
           {notification.body}
@@ -256,12 +268,11 @@ const styles = StyleSheet.create({
     padding: 14,
     borderRadius: 14,
     borderWidth: 1,
-    borderLeftWidth: 3,
   },
   iconWrap: {
-    width: 42,
-    height: 42,
-    borderRadius: 12,
+    width: 38,
+    height: 38,
+    borderRadius: 10,
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,

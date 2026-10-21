@@ -284,17 +284,22 @@
 
 // hooks/usePushNotifications.ts
 import { client } from "@/src/amplify";
+import { getJobCardUser, subscribeJobCards } from "@/src/jobcards/controller";
+import { getJobCardStore } from "@/src/jobcards/sqliteDriver";
+import { WORK_ITEM_LABEL } from "@/src/jobcards/types";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Constants from "expo-constants";
 import * as Device from "expo-device";
 import * as Notifications from "expo-notifications";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Platform } from "react-native";
+import { AppState, Platform } from "react-native";
 
 const TOKEN_CACHE_KEY = (uid: string) => `push:token:${uid}`;
 // Persist up to 50 notifications across app restarts
 const NOTIF_CACHE_KEY = (uid: string) => `push:notifications:${uid}`;
 const MAX_STORED = 50;
+// ids of job card work we have already raised an alert for (so each assignment alerts once)
+const JC_ALERTED_KEY = (uid: string) => `push:jc-alerted:${uid}`;
 
 const CREATE_OR_UPDATE_PUSH_TOKEN = /* GraphQL */ `
   mutation CreatePushToken($input: CreatePushTokenInput!) {
@@ -521,6 +526,115 @@ export function usePushNotifications(userId: string) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]); // intentionally exclude registerForPushNotifications to avoid loop
+
+  // ── Alerts that arrived while the app was CLOSED ─────────────────────────
+  // The phone shows the push in its tray, but the in-app listener only fires while the app runs.
+  // On start and whenever the app comes back, copy what the tray holds into the Alerts tab.
+  // Also raise an alert for any job card work that sync found assigned to this user (survives the
+  // tray being cleared, and covers a push that never arrived).
+  useEffect(() => {
+    if (!userId || userId === "anonymous") return;
+    let stopped = false;
+
+    const add = (incoming: InAppNotification[]) => {
+      if (stopped || incoming.length === 0) return;
+      setNotifications((prev) => {
+        const haveId = new Set(prev.map((n) => n.id));
+        const haveWork = new Set(
+          prev.map((n) => n.data?.workItemId).filter(Boolean),
+        );
+        const fresh = incoming.filter(
+          (n) =>
+            !haveId.has(n.id) &&
+            !(n.data?.workItemId && haveWork.has(n.data.workItemId)),
+        );
+        if (fresh.length === 0) return prev;
+        const updated = [...fresh, ...prev].sort(
+          (a, b) => b.receivedAt.getTime() - a.receivedAt.getTime(),
+        );
+        const stored: StoredNotification[] = updated
+          .slice(0, MAX_STORED)
+          .map((n) => ({ ...n, receivedAt: n.receivedAt.toISOString() }));
+        AsyncStorage.setItem(
+          NOTIF_CACHE_KEY(userId),
+          JSON.stringify(stored),
+        ).catch(() => {});
+        return updated;
+      });
+    };
+
+    const importDelivered = async () => {
+      try {
+        const presented = await Notifications.getPresentedNotificationsAsync();
+        add(
+          presented.map((n) => ({
+            id: n.request.identifier,
+            title: n.request.content.title ?? "Notification",
+            body: n.request.content.body ?? "",
+            data: n.request.content.data as Record<string, any>,
+            receivedAt: new Date(n.date),
+            read: false,
+          })),
+        );
+      } catch {}
+    };
+
+    const alertNewWork = async () => {
+      try {
+        const u = getJobCardUser();
+        if (!u) return;
+        const store = await getJobCardStore();
+        const items = await store.listMyWork(u.sub);
+        const raw = await AsyncStorage.getItem(JC_ALERTED_KEY(userId));
+        const seen = new Set<string>(raw ? JSON.parse(raw) : []);
+        const open = items.filter((w) => w.localState === "PENDING");
+        if (raw === null) {
+          // first run on this phone: existing work is not "new", just remember it
+          await AsyncStorage.setItem(
+            JC_ALERTED_KEY(userId),
+            JSON.stringify(open.map((w) => w.id)),
+          );
+          return;
+        }
+        const fresh = open.filter((w) => !seen.has(w.id));
+        if (fresh.length === 0) return;
+        add(
+          fresh.map((w) => ({
+            id: `jc-${w.id}`,
+            title: "New job card work",
+            body: `${WORK_ITEM_LABEL[w.moduleType]} - ${w.scaleName} (${w.jcNumber})`,
+            data: {
+              type: "jobcard-assigned",
+              workItemId: w.id,
+              jobCardId: w.jobCardId,
+            },
+            receivedAt: w.assignedAt ? new Date(w.assignedAt) : new Date(),
+            read: false,
+          })),
+        );
+        for (const w of fresh) seen.add(w.id);
+        await AsyncStorage.setItem(
+          JC_ALERTED_KEY(userId),
+          JSON.stringify([...seen]),
+        );
+      } catch {}
+    };
+
+    void importDelivered();
+    void alertNewWork();
+    const unsubJc = subscribeJobCards(() => void alertNewWork());
+    const app = AppState.addEventListener("change", (st) => {
+      if (st === "active") {
+        void importDelivered();
+        void alertNewWork();
+      }
+    });
+    return () => {
+      stopped = true;
+      unsubJc();
+      app.remove();
+    };
+  }, [userId]);
 
   const markAllRead = useCallback(() => {
     setNotifications((prev) => {

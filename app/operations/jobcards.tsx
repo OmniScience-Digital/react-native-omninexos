@@ -32,5 +32,7 @@ export default function JobCardsRoute() {
     return (
       <WorkItemScreen workItemId={openId} onBack={() => setOpenId(null)} />
     );
-  return <JobCardsHome userSub={user?.username} onOpen={setOpenId} />;
+  return (
+    <JobCardsHome userSub={user?.sub ?? user?.username} onOpen={setOpenId} />
+  );
 }

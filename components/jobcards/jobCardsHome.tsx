@@ -3,6 +3,7 @@
 // on the phone, so it opens instantly and works without signal; it refreshes in the background.
 import { NonTabScreen } from "@/components/screens/non-tab-screen";
 import { ThemedText } from "@/components/screens/screen";
+import { CustomScrollView } from "@/components/ui/scrollView";
 import { useTheme } from "@/src/contexts/theme-context";
 import {
     requestSync,
@@ -12,8 +13,14 @@ import {
 import { WORK_ITEM_LABEL, type WorkItemView } from "@/src/jobcards/types";
 import { ChevronRight, CloudOff, RefreshCw } from "lucide-react-native";
 import { useMemo, useState } from "react";
-import { Pressable, RefreshControl, StyleSheet, View } from "react-native";
-import { Card, Chip, SecondaryButton } from "./ui";
+import {
+    Pressable,
+    RefreshControl,
+    StyleSheet,
+    TouchableOpacity,
+    View,
+} from "react-native";
+import { MED } from "./ui";
 
 const IChevron = ChevronRight as React.ComponentType<{
   size?: number;
@@ -28,7 +35,7 @@ const IRefresh = RefreshCw as React.ComponentType<{
   color?: string;
 }>;
 
-type Tab = "todo" | "done";
+type Tab = "open" | "done";
 
 const ago = (iso: string | null): string => {
   if (!iso) return "never";
@@ -80,22 +87,24 @@ export default function JobCardsHome({
   onOpen: (workItemId: string) => void;
 }) {
   const { theme } = useTheme();
+  const colors = theme.colors;
+  const styles = useMemo(() => getStyles(colors), [colors]);
   const { loaded, items, unsent, blocked, lastPullAt, reload } =
     useJobCardData(userSub);
-  const [tab, setTab] = useState<Tab>("todo");
+  const [tab, setTab] = useState<Tab>("open");
   const [refreshing, setRefreshing] = useState(false);
 
   const shown = useMemo(
     () =>
       items.filter((w) =>
-        tab === "todo"
+        tab === "open"
           ? w.localState !== "SUBMITTED"
           : w.localState === "SUBMITTED",
       ),
     [items, tab],
   );
   const groups = useMemo(() => groupByJobCard(shown), [shown]);
-  const todoCount = items.filter((w) => w.localState !== "SUBMITTED").length;
+  const openCount = items.filter((w) => w.localState !== "SUBMITTED").length;
 
   const refresh = async () => {
     setRefreshing(true);
@@ -104,144 +113,165 @@ export default function JobCardsHome({
     setRefreshing(false);
   };
 
+  const toneColor = (t: "success" | "warning" | "info" | "danger") =>
+    t === "success"
+      ? colors.success
+      : t === "warning"
+        ? colors.warning
+        : t === "danger"
+          ? "#DC2626"
+          : colors.info;
+  const Badge = ({
+    label,
+    tone,
+  }: {
+    label: string;
+    tone: "success" | "warning" | "info" | "danger";
+  }) => (
+    <View style={[styles.badge, { backgroundColor: toneColor(tone) + "1F" }]}>
+      <ThemedText style={[MED, styles.badgeText, { color: toneColor(tone) }]}>
+        {label}
+      </ThemedText>
+    </View>
+  );
+
   return (
     <NonTabScreen
       title="Job Cards"
-      subtitle="Your assigned calibration work"
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={refresh}
-          tintColor={theme.colors.primary}
-        />
-      }
+      subtitle="Your assigned work"
+      showBack
+      scrollable={false}
     >
-      <View style={{ gap: 14 }}>
-        {/* What is waiting to be sent */}
-        <Card>
-          {blocked > 0 ? (
-            <>
-              <Chip
-                tone="danger"
-                label={`${blocked} ${blocked === 1 ? "result needs" : "results need"} attention`}
-              />
-              <ThemedText muted variant="small">
-                These could not be sent. They are safe on this phone. Open each
-                one to see why.
-              </ThemedText>
-              <SecondaryButton
-                title="Try again"
-                onPress={() => void retryBlocked()}
-                icon={<IRefresh size={16} color={theme.colors.text} />}
-              />
-            </>
-          ) : unsent > 0 ? (
-            <View style={styles.row}>
-              <ICloud size={18} color={theme.colors.warning} />
-              <View style={{ flex: 1 }}>
-                <ThemedText weight="700">
-                  {unsent} {unsent === 1 ? "result is" : "results are"} waiting
-                  to send
-                </ThemedText>
-                <ThemedText muted variant="small">
-                  Saved on this phone. They are sent automatically when there is
-                  signal.
-                </ThemedText>
-              </View>
-            </View>
-          ) : (
-            <View style={styles.row}>
-              <Chip tone="success" label="All sent" />
-              <ThemedText
-                muted
-                variant="small"
-                style={{ flex: 1, textAlign: "right" }}
-              >
-                Updated {ago(lastPullAt)}
-              </ThemedText>
-            </View>
-          )}
-        </Card>
-
+      <CustomScrollView
+        style={styles.content}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={refresh}
+            tintColor={colors.primary}
+          />
+        }
+      >
+        {/* Segmented switch (a different shape to Fleet's filled tabs, same family) */}
         <View style={styles.segment}>
           {(
             [
-              ["todo", `To do (${todoCount})`],
+              ["open", `Open · ${openCount}`],
               ["done", "Done"],
             ] as const
           ).map(([key, label]) => {
             const active = tab === key;
             return (
-              <Pressable
+              <TouchableOpacity
                 key={key}
-                onPress={() => setTab(key)}
+                testID={`tab-${key}`}
                 accessibilityRole="tab"
                 accessibilityState={{ selected: active }}
-                testID={`tab-${key}`}
-                style={[
-                  styles.segmentItem,
-                  {
-                    backgroundColor: active
-                      ? theme.colors.primary
-                      : theme.colors.card,
-                    borderColor: active
-                      ? theme.colors.primary
-                      : theme.colors.border,
-                  },
-                ]}
+                activeOpacity={0.8}
+                style={[styles.segmentItem, active && styles.segmentActive]}
+                onPress={() => setTab(key)}
               >
                 <ThemedText
-                  weight="600"
-                  style={{
-                    color: active
-                      ? theme.colors.primaryText
-                      : theme.colors.text,
-                  }}
+                  style={[
+                    active && MED,
+                    {
+                      fontSize: 13,
+                      color: active ? colors.text : colors.textMuted,
+                    },
+                  ]}
                 >
                   {label}
                 </ThemedText>
-              </Pressable>
+              </TouchableOpacity>
             );
           })}
         </View>
 
-        {!loaded && <ThemedText muted>Loading...</ThemedText>}
+        {/* Sync status: one quiet line, not a card */}
+        <View style={styles.status}>
+          {blocked > 0 ? (
+            <>
+              <Badge tone="danger" label={`${blocked} need attention`} />
+              <View style={{ flex: 1 }} />
+              <Pressable
+                onPress={() => void retryBlocked()}
+                style={styles.retry}
+                hitSlop={8}
+              >
+                <IRefresh size={14} color={colors.primary} />
+                <ThemedText
+                  style={[MED, { fontSize: 12, color: colors.primary }]}
+                >
+                  Try again
+                </ThemedText>
+              </Pressable>
+            </>
+          ) : unsent > 0 ? (
+            <>
+              <ICloud size={14} color={colors.warning} />
+              <ThemedText muted style={styles.sub}>
+                {unsent} {unsent === 1 ? "result" : "results"} waiting to send
+              </ThemedText>
+            </>
+          ) : (
+            <>
+              <View style={[styles.dot, { backgroundColor: colors.success }]} />
+              <ThemedText muted style={styles.sub}>
+                All sent · updated {ago(lastPullAt)}
+              </ThemedText>
+            </>
+          )}
+        </View>
+
+        {!loaded && groups.length === 0 && (
+          <ThemedText muted style={styles.sub}>
+            Loading...
+          </ThemedText>
+        )}
         {loaded && groups.length === 0 && (
-          <Card>
-            <ThemedText weight="700">
-              {tab === "todo"
-                ? "Nothing to do right now"
-                : "Nothing finished yet"}
+          <View style={[styles.card, { padding: 28, alignItems: "center" }]}>
+            <ThemedText style={[MED, { fontSize: 15 }]}>
+              {tab === "open" ? "No open job cards" : "Nothing finished yet"}
             </ThemedText>
-            <ThemedText muted variant="small">
-              {tab === "todo"
-                ? "New work appears here when the office assigns it to you. Pull down to refresh."
+            <ThemedText
+              muted
+              style={[
+                styles.sub,
+                { textAlign: "center", marginTop: 6, lineHeight: 18 },
+              ]}
+            >
+              {tab === "open"
+                ? "New work appears here when it is assigned to you. Pull down to refresh."
                 : "Finished work stays here for two weeks."}
             </ThemedText>
-          </Card>
+          </View>
         )}
 
         {groups.map((g) => (
           <View
             key={g.jobCardId}
-            style={{ gap: 8 }}
+            style={styles.card}
             testID={`group-${g.jcNumber}`}
           >
-            <View style={styles.row}>
+            <View style={styles.groupHead}>
               <View style={{ flex: 1 }}>
-                <ThemedText weight="700">{g.jcNumber}</ThemedText>
+                <ThemedText style={[MED, { fontSize: 15 }]}>
+                  {g.jcNumber}
+                </ThemedText>
                 {!!g.customerName && (
-                  <ThemedText muted variant="small">
+                  <ThemedText muted style={styles.sub}>
                     {g.customerName}
                   </ThemedText>
                 )}
               </View>
-              {g.closed && <Chip tone="warning" label="Closed" />}
+              {g.closed && <Badge tone="warning" label="Closed" />}
             </View>
-            {[...g.scales.entries()].map(([scaleId, s]) => (
-              <Card key={scaleId}>
-                <ThemedText weight="600">{s.name}</ThemedText>
-                {s.items.map((w) => (
+            {[...g.scales.entries()].map(([scaleId, sc]) => (
+              <View key={scaleId}>
+                <ThemedText muted style={styles.scaleName}>
+                  {sc.name}
+                </ThemedText>
+                {sc.items.map((w) => (
                   <Pressable
                     key={w.id}
                     onPress={() => onOpen(w.id)}
@@ -250,62 +280,105 @@ export default function JobCardsHome({
                     accessibilityLabel={`${WORK_ITEM_LABEL[w.moduleType]}, ${w.scaleName}`}
                     style={({ pressed }) => [
                       styles.itemRow,
-                      {
-                        opacity: pressed ? 0.7 : 1,
-                        borderTopColor: theme.colors.border,
-                      },
+                      { opacity: pressed ? 0.7 : 1 },
                     ]}
                   >
-                    <View style={{ flex: 1, gap: 4 }}>
-                      <ThemedText>
-                        {WORK_ITEM_LABEL[w.moduleType]}
-                        {w.sequence > 1 ? ` #${w.sequence}` : ""}
-                      </ThemedText>
-                      <Chip
-                        tone={
-                          w.localState === "SUBMITTED"
-                            ? "success"
-                            : w.localState === "QUEUED"
-                              ? "warning"
-                              : "info"
-                        }
-                        label={
-                          w.localState === "SUBMITTED"
-                            ? "Sent"
-                            : w.localState === "QUEUED"
-                              ? "Saved, waiting to send"
-                              : "To do"
-                        }
-                      />
-                    </View>
-                    <IChevron size={18} color={theme.colors.textMuted} />
+                    <ThemedText style={{ flex: 1, fontSize: 14 }}>
+                      {WORK_ITEM_LABEL[w.moduleType]}
+                      {w.sequence > 1 ? ` #${w.sequence}` : ""}
+                    </ThemedText>
+                    <Badge
+                      tone={
+                        w.localState === "SUBMITTED"
+                          ? "success"
+                          : w.localState === "QUEUED"
+                            ? "warning"
+                            : "info"
+                      }
+                      label={
+                        w.localState === "SUBMITTED"
+                          ? "Sent"
+                          : w.localState === "QUEUED"
+                            ? "Waiting to send"
+                            : "Open"
+                      }
+                    />
+                    <IChevron size={16} color={colors.textMuted} />
                   </Pressable>
                 ))}
-              </Card>
+              </View>
             ))}
           </View>
         ))}
-      </View>
+      </CustomScrollView>
     </NonTabScreen>
   );
 }
 
-const styles = StyleSheet.create({
-  row: { flexDirection: "row", alignItems: "center", gap: 10 },
-  segment: { flexDirection: "row", gap: 8 },
-  segmentItem: {
-    flex: 1,
-    minHeight: 46,
-    borderRadius: 12,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  itemRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 10,
-    paddingVertical: 12,
-    borderTopWidth: StyleSheet.hairlineWidth,
-  },
-});
+// Same family as the Fleet screens (16px cards, 12-15px text) but lighter: regular text, semibold only for names
+const getStyles = (colors: any) =>
+  StyleSheet.create({
+    content: { padding: 16, flex: 1 },
+    segment: {
+      flexDirection: "row",
+      backgroundColor: colors.border + "66",
+      borderRadius: 12,
+      padding: 3,
+      marginBottom: 12,
+    },
+    segmentItem: {
+      flex: 1,
+      paddingVertical: 7,
+      borderRadius: 9,
+      alignItems: "center",
+    },
+    segmentActive: { backgroundColor: colors.card },
+    status: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 6,
+      marginBottom: 12,
+      paddingHorizontal: 2,
+      minHeight: 22,
+    },
+    dot: { width: 7, height: 7, borderRadius: 4 },
+    card: {
+      backgroundColor: colors.card,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: colors.border,
+      marginBottom: 12,
+      overflow: "hidden",
+    },
+    groupHead: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      padding: 14,
+      paddingBottom: 4,
+    },
+    sub: { fontSize: 12, color: colors.textMuted },
+    scaleName: {
+      fontSize: 12,
+      paddingHorizontal: 14,
+      paddingTop: 8,
+      paddingBottom: 2,
+    },
+    itemRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+      paddingHorizontal: 14,
+      paddingVertical: 11,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: colors.border,
+    },
+    badge: {
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      borderRadius: 99,
+      alignSelf: "flex-start",
+    },
+    badgeText: { fontSize: 11 },
+    retry: { flexDirection: "row", alignItems: "center", gap: 4 },
+  });

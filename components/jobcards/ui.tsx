@@ -1,32 +1,47 @@
 // components/jobcards/ui.tsx
-// Small themed building blocks for the Job Cards screens. Large touch targets: the work is done outdoors, often in gloves.
+// Themed building blocks for the Job Cards screens. Same measurements as the app's other forms
+// (13-14px text, 8-12px radii, small Yes/No buttons); only the touch areas are a little generous for outdoor use.
 import { ThemedText } from "@/components/screens/screen";
 import { useTheme } from "@/src/contexts/theme-context";
 import type { ReactNode } from "react";
 import {
-    ActivityIndicator,
-    Pressable,
-    StyleSheet,
-    TextInput,
-    View,
-    type KeyboardTypeOptions,
+  ActivityIndicator,
+  Pressable,
+  StyleSheet,
+  TextInput,
+  View,
+  type KeyboardTypeOptions,
 } from "react-native";
 
 export const DANGER = "#DC2626";
+/** Medium weight: the app's normal "emphasis". Nothing in the job card screens is heavier than semibold. */
+export const MED = { fontFamily: "sans-medium" } as const;
 
 export function Card({
   children,
   onPress,
   accessibilityLabel,
+  tinted,
 }: {
   children: ReactNode;
   onPress?: () => void;
   accessibilityLabel?: string;
+  /** A soft filled box with no border, for use inside another card */
+  tinted?: boolean;
 }) {
   const { theme } = useTheme();
   const style = [
     styles.card,
-    { backgroundColor: theme.colors.card, borderColor: theme.colors.border },
+    tinted
+      ? {
+          backgroundColor: theme.colors.background,
+          borderWidth: 0,
+          borderRadius: 12,
+        }
+      : {
+          backgroundColor: theme.colors.card,
+          borderColor: theme.colors.border,
+        },
   ];
   if (!onPress) return <View style={style}>{children}</View>;
   return (
@@ -62,15 +77,8 @@ export function Chip({
             ? DANGER
             : theme.colors.textMuted;
   return (
-    <View
-      style={[
-        styles.chip,
-        { backgroundColor: color + "22", borderColor: color + "55" },
-      ]}
-    >
-      <ThemedText variant="small" weight="600" style={{ color }}>
-        {label}
-      </ThemedText>
+    <View style={[styles.chip, { backgroundColor: color + "1F" }]}>
+      <ThemedText style={[MED, { fontSize: 11, color }]}>{label}</ThemedText>
     </View>
   );
 }
@@ -106,7 +114,10 @@ export function PrimaryButton({
       {loading ? (
         <ActivityIndicator color={theme.colors.primaryText} />
       ) : (
-        <ThemedText weight="700" style={{ color: theme.colors.primaryText }}>
+        <ThemedText
+          weight="600"
+          style={{ fontSize: 15, color: theme.colors.primaryText }}
+        >
           {title}
         </ThemedText>
       )}
@@ -144,11 +155,12 @@ export function SecondaryButton({
       ]}
     >
       {icon}
-      <ThemedText weight="600">{title}</ThemedText>
+      <ThemedText style={[MED, { fontSize: 14 }]}>{title}</ThemedText>
     </Pressable>
   );
 }
 
+/** A titled card that holds a group of fields. */
 export function Section({
   title,
   children,
@@ -156,12 +168,19 @@ export function Section({
   title: string;
   children: ReactNode;
 }) {
+  const { theme } = useTheme();
   return (
-    <View style={{ gap: 10 }}>
-      <ThemedText variant="h2" weight="700">
-        {title}
-      </ThemedText>
-      {children}
+    <View
+      style={[
+        styles.section,
+        {
+          backgroundColor: theme.colors.card,
+          borderColor: theme.colors.border,
+        },
+      ]}
+    >
+      <ThemedText style={[MED, { fontSize: 14 }]}>{title}</ThemedText>
+      <View style={{ gap: 16 }}>{children}</View>
     </View>
   );
 }
@@ -180,17 +199,15 @@ export function Field({
 }) {
   return (
     <View style={{ gap: 6 }}>
-      <ThemedText weight="600">{label}</ThemedText>
+      <ThemedText style={[MED, { fontSize: 13 }]}>{label}</ThemedText>
       {children}
       {!!hint && !error && (
-        <ThemedText muted variant="small">
+        <ThemedText muted style={{ fontSize: 12 }}>
           {hint}
         </ThemedText>
       )}
       {!!error && (
-        <ThemedText variant="small" style={{ color: DANGER }}>
-          {error}
-        </ThemedText>
+        <ThemedText style={{ fontSize: 12, color: DANGER }}>{error}</ThemedText>
       )}
     </View>
   );
@@ -224,6 +241,7 @@ export function TextField(props: {
 }) {
   const { theme } = useTheme();
   const kind = props.kind ?? "text";
+  const editable = props.editable ?? true;
   return (
     <Field label={props.label} error={props.error} hint={props.hint}>
       <TextInput
@@ -234,13 +252,15 @@ export function TextField(props: {
         maxLength={props.maxLength}
         placeholder={props.placeholder}
         placeholderTextColor={theme.colors.textMuted}
-        editable={props.editable ?? true}
+        editable={editable}
         accessibilityLabel={props.label}
         style={[
           styles.input,
           {
             color: theme.colors.text,
-            backgroundColor: theme.colors.card,
+            backgroundColor: editable
+              ? theme.colors.card
+              : theme.colors.background,
             borderColor: props.error ? DANGER : theme.colors.border,
           },
         ]}
@@ -249,7 +269,7 @@ export function TextField(props: {
   );
 }
 
-/** Yes / No (and optionally N/A). `value` is null until answered. */
+/** Yes / No (and optionally N/A): the question on the left, small buttons on the right, like the vehicle inspection form. */
 export function YesNoField<T extends boolean | null | "NA">(props: {
   label: string;
   value: T;
@@ -265,86 +285,109 @@ export function YesNoField<T extends boolean | null | "NA">(props: {
     { label: "No", value: false },
     ...(props.allowNA ? [{ label: "N/A", value: "NA" as const }] : []),
   ];
+  const activeBg = (v: boolean | "NA") =>
+    v === true
+      ? theme.colors.primary
+      : v === false
+        ? DANGER
+        : theme.colors.border;
+  const activeText = (v: boolean | "NA") =>
+    v === "NA" ? theme.colors.text : theme.colors.primaryText;
   return (
-    <Field label={props.label} error={props.error}>
-      <View style={styles.segment}>
-        {options.map((o) => {
-          const active = props.value === o.value;
-          return (
-            <Pressable
-              key={o.label}
-              testID={props.testID ? `${props.testID}-${o.label}` : undefined}
-              disabled={props.editable === false}
-              onPress={() => props.onChange(o.value)}
-              accessibilityRole="radio"
-              accessibilityLabel={`${props.label}: ${o.label}`}
-              accessibilityState={{ selected: active }}
-              style={[
-                styles.segmentItem,
-                {
-                  backgroundColor: active
-                    ? theme.colors.primary
-                    : theme.colors.card,
-                  borderColor: active
-                    ? theme.colors.primary
-                    : theme.colors.border,
-                },
-              ]}
-            >
-              <ThemedText
-                weight="600"
-                style={{
-                  color: active ? theme.colors.primaryText : theme.colors.text,
-                }}
+    <View style={{ gap: 6 }}>
+      <View style={styles.ynRow}>
+        <ThemedText style={{ flex: 1, fontSize: 14, lineHeight: 20 }}>
+          {props.label}
+        </ThemedText>
+        <View style={styles.ynButtons}>
+          {options.map((o) => {
+            const active = props.value === o.value;
+            return (
+              <Pressable
+                key={o.label}
+                testID={props.testID ? `${props.testID}-${o.label}` : undefined}
+                disabled={props.editable === false}
+                onPress={() => props.onChange(o.value)}
+                hitSlop={4}
+                accessibilityRole="radio"
+                accessibilityLabel={`${props.label}: ${o.label}`}
+                accessibilityState={{ selected: active }}
+                style={[
+                  styles.yn,
+                  {
+                    backgroundColor: active
+                      ? activeBg(o.value)
+                      : theme.colors.card,
+                    borderColor: active
+                      ? activeBg(o.value)
+                      : props.error
+                        ? DANGER
+                        : theme.colors.border,
+                  },
+                ]}
               >
-                {o.label}
-              </ThemedText>
-            </Pressable>
-          );
-        })}
+                <ThemedText
+                  style={[
+                    MED,
+                    {
+                      fontSize: 13,
+                      color: active
+                        ? activeText(o.value)
+                        : theme.colors.textMuted,
+                    },
+                  ]}
+                >
+                  {o.label}
+                </ThemedText>
+              </Pressable>
+            );
+          })}
+        </View>
       </View>
-    </Field>
+      {!!props.error && (
+        <ThemedText style={{ fontSize: 12, color: DANGER }}>
+          {props.error}
+        </ThemedText>
+      )}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
-    borderRadius: 16,
-    borderWidth: StyleSheet.hairlineWidth,
-    padding: 14,
-    gap: 8,
-  },
+  card: { borderRadius: 16, borderWidth: 1, padding: 14, gap: 8 },
+  section: { borderRadius: 16, borderWidth: 1, padding: 14, gap: 14 },
   chip: {
     borderRadius: 999,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: 10,
-    paddingVertical: 3,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
     alignSelf: "flex-start",
   },
   button: {
-    minHeight: 52,
-    borderRadius: 14,
+    minHeight: 46,
+    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
-    paddingHorizontal: 18,
+    paddingHorizontal: 16,
     flexDirection: "row",
     gap: 8,
   },
-  secondary: { borderWidth: 1 },
+  secondary: { borderWidth: 1, minHeight: 40, borderRadius: 10 },
   input: {
-    minHeight: 52,
-    borderRadius: 12,
+    minHeight: 44,
+    borderRadius: 8,
     borderWidth: 1,
-    paddingHorizontal: 14,
-    fontSize: 16,
+    paddingHorizontal: 12,
+    fontSize: 14,
+    fontFamily: "sans-regular",
   },
-  segment: { flexDirection: "row", gap: 8 },
-  segmentItem: {
-    flex: 1,
-    minHeight: 50,
-    borderRadius: 12,
+  ynRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  ynButtons: { flexDirection: "row", gap: 6 },
+  yn: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 8,
     borderWidth: 1,
+    minWidth: 48,
     alignItems: "center",
-    justifyContent: "center",
   },
 });

@@ -2,14 +2,14 @@
 import { ThemedText } from "@/components/screens/screen";
 import { useTheme } from "@/src/contexts/theme-context";
 import {
-    liveSpanCalc,
-    resolveBaseline,
-    type Errors,
+  liveSpanCalc,
+  resolveBaseline,
+  type Errors,
 } from "@/src/jobcards/rules";
 import type { SpanForm as Form, ScaleBaseline } from "@/src/jobcards/types";
 import { View } from "react-native";
 import { PhotoField } from "../PhotoFields";
-import { Card, Chip, Section, TextField, YesNoField } from "../ui";
+import { Card, Chip, MED, Section, TextField, YesNoField } from "../ui";
 
 const fmt = (n: number, dp = 2) => (Number.isFinite(n) ? n.toFixed(dp) : "-");
 
@@ -39,7 +39,7 @@ export default function SpanForm({
   return (
     <Section title="Span calibration">
       {needManual ? (
-        <Card>
+        <Card tinted>
           <Chip
             tone="warning"
             label="No earlier zero or span saved for this scale"
@@ -135,16 +135,14 @@ export default function SpanForm({
       {/* Worked out as the numbers are typed, like the integrator would */}
       <View
         style={{
-          borderRadius: 14,
+          borderRadius: 12,
           padding: 12,
           gap: 4,
-          backgroundColor: theme.colors.card,
-          borderWidth: 1,
-          borderColor: theme.colors.border,
+          backgroundColor: theme.colors.background,
         }}
         testID="span-calc"
       >
-        <ThemedText weight="700">Calculation</ThemedText>
+        <ThemedText style={[MED, { fontSize: 13 }]}>Calculation</ThemedText>
         {calc ? (
           <>
             <ThemedText muted variant="small">
@@ -153,7 +151,7 @@ export default function SpanForm({
             <ThemedText muted variant="small">
               Adjustment required: {fmt(calc.adjustmentRatio * 100)} %
             </ThemedText>
-            <ThemedText weight="600">
+            <ThemedText style={[MED, { fontSize: 14 }]}>
               New potential span: {fmt(calc.newPotentialSpan)} points
             </ThemedText>
           </>

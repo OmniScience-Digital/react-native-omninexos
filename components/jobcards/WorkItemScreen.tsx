@@ -4,39 +4,39 @@
 import { ThemedText } from "@/components/screens/screen";
 import { useTheme } from "@/src/contexts/theme-context";
 import {
-    loadWorkItem,
-    noteWorkStarted,
-    requestSync,
-    saveDraft,
-    submitWorkItem,
+  loadWorkItem,
+  noteWorkStarted,
+  requestSync,
+  saveDraft,
+  submitWorkItem,
 } from "@/src/jobcards/controller";
 import { emptyForm, type Errors } from "@/src/jobcards/rules";
 import {
-    WORK_ITEM_LABEL,
-    type AnyForm,
-    type InspectionForm,
-    type OutboxRow,
-    type ScaleBaseline,
-    type SpanForm,
-    type WorkItemView,
-    type ZeroForm,
+  WORK_ITEM_LABEL,
+  type AnyForm,
+  type InspectionForm,
+  type OutboxRow,
+  type ScaleBaseline,
+  type SpanForm,
+  type WorkItemView,
+  type ZeroForm,
 } from "@/src/jobcards/types";
 import { ArrowLeft, CheckCircle2, CloudOff } from "lucide-react-native";
 import { useEffect, useRef, useState } from "react";
 import {
-    Alert,
-    KeyboardAvoidingView,
-    Platform,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    View,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import InspectionFormView from "./forms/InspectionForm";
 import SpanFormView from "./forms/SpanForm";
 import ZeroFormView from "./forms/ZeroForm";
-import { Card, Chip, DANGER, PrimaryButton } from "./ui";
+import { Card, Chip, DANGER, MED, PrimaryButton } from "./ui";
 
 const IBack = ArrowLeft as React.ComponentType<{
   size?: number;
@@ -165,8 +165,13 @@ export default function WorkItemScreen({
     );
   };
 
+  const title = loaded
+    ? WORK_ITEM_LABEL[loaded.item.moduleType] +
+      (loaded.item.sequence > 1 ? ` #${loaded.item.sequence}` : "")
+    : "Work item";
+  // Same header shape as the other module screens: round back button, centred title, quiet subtitle
   const header = (
-    <View style={styles.header}>
+    <View style={[styles.header, { borderBottomColor: theme.colors.border }]}>
       <Pressable
         onPress={() => {
           flush();
@@ -185,19 +190,17 @@ export default function WorkItemScreen({
       >
         <IBack size={20} color={theme.colors.text} />
       </Pressable>
-      <View style={{ flex: 1 }}>
-        <ThemedText weight="700" numberOfLines={1}>
-          {loaded
-            ? WORK_ITEM_LABEL[loaded.item.moduleType] +
-              (loaded.item.sequence > 1 ? ` #${loaded.item.sequence}` : "")
-            : "Work item"}
+      <View style={{ flex: 1, alignItems: "center" }}>
+        <ThemedText style={[MED, { fontSize: 17 }]} numberOfLines={1}>
+          {title}
         </ThemedText>
         {loaded && (
-          <ThemedText muted variant="small" numberOfLines={1}>
-            {loaded.item.jcNumber} - {loaded.item.scaleName}
+          <ThemedText muted style={{ fontSize: 12 }} numberOfLines={1}>
+            {loaded.item.jcNumber} · {loaded.item.scaleName}
           </ThemedText>
         )}
       </View>
+      <View style={{ width: 40 }} />
     </View>
   );
 
@@ -231,9 +234,7 @@ export default function WorkItemScreen({
     return frame(
       <View style={styles.center} testID="saved-screen">
         <ICheck size={56} color={theme.colors.success} />
-        <ThemedText variant="h2" weight="700">
-          Saved
-        </ThemedText>
+        <ThemedText style={[MED, { fontSize: 18 }]}>Saved</ThemedText>
         <ThemedText muted style={{ textAlign: "center" }}>
           It is saved on this phone and goes to the office as soon as there is
           signal.
@@ -298,9 +299,9 @@ export default function WorkItemScreen({
           </Card>
         )}
         {Object.keys(errors).length > 0 && (
-          <Card>
+          <Card tinted>
             <View testID="error-summary">
-              <ThemedText weight="700" style={{ color: DANGER }}>
+              <ThemedText style={[MED, { fontSize: 13, color: DANGER }]}>
                 {Object.keys(errors).length}{" "}
                 {Object.keys(errors).length === 1
                   ? "thing needs"
@@ -357,17 +358,18 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 12,
     paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingVertical: 12,
+    borderBottomWidth: 0.5,
   },
   back: {
     width: 40,
     height: 40,
-    borderRadius: 12,
-    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 20,
+    borderWidth: 1,
     alignItems: "center",
     justifyContent: "center",
   },
-  content: { padding: 16, gap: 22, paddingBottom: 60 },
+  content: { padding: 16, gap: 12, paddingBottom: 60 },
   center: {
     flex: 1,
     alignItems: "center",

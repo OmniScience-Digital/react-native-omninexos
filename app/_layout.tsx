@@ -332,8 +332,11 @@ function LayoutInner() {
   const userId = (user as any)?.email ?? (user as any)?.username ?? "anonymous";
   // JOBCARDS: keep job cards in step with the server in the background, and open work items from push taps
   const jobCardUser =
-    isAuthenticated && user?.username
-      ? { sub: user.username, name: user.name || user.email || "" }
+    isAuthenticated && (user?.sub || user?.username)
+      ? {
+          sub: (user.sub || user.username) as string,
+          name: user.name || user.email || "",
+        }
       : null;
   useJobCardSync(jobCardUser);
   useJobCardNotificationLinks(!!jobCardUser);

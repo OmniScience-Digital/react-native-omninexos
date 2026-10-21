@@ -6,6 +6,7 @@ import { OfflineBanner } from "@/components/ui/OfflineBanner";
 import { CustomScrollView } from "@/components/ui/scrollView";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { useAuth } from "@/src/contexts/auth-context";
+import { formatMinutes, useOpenJobCards } from "@/src/jobcards/controller";
 // Attendance system disabled — clock-in context no longer used on Home screen
 // import { useClockInContext } from "@/src/contexts/clockin-context";
 import { useTabBar } from "@/src/contexts/tabbar-context";
@@ -339,6 +340,7 @@ export default function HomeScreen() {
   const { onScroll } = useTabBar();
   const { user } = useAuth();
   const { isOffline } = useNetworkStatus();
+  const openJobCards = useOpenJobCards((user as any)?.sub);
 
   const { resetScrollY } = useTabBar();
   const employeeName =
@@ -405,8 +407,7 @@ export default function HomeScreen() {
   // no separate hand-rolled AsyncStorage cache needed, which also removes
   // the bug where a genuine "0 inspections now" (e.g. right after clearing
   // test data) could never overwrite a stale cached non-zero value.
-  const { data: totalInspections = 0, refetch: refetchInspectionCount } =
-    useGetTotalInspectionCountQuery();
+  const { refetch: refetchInspectionCount } = useGetTotalInspectionCountQuery();
   const [recentInspections, setRecentInspections] = useState<any[]>([]);
   const [inspectionsCalculating, setInspectionsCalculating] = useState(false);
   const [refresh, setRefresh] = useState(false);
@@ -541,11 +542,14 @@ export default function HomeScreen() {
 
   const statsData = [
     {
-      id: "inspections",
-      title: "Total Inspections",
-      value: showInspectionSpinner ? "..." : String(totalInspections),
+      id: "openjobcards",
+      title: "Open Job Cards",
+      value: openJobCards.loaded ? String(openJobCards.count) : "...",
       icon: ClipboardCheck,
-      trend: "all time",
+      trend:
+        openJobCards.minutes && openJobCards.minutes > 0
+          ? `${formatMinutes(openJobCards.minutes)} spent`
+          : "open",
       trendType: "success" as const,
     },
     {
@@ -648,6 +652,12 @@ export default function HomeScreen() {
             description="Vehicle inspections & management"
             icon={ClipboardList}
             onPress={() => router.push("/operations/fms")}
+          />
+          <ModuleCard
+            title="Job Cards"
+            description="Your assigned calibration work"
+            icon={ClipboardCheck}
+            onPress={() => router.push("/operations/jobcards")}
           />
           <ModuleCard
             title="Forms"

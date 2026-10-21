@@ -114,6 +114,8 @@ const LIST_TIME_ENTRIES = /* GraphQL */ `
       items {
         id
         userId
+        startedAt
+        minutes
         endedAt
       }
       nextToken
@@ -243,12 +245,24 @@ export const jobCardApi: JobCardApi = {
   },
 
   async listTimeEntries(jobCardId) {
-    const out: { id: string; userId: string; endedAt?: string | null }[] = [];
+    const out: {
+      id: string;
+      userId: string;
+      startedAt?: string | null;
+      minutes?: number | null;
+      endedAt?: string | null;
+    }[] = [];
     let nextToken: string | null = null;
     do {
       const data: {
         timeEntriesByJobCard: {
-          items: { id: string; userId: string; endedAt?: string | null }[];
+          items: {
+            id: string;
+            userId: string;
+            startedAt?: string | null;
+            minutes?: number | null;
+            endedAt?: string | null;
+          }[];
           nextToken: string | null;
         };
       } = await gql(LIST_TIME_ENTRIES, { jobCardId, nextToken });

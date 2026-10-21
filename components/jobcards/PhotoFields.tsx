@@ -3,15 +3,15 @@
 import { ThemedText } from "@/components/screens/screen";
 import { useTheme } from "@/src/contexts/theme-context";
 import {
-    PhotoPermissionError,
-    deletePhotoFiles,
-    pickPhotos,
-    takePhoto,
+  PhotoPermissionError,
+  deletePhotoFiles,
+  pickPhotos,
+  takePhoto,
 } from "@/src/jobcards/photos";
 import { Camera, Images, X } from "lucide-react-native";
 import { useState } from "react";
 import { Alert, Image, Pressable, StyleSheet, View } from "react-native";
-import { DANGER, Field, SecondaryButton } from "./ui";
+import { DANGER, Field, MED, SecondaryButton } from "./ui";
 
 const ICamera = Camera as React.ComponentType<{
   size?: number;
@@ -188,9 +188,13 @@ export function PhotoListField({
   return (
     <Field label={label} error={error}>
       <ThemedText
-        variant="small"
-        weight="600"
-        style={{ color: enough ? theme.colors.success : theme.colors.warning }}
+        style={[
+          MED,
+          {
+            fontSize: 12,
+            color: enough ? theme.colors.success : theme.colors.warning,
+          },
+        ]}
       >
         {uris.length} added (at least {min}, at most {max})
       </ThemedText>
@@ -240,7 +244,7 @@ const styles = StyleSheet.create({
   thumb: {
     width: 76,
     height: 76,
-    borderRadius: 12,
+    borderRadius: 10,
     borderWidth: StyleSheet.hairlineWidth,
   },
   remove: {
@@ -257,7 +261,7 @@ const styles = StyleSheet.create({
   empty: {
     width: 76,
     height: 76,
-    borderRadius: 12,
+    borderRadius: 10,
     borderWidth: 1,
     borderStyle: "dashed",
     alignItems: "center",
