@@ -3,15 +3,15 @@
 // finished work waiting to be sent. It talks to SQLite through the small SqlDriver interface, so the same code runs on
 // the phone (expo-sqlite) and in tests (a real SQL engine).
 import type {
-    CachedJobCard,
-    CachedScale,
-    LocalState,
-    OutboxKind,
-    OutboxRow,
-    OutboxStatus,
-    ScaleBaseline,
-    WorkItemType,
-    WorkItemView,
+  CachedJobCard,
+  CachedScale,
+  LocalState,
+  OutboxKind,
+  OutboxRow,
+  OutboxStatus,
+  ScaleBaseline,
+  WorkItemType,
+  WorkItemView,
 } from "./types";
 
 export type SqlValue = string | number | null;
@@ -303,7 +303,8 @@ export class JobCardStore {
 
   // ------------------------------------------------------------------- outbox
   /**
-   * Finished work: put it in the outbox, mark the work item QUEUED and clear its draft, all together.
+   * Finished work: put it in the outbox and mark the work item QUEUED, together. The draft is kept: it is what the
+   * finished work shows when it is opened again (it is removed with the work item when the keep period ends).
    * The outbox row id is the id the server record will have.
    */
   async enqueueResult(args: {
@@ -331,9 +332,6 @@ export class JobCardStore {
         "UPDATE jc_workitems SET local_state = 'QUEUED', submitted_at = ?, updated_at = ? WHERE id = ?",
         [args.submittedAt, args.nowIso, args.workItemId],
       );
-      await tx.run("DELETE FROM jc_drafts WHERE work_item_id = ?", [
-        args.workItemId,
-      ]);
     });
   }
 

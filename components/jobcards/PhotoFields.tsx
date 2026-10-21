@@ -33,13 +33,34 @@ function Thumb({
   editable: boolean;
 }) {
   const { theme } = useTheme();
+  const [gone, setGone] = useState(false);
   return (
     <View style={styles.thumbWrap}>
-      <Image
-        source={{ uri }}
-        style={[styles.thumb, { borderColor: theme.colors.border }]}
-        accessibilityLabel="Photo"
-      />
+      {gone ? (
+        <View
+          style={[
+            styles.thumb,
+            {
+              borderColor: theme.colors.border,
+              alignItems: "center",
+              justifyContent: "center",
+            },
+          ]}
+          accessibilityLabel="Photo already sent"
+        >
+          <ICamera size={20} color={theme.colors.textMuted} />
+          <ThemedText muted style={{ fontSize: 10, marginTop: 2 }}>
+            Sent
+          </ThemedText>
+        </View>
+      ) : (
+        <Image
+          source={{ uri }}
+          onError={() => setGone(true)}
+          style={[styles.thumb, { borderColor: theme.colors.border }]}
+          accessibilityLabel="Photo"
+        />
+      )}
       {editable && (
         <Pressable
           onPress={onRemove}
@@ -88,10 +109,10 @@ export function PhotoField({
 }) {
   const [busy, setBusy] = useState(false);
   const { theme } = useTheme();
-  const take = async () => {
+  const replaceWith = async (get: () => Promise<string | null>) => {
     setBusy(true);
     try {
-      const next = await takePhoto(workItemId);
+      const next = await get();
       if (next) {
         if (uri) void deletePhotoFiles([uri]); // replacing: the old file is no longer needed
         onChange(next);
@@ -102,6 +123,9 @@ export function PhotoField({
       setBusy(false);
     }
   };
+  const take = () => replaceWith(() => takePhoto(workItemId));
+  const choose = () =>
+    replaceWith(async () => (await pickPhotos(workItemId, 1))[0] ?? null);
   return (
     <Field label={label} error={error}>
       <View style={styles.row}>
@@ -125,12 +149,18 @@ export function PhotoField({
           </View>
         )}
         {editable && (
-          <View style={{ flex: 1 }}>
+          <View style={{ flex: 1, gap: 8 }}>
             <SecondaryButton
               title={uri ? "Retake photo" : "Take photo"}
               onPress={take}
               disabled={busy}
               icon={<ICamera size={18} color={theme.colors.text} />}
+            />
+            <SecondaryButton
+              title="From gallery"
+              onPress={choose}
+              disabled={busy}
+              icon={<IImages size={18} color={theme.colors.text} />}
             />
           </View>
         )}

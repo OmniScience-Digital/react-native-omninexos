@@ -29,7 +29,7 @@ function notificationMeta(
   const type = data?.type as string | undefined;
   if (type === "photo_request_approved" || type === "photo_change")
     return { Icon: Camera, color: theme?.colors.success ?? "#16a34a" };
-  if (type === "jobcard-assigned")
+  if (type === "jobcard-assigned" || type === "jobcard-removed")
     return { Icon: ClipboardList, color: theme?.colors.primary ?? "#3d3d3d" };
   if (type === "clock_in" || type === "clock_out")
     return { Icon: Clock, color: theme?.colors.info ?? "#0284c7" };

@@ -2,6 +2,7 @@
 // One work item: the form for its type, saved as the technician types, and the "Submit" step that puts the finished
 // result in the phone's outbox. Works fully offline.
 import { ThemedText } from "@/components/screens/screen";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { useTheme } from "@/src/contexts/theme-context";
 import {
   loadWorkItem,
@@ -21,10 +22,11 @@ import {
   type WorkItemView,
   type ZeroForm,
 } from "@/src/jobcards/types";
-import { ArrowLeft, CheckCircle2, CloudOff } from "lucide-react-native";
+import { showResponseModal } from "@/src/state";
+import { useAppDispatch } from "@/src/state/redux";
+import { ArrowLeft, CheckCircle2, CloudOff, Send } from "lucide-react-native";
 import { useEffect, useRef, useState } from "react";
 import {
-  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -73,6 +75,8 @@ export default function WorkItemScreen({
   const [errors, setErrors] = useState<Errors>({});
   const [submitting, setSubmitting] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const dispatch = useAppDispatch();
 
   const formRef = useRef<AnyForm | null>(null);
   const dirty = useRef(false);
@@ -127,42 +131,35 @@ export default function WorkItemScreen({
     timer.current = setTimeout(flush, AUTOSAVE_MS);
   };
 
+  // Asks first with the app's own dialog, then saves
   const submit = () => {
     if (!loaded || !form || submitting) return;
-    Alert.alert(
-      "Submit this work?",
-      "It is saved on this phone and sent when there is signal. You cannot change it afterwards.",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Submit",
-          onPress: async () => {
-            setSubmitting(true);
-            try {
-              const res = await submitWorkItem(
-                loaded.item,
-                form,
-                loaded.baseline,
-              );
-              if (!res.ok) {
-                setErrors(res.errors);
-                return;
-              }
-              dirty.current = false;
-              editableRef.current = false;
-              setJustSaved(true);
-            } catch (e) {
-              Alert.alert(
-                "Could not save",
-                e instanceof Error ? e.message : "Try again.",
-              );
-            } finally {
-              setSubmitting(false);
-            }
-          },
-        },
-      ],
-    );
+    setConfirmOpen(true);
+  };
+
+  const doSubmit = async () => {
+    if (!loaded || !form || submitting) return;
+    setSubmitting(true);
+    try {
+      const res = await submitWorkItem(loaded.item, form, loaded.baseline);
+      if (!res.ok) {
+        setErrors(res.errors);
+        return;
+      }
+      dirty.current = false;
+      editableRef.current = false;
+      setJustSaved(true);
+    } catch (e) {
+      dispatch(
+        showResponseModal({
+          successful: false,
+          message:
+            e instanceof Error ? e.message : "Could not save. Try again.",
+        }),
+      );
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const title = loaded
@@ -210,6 +207,16 @@ export default function WorkItemScreen({
         {header}
         {children}
       </SafeAreaView>
+      <ConfirmDialog
+        visible={confirmOpen}
+        title="Submit this work?"
+        message="It is saved on this phone and sent when there is signal. You cannot change it afterwards."
+        confirmText="Submit"
+        variant="info"
+        icon={Send}
+        onConfirm={() => void doSubmit()}
+        onCancel={() => setConfirmOpen(false)}
+      />
     </View>
   );
 

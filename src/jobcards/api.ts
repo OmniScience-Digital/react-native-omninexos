@@ -2,6 +2,7 @@
 // The real server calls for the Job Cards module (GraphQL through Amplify, and photo uploads to storage).
 // Query names are the ones the web project's data model defines (amplify/data/jobcards.models.ts).
 import { client } from "@/src/amplify";
+import { fetchUserAttributes } from "aws-amplify/auth";
 import { uploadData } from "aws-amplify/storage";
 import type { JobCardApi, ServerSubmission, ServerWorkItem } from "./sync";
 import type { WorkItemType } from "./types";
@@ -36,6 +37,66 @@ async function gql<T>(
 
 const isAlreadyExists = (e: unknown) =>
   /ConditionalCheckFailed|already exists/i.test((e as Error)?.message ?? "");
+
+// ---- one person, several logins -------------------------------------------------------------------------------
+// The same person can have more than one Cognito login (email/password and Google). Work is assigned to ONE of
+// their ids, so asking only for this login's id can miss it. The office's technician list knows every login that
+// shares an email, so look that up and ask for all of them.
+const TECHNICIANS = /* GraphQL */ `
+  query Technicians {
+    techniciansList {
+      id
+      email
+    }
+  }
+`;
+const idCache = new Map<string, string[]>();
+
+/** This login's id plus the ids of any other login with the same email. Falls back to just this login offline. */
+export async function resolveMyIds(userSub: string): Promise<string[]> {
+  const cached = idCache.get(userSub);
+  if (cached) return cached;
+  try {
+    const email = (await fetchUserAttributes()).email?.trim().toLowerCase();
+    if (!email) return [userSub];
+    const data = await gql<{
+      techniciansList: ({ id: string; email?: string | null } | null)[];
+    }>(TECHNICIANS, {});
+    const ids = new Set<string>([userSub]);
+    for (const t of data.techniciansList ?? [])
+      if (t && t.email?.trim().toLowerCase() === email) ids.add(t.id);
+    const result = [...ids];
+    idCache.set(userSub, result); // only remembered after a successful lookup
+    return result;
+  } catch (e) {
+    console.warn(
+      "[jobcards] could not look up the other logins for this person:",
+      e,
+    );
+    return [userSub];
+  }
+}
+
+const GET_MODULE = /* GraphQL */ `
+  query GetModule($id: ID!) {
+    getJobCardModule(id: $id) {
+      id
+      status
+      assignedTo
+    }
+  }
+`;
+
+/** What the server says about one piece of work: null = it no longer exists. Throws if the server cannot be reached. */
+export async function getWorkItemState(
+  id: string,
+): Promise<{ status: string; assignedTo: string | null } | null> {
+  const d = await gql<{
+    getJobCardModule: { status: string; assignedTo?: string | null } | null;
+  }>(GET_MODULE, { id });
+  const m = d.getJobCardModule;
+  return m ? { status: m.status, assignedTo: m.assignedTo ?? null } : null;
+}
 
 const LIST_ASSIGNED = /* GraphQL */ `
   query ModulesByAssignee($assignedTo: String!, $nextToken: String) {
@@ -142,27 +203,32 @@ const parseJson = (v: unknown): Record<string, unknown> => {
 export const jobCardApi: JobCardApi = {
   async listAssignedPending(userSub) {
     const out: ServerWorkItem[] = [];
-    let nextToken: string | null = null;
-    do {
-      const data: {
-        modulesByAssignee: {
-          items: (ServerWorkItem & { addedAt?: string })[];
-          nextToken: string | null;
-        };
-      } = await gql(LIST_ASSIGNED, { assignedTo: userSub, nextToken });
-      for (const i of data.modulesByAssignee.items) {
-        if (i)
-          out.push({
-            id: i.id,
-            jobCardId: i.jobCardId,
-            scaleId: i.scaleId,
-            moduleType: i.moduleType,
-            sequence: i.sequence ?? 0,
-            assignedAt: i.addedAt ?? null,
-          });
-      }
-      nextToken = data.modulesByAssignee.nextToken;
-    } while (nextToken);
+    const seen = new Set<string>();
+    for (const assignedTo of await resolveMyIds(userSub)) {
+      let nextToken: string | null = null;
+      do {
+        const data: {
+          modulesByAssignee: {
+            items: (ServerWorkItem & { addedAt?: string })[];
+            nextToken: string | null;
+          };
+        } = await gql(LIST_ASSIGNED, { assignedTo, nextToken });
+        for (const i of data.modulesByAssignee.items) {
+          if (i && !seen.has(i.id)) {
+            seen.add(i.id);
+            out.push({
+              id: i.id,
+              jobCardId: i.jobCardId,
+              scaleId: i.scaleId,
+              moduleType: i.moduleType,
+              sequence: i.sequence ?? 0,
+              assignedAt: i.addedAt ?? null,
+            });
+          }
+        }
+        nextToken = data.modulesByAssignee.nextToken;
+      } while (nextToken);
+    }
     return out;
   },
 

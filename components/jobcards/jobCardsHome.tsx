@@ -3,17 +3,20 @@
 // on the phone, so it opens instantly and works without signal; it refreshes in the background.
 import { NonTabScreen } from "@/components/screens/non-tab-screen";
 import { ThemedText } from "@/components/screens/screen";
+import { OfflineBanner } from "@/components/ui/OfflineBanner";
 import { CustomScrollView } from "@/components/ui/scrollView";
 import { useTheme } from "@/src/contexts/theme-context";
 import {
     requestSync,
     retryBlocked,
     useJobCardData,
+    useJobCardSyncing,
 } from "@/src/jobcards/controller";
 import { WORK_ITEM_LABEL, type WorkItemView } from "@/src/jobcards/types";
 import { ChevronRight, CloudOff, RefreshCw } from "lucide-react-native";
 import { useMemo, useState } from "react";
 import {
+    ActivityIndicator,
     Pressable,
     RefreshControl,
     StyleSheet,
@@ -91,6 +94,7 @@ export default function JobCardsHome({
   const styles = useMemo(() => getStyles(colors), [colors]);
   const { loaded, items, unsent, blocked, lastPullAt, reload } =
     useJobCardData(userSub);
+  const syncing = useJobCardSyncing();
   const [tab, setTab] = useState<Tab>("open");
   const [refreshing, setRefreshing] = useState(false);
 
@@ -152,6 +156,8 @@ export default function JobCardsHome({
           />
         }
       >
+        <OfflineBanner />
+
         {/* Segmented switch (a different shape to Fleet's filled tabs, same family) */}
         <View style={styles.segment}>
           {(
@@ -189,7 +195,14 @@ export default function JobCardsHome({
 
         {/* Sync status: one quiet line, not a card */}
         <View style={styles.status}>
-          {blocked > 0 ? (
+          {syncing ? (
+            <>
+              <ActivityIndicator size="small" color={colors.primary} />
+              <ThemedText muted style={styles.sub}>
+                Syncing...
+              </ThemedText>
+            </>
+          ) : blocked > 0 ? (
             <>
               <Badge tone="danger" label={`${blocked} need attention`} />
               <View style={{ flex: 1 }} />

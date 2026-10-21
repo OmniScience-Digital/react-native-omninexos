@@ -2,7 +2,7 @@
 // The one place the screens talk to: it owns the store, the server calls and "tell me when something changed".
 import NetInfo from "@react-native-community/netinfo";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { jobCardApi } from "./api";
+import { jobCardApi, resolveMyIds } from "./api";
 import { newId } from "./ids";
 import { deletePhotoFiles } from "./photos";
 import { getJobCardStore } from "./sqliteDriver";
@@ -42,12 +42,16 @@ export async function isOnline(): Promise<boolean> {
 }
 
 // ---------------------------------------------------------------------- sync
+let syncDepth = 0;
+export const isSyncing = () => syncDepth > 0;
 let lastSummary: SyncSummary | null = null;
 export const getLastSyncSummary = () => lastSummary;
 
 /** Send what is waiting and refresh the assigned work. Never throws: problems are kept for the next try. */
 export async function requestSync(): Promise<SyncSummary | null> {
   if (!currentUser) return null;
+  syncDepth += 1;
+  notify();
   try {
     const store = await getJobCardStore();
     lastSummary = await runSync(
@@ -65,7 +69,17 @@ export async function requestSync(): Promise<SyncSummary | null> {
   } catch (e) {
     console.warn("[jobcards] sync failed:", e);
     return null;
+  } finally {
+    syncDepth -= 1;
+    notify(); // also tells the screen the "Syncing" line can go
   }
+}
+
+/** True while a sync is running, so the screen can say so. */
+export function useJobCardSyncing(): boolean {
+  const [s, setS] = useState(isSyncing());
+  useEffect(() => subscribeJobCards(() => setS(isSyncing())), []);
+  return s;
 }
 
 /** Called once at start: anything left half-sent by a crash goes back in the queue. */
@@ -247,11 +261,12 @@ export function useOpenJobCards(
     (async () => {
       try {
         if (!(await isOnline())) return; // keep the last known figure
+        const mine = new Set(await resolveMyIds(userSub));
         let total = 0;
         for (const id of openIds) {
           const entries = await jobCardApi.listTimeEntries(id);
           for (const e of entries) {
-            if (e.userId !== userSub) continue;
+            if (!mine.has(e.userId)) continue;
             if (e.endedAt) total += e.minutes ?? 0;
             else if (e.startedAt)
               total += Math.max(
