@@ -15,9 +15,11 @@ export function useJobCardSync(user: { sub: string; name: string } | null) {
   useEffect(() => {
     if (!sub) return;
     let stopped = false;
-    void startJobCards({ sub, name }).then(() => {
-      if (!stopped) void requestSync();
-    });
+    const startTimer = setTimeout(() => {
+      void startJobCards({ sub, name }).then(() => {
+        if (!stopped) void requestSync();
+      });
+    }, 1500);
 
     // signal comes back
     let wasOnline = true;
@@ -37,6 +39,7 @@ export function useJobCardSync(user: { sub: string; name: string } | null) {
 
     return () => {
       stopped = true;
+      clearTimeout(startTimer);
       unsubNet();
       appSub.remove();
       clearInterval(timer);

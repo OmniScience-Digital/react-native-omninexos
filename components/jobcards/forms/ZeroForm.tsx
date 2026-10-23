@@ -28,7 +28,7 @@ export default function ZeroForm({
         onChange={(v) => onChange({ ...form, newZeroValue: v })}
         error={errors.newZeroValue}
         editable={editable}
-        hint="Up to 5 digits"
+        hint="Exactly 5 digits"
       />
       <PhotoField
         label="Zero calibration photo"

@@ -58,6 +58,7 @@ export default function SpanForm({
               onChange={(v) => set({ manualLatestZero: v })}
               error={errors.manualLatestZero}
               editable={editable}
+              hint="Exactly 5 digits"
             />
           )}
           {!baseline?.latestSpan && (
@@ -70,6 +71,7 @@ export default function SpanForm({
               onChange={(v) => set({ manualLatestSpan: v })}
               error={errors.manualLatestSpan}
               editable={editable}
+              hint="Exactly 8 digits"
             />
           )}
         </Card>
@@ -179,7 +181,7 @@ export default function SpanForm({
         onChange={(v) => set({ newSpan: v })}
         error={errors.newSpan}
         editable={editable}
-        hint="Up to 8 digits"
+        hint="Exactly 8 digits"
       />
     </Section>
   );

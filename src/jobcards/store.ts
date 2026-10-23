@@ -3,6 +3,7 @@
 // finished work waiting to be sent. It talks to SQLite through the small SqlDriver interface, so the same code runs on
 // the phone (expo-sqlite) and in tests (a real SQL engine).
 import type {
+  AddScalePayload,
   CachedJobCard,
   CachedScale,
   LocalState,
@@ -40,7 +41,7 @@ CREATE TABLE IF NOT EXISTS jc_jobcards (
   status TEXT NOT NULL, updated_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS jc_scales (
-  id TEXT PRIMARY KEY, job_card_id TEXT NOT NULL, scale_name TEXT NOT NULL
+  id TEXT PRIMARY KEY, job_card_id TEXT NOT NULL, scale_name TEXT NOT NULL, scope_of_work TEXT
 );
 CREATE TABLE IF NOT EXISTS jc_workitems (
   id TEXT PRIMARY KEY, user_sub TEXT NOT NULL, job_card_id TEXT NOT NULL, scale_id TEXT NOT NULL,
@@ -103,7 +104,9 @@ const toView = (r: Record<string, unknown>): WorkItemView => ({
   jcNumber: (r.jc_number as string) ?? "Unknown job card",
   customerName: (r.customer_name as string) ?? null,
   jobCardStatus: (r.jc_status as string) ?? "OPEN",
+  jcTitle: (r.jc_title as string) ?? null,
   scaleName: (r.scale_name as string) ?? "Unknown scale",
+  scopeOfWork: (r.scope_of_work as string) ?? null,
 });
 
 const toOutbox = (r: Record<string, unknown>): OutboxRow => ({
@@ -124,12 +127,17 @@ export class JobCardStore {
 
   async init(): Promise<void> {
     await this.db.exec(SCHEMA);
+    try {
+      await this.db.exec("ALTER TABLE jc_scales ADD COLUMN scope_of_work TEXT");
+    } catch {
+      /* the column is already there */
+    }
   }
 
   // ------------------------------------------------------------------ reading
   async listMyWork(userSub: string): Promise<WorkItemView[]> {
     const rows = await this.db.all(
-      `SELECT w.*, j.jc_number, j.customer_name, j.status AS jc_status, s.scale_name
+      `SELECT w.*, j.jc_number, j.customer_name, j.title AS jc_title, j.status AS jc_status, s.scale_name, s.scope_of_work
          FROM jc_workitems w
          LEFT JOIN jc_jobcards j ON j.id = w.job_card_id
          LEFT JOIN jc_scales s ON s.id = w.scale_id
@@ -143,7 +151,7 @@ export class JobCardStore {
 
   async getWorkItem(id: string): Promise<WorkItemView | null> {
     const r = await this.db.first(
-      `SELECT w.*, j.jc_number, j.customer_name, j.status AS jc_status, s.scale_name
+      `SELECT w.*, j.jc_number, j.customer_name, j.title AS jc_title, j.status AS jc_status, s.scale_name, s.scope_of_work
          FROM jc_workitems w
          LEFT JOIN jc_jobcards j ON j.id = w.job_card_id
          LEFT JOIN jc_scales s ON s.id = w.scale_id
@@ -225,9 +233,10 @@ export class JobCardStore {
       }
       for (const s of d.scales) {
         await tx.run(
-          `INSERT INTO jc_scales (id, job_card_id, scale_name) VALUES (?, ?, ?)
-           ON CONFLICT(id) DO UPDATE SET job_card_id = excluded.job_card_id, scale_name = excluded.scale_name`,
-          [s.id, s.jobCardId, s.scaleName],
+          `INSERT INTO jc_scales (id, job_card_id, scale_name, scope_of_work) VALUES (?, ?, ?, ?)
+           ON CONFLICT(id) DO UPDATE SET job_card_id = excluded.job_card_id, scale_name = excluded.scale_name,
+             scope_of_work = excluded.scope_of_work`,
+          [s.id, s.jobCardId, s.scaleName, s.scopeOfWork ?? null],
         );
       }
       for (const b of d.baselines) {
@@ -261,12 +270,20 @@ export class JobCardStore {
 
       // No longer assigned to me (reassigned, removed, or done elsewhere): drop what I have not done
       const keep = new Set(d.items.map((i) => i.id));
-      const mine = await tx.all<{ id: string }>(
-        "SELECT id FROM jc_workitems WHERE user_sub = ? AND local_state = 'PENDING'",
+      const mine = await tx.all<{ id: string; scale_id: string }>(
+        "SELECT id, scale_id FROM jc_workitems WHERE user_sub = ? AND local_state = 'PENDING'",
         [d.userSub],
       );
+      // A scale added on this phone that has not reached the server yet is not "removed": it is just not sent
+      const unsent = new Set(
+        (
+          await tx.all<{ s: string }>(
+            "SELECT work_item_id AS s FROM jc_outbox WHERE kind = 'add-scale' AND status <> 'done'",
+          )
+        ).map((r) => r.s),
+      );
       for (const row of mine) {
-        if (!keep.has(row.id)) {
+        if (!keep.has(row.id) && !unsent.has(row.scale_id)) {
           await tx.run("DELETE FROM jc_workitems WHERE id = ?", [row.id]);
           await tx.run("DELETE FROM jc_drafts WHERE work_item_id = ?", [
             row.id,
@@ -331,6 +348,62 @@ export class JobCardStore {
       await tx.run(
         "UPDATE jc_workitems SET local_state = 'QUEUED', submitted_at = ?, updated_at = ? WHERE id = ?",
         [args.submittedAt, args.nowIso, args.workItemId],
+      );
+    });
+  }
+
+  /** How many results this work item has already sent, and the id of the latest (for editing finished work). */
+  async resultHistory(
+    workItemId: string,
+  ): Promise<{ lastId: string | null; count: number }> {
+    const rows = await this.db.all(
+      "SELECT id FROM jc_outbox WHERE kind = 'submit-result' AND work_item_id = ? ORDER BY created_at DESC",
+      [workItemId],
+    );
+    return {
+      lastId: rows.length ? (rows[0].id as string) : null,
+      count: rows.length,
+    };
+  }
+
+  /** A scale the technician adds: it and its work show at once, and are sent to the server when there is signal. */
+  async enqueueAddScale(args: {
+    id: string;
+    payload: AddScalePayload;
+    nowIso: string;
+  }): Promise<void> {
+    const p = args.payload;
+    await this.db.transaction(async (tx) => {
+      await tx.run(
+        "INSERT INTO jc_scales (id, job_card_id, scale_name, scope_of_work) VALUES (?, ?, ?, ?)",
+        [p.scaleId, p.jobCardId, p.scaleName, p.scopeOfWork],
+      );
+      for (const m of p.modules) {
+        await tx.run(
+          `INSERT INTO jc_workitems (id, user_sub, job_card_id, scale_id, module_type, sequence, local_state, assigned_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, 1, 'PENDING', ?, ?)`,
+          [
+            m.id,
+            p.userSub,
+            p.jobCardId,
+            p.scaleId,
+            m.moduleType,
+            args.nowIso,
+            args.nowIso,
+          ],
+        );
+      }
+      await tx.run(
+        `INSERT INTO jc_outbox (id, kind, work_item_id, job_card_id, payload, status, attempts, created_at, updated_at)
+         VALUES (?, 'add-scale', ?, ?, ?, 'pending', 0, ?, ?)`,
+        [
+          args.id,
+          p.scaleId,
+          p.jobCardId,
+          JSON.stringify(p),
+          args.nowIso,
+          args.nowIso,
+        ],
       );
     });
   }
@@ -483,6 +556,30 @@ export class JobCardStore {
       [workItemId],
     );
     return r ? toOutbox(r) : null;
+  }
+
+  /** Photos of finished work that is about to be cleared (call before the pull that clears it). */
+  async expiredPhotoPaths(nowIso: string): Promise<string[]> {
+    const cutoff = new Date(
+      new Date(nowIso).getTime() - KEEP_SUBMITTED_DAYS * DAY_MS,
+    ).toISOString();
+    const rows = await this.db.all(
+      `SELECT form_json FROM jc_drafts WHERE work_item_id IN
+         (SELECT id FROM jc_workitems WHERE local_state = 'SUBMITTED' AND submitted_at IS NOT NULL AND submitted_at < ?)`,
+      [cutoff],
+    );
+    const out: string[] = [];
+    for (const r of rows) {
+      try {
+        const form = JSON.parse(r.form_json as string);
+        for (const v of Object.values(form.photos ?? {}))
+          for (const p of ([] as unknown[]).concat(v))
+            if (typeof p === "string" && p) out.push(p);
+      } catch {
+        /* an unreadable draft has no photos to find */
+      }
+    }
+    return out;
   }
 
   async pruneDone(nowIso: string): Promise<void> {

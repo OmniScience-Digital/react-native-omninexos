@@ -2,7 +2,6 @@
 // One work item: the form for its type, saved as the technician types, and the "Submit" step that puts the finished
 // result in the phone's outbox. Works fully offline.
 import { ThemedText } from "@/components/screens/screen";
-import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { useTheme } from "@/src/contexts/theme-context";
 import {
   loadWorkItem,
@@ -24,7 +23,7 @@ import {
 } from "@/src/jobcards/types";
 import { showResponseModal } from "@/src/state";
 import { useAppDispatch } from "@/src/state/redux";
-import { ArrowLeft, CheckCircle2, CloudOff, Send } from "lucide-react-native";
+import { ArrowLeft, CheckCircle2, CloudOff } from "lucide-react-native";
 import { useEffect, useRef, useState } from "react";
 import {
   KeyboardAvoidingView,
@@ -38,7 +37,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import InspectionFormView from "./forms/InspectionForm";
 import SpanFormView from "./forms/SpanForm";
 import ZeroFormView from "./forms/ZeroForm";
-import { Card, Chip, DANGER, MED, PrimaryButton } from "./ui";
+import { Card, Chip, DANGER, MED, PrimaryButton, SecondaryButton } from "./ui";
 
 const IBack = ArrowLeft as React.ComponentType<{
   size?: number;
@@ -75,13 +74,14 @@ export default function WorkItemScreen({
   const [errors, setErrors] = useState<Errors>({});
   const [submitting, setSubmitting] = useState(false);
   const [justSaved, setJustSaved] = useState(false);
-  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
   const dispatch = useAppDispatch();
 
   const formRef = useRef<AnyForm | null>(null);
   const dirty = useRef(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const editableRef = useRef(false);
+  const autosaveRef = useRef(false); // only half-finished work is saved as you type; an edit of finished work is not
 
   // load the work item, and the half-finished form if there is one
   useEffect(() => {
@@ -100,6 +100,7 @@ export default function WorkItemScreen({
       const initial = r.draft ?? emptyForm(r.item.moduleType);
       formRef.current = initial;
       editableRef.current = r.item.localState === "PENDING";
+      autosaveRef.current = r.item.localState === "PENDING";
       setForm(initial);
       if (r.item.localState === "PENDING")
         void noteWorkStarted(r.item.jobCardId); // the timer: started working on this job card
@@ -115,7 +116,12 @@ export default function WorkItemScreen({
       clearTimeout(timer.current);
       timer.current = null;
     }
-    if (dirty.current && formRef.current && editableRef.current) {
+    if (
+      dirty.current &&
+      formRef.current &&
+      editableRef.current &&
+      autosaveRef.current
+    ) {
       dirty.current = false;
       void saveDraft(workItemId, formRef.current);
     }
@@ -131,23 +137,22 @@ export default function WorkItemScreen({
     timer.current = setTimeout(flush, AUTOSAVE_MS);
   };
 
-  // Asks first with the app's own dialog, then saves
-  const submit = () => {
-    if (!loaded || !form || submitting) return;
-    setConfirmOpen(true);
-  };
+  const submit = () => void doSubmit();
 
   const doSubmit = async () => {
     if (!loaded || !form || submitting) return;
     setSubmitting(true);
     try {
-      const res = await submitWorkItem(loaded.item, form, loaded.baseline);
+      const res = await submitWorkItem(loaded.item, form, loaded.baseline, {
+        edit: editing,
+      });
       if (!res.ok) {
         setErrors(res.errors);
         return;
       }
       dirty.current = false;
       editableRef.current = false;
+      setEditing(false);
       setJustSaved(true);
     } catch (e) {
       dispatch(
@@ -159,6 +164,24 @@ export default function WorkItemScreen({
       );
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const startEdit = () => {
+    editableRef.current = true;
+    setEditing(true);
+  };
+
+  const cancelEdit = async () => {
+    editableRef.current = false;
+    dirty.current = false;
+    setEditing(false);
+    setErrors({});
+    const r = await loadWorkItem(workItemId); // back to what was sent
+    if (r) {
+      const original = r.draft ?? emptyForm(r.item.moduleType);
+      formRef.current = original;
+      setForm(original);
     }
   };
 
@@ -207,16 +230,6 @@ export default function WorkItemScreen({
         {header}
         {children}
       </SafeAreaView>
-      <ConfirmDialog
-        visible={confirmOpen}
-        title="Submit this work?"
-        message="It is saved on this phone and sent when there is signal. You cannot change it afterwards."
-        confirmText="Submit"
-        variant="info"
-        icon={Send}
-        onConfirm={() => void doSubmit()}
-        onCancel={() => setConfirmOpen(false)}
-      />
     </View>
   );
 
@@ -252,7 +265,7 @@ export default function WorkItemScreen({
   }
 
   const { item, outbox } = loaded;
-  const editable = item.localState === "PENDING";
+  const editable = item.localState === "PENDING" || editing;
   const common = { errors, workItemId: item.id, editable };
 
   return frame(
@@ -271,6 +284,21 @@ export default function WorkItemScreen({
               You can still finish and send this work. It is kept for the office
               to review.
             </ThemedText>
+          </Card>
+        )}
+        {editing && (
+          <Card tinted>
+            <ThemedText style={[MED, { fontSize: 13 }]}>
+              Editing finished work
+            </ThemedText>
+            <ThemedText muted style={{ fontSize: 12, lineHeight: 17 }}>
+              Your changes are sent as a new result. Earlier messages in ClickUp
+              and Telegram stay as they are.
+            </ThemedText>
+            <SecondaryButton
+              title="Cancel edit"
+              onPress={() => void cancelEdit()}
+            />
           </Card>
         )}
         {!editable && (
@@ -300,9 +328,13 @@ export default function WorkItemScreen({
                 {outbox.lastError}
               </ThemedText>
             )}
-            <ThemedText muted variant="small">
-              This work can no longer be changed.
-            </ThemedText>
+            {item.jobCardStatus === "CLOSED" ? (
+              <ThemedText muted variant="small">
+                This job card is closed, so this work can no longer be changed.
+              </ThemedText>
+            ) : (
+              <SecondaryButton title="Edit" onPress={startEdit} />
+            )}
           </Card>
         )}
         {Object.keys(errors).length > 0 && (
@@ -348,7 +380,7 @@ export default function WorkItemScreen({
               </ThemedText>
             </View>
             <PrimaryButton
-              title="Submit"
+              title={editing ? "Send updated result" : "Submit"}
               onPress={submit}
               loading={submitting}
             />

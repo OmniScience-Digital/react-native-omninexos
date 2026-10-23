@@ -105,23 +105,58 @@ const lightTheme: Theme = {
   },
 };
 
+// const darkTheme: Theme = {
+//   name: "dark",
+//   colors: {
+//     background: "#080808",
+//     card: "#111111",
+//     text: "#F0F0F0",
+//     textMuted: "#737373",
+//     primary: ACCENT_DARK,
+//     primaryText: "#FFFFFF",
+//     border: "#1E1E1E",
+//     shadow: "rgba(0, 0, 0, 0.65)",
+//     glass: "rgba(17, 17, 17, 0.9)",
+//     tabIconActive: ACCENT_DARK,
+//     success: "#34D399",
+//     warning: "#FBBF24",
+//     info: "#60A5FA",
+//     accent: "#909090",
+//   },
+//   radius: { md: 14, xl: 24, pill: 999 },
+//   spacing: { xs: 6, sm: 10, md: 16, lg: 24, xl: 32 },
+//   typography: { h1: 30, h2: 20, body: 16, small: 13 },
+//   components: {
+//     tabBar: {
+//       height: 72,
+//       horizontalInset: 20,
+//       radius: 32,
+//       iconFrame: 48,
+//       itemPaddingVertical: 8,
+//     },
+//   },
+// };
+// ─────────────────────────────────────────────
+// CONTEXT
+// ─────────────────────────────────────────────
+
 const darkTheme: Theme = {
   name: "dark",
   colors: {
-    background: "#080808",
-    card: "#111111",
-    text: "#F0F0F0",
-    textMuted: "#737373",
-    primary: ACCENT_DARK,
+    background: "#080F1C", // Deep navy background
+    card: "#111C2E", // Navy cards
+    text: "#F0F4FA", // Soft white
+    textMuted: "#94A3B8", // Muted blue-gray
+    primary: "#0D1728", // Dark navy primary
     primaryText: "#FFFFFF",
-    border: "#1E1E1E",
-    shadow: "rgba(0, 0, 0, 0.65)",
-    glass: "rgba(17, 17, 17, 0.9)",
-    tabIconActive: ACCENT_DARK,
+    border: "#223149", // Subtle navy borders
+    shadow: "rgba(0, 0, 0, 0.35)",
+    glass: "rgba(17, 28, 46, 0.90)",
+    tabIconActive: "#F0F4FA",
     success: "#34D399",
     warning: "#FBBF24",
     info: "#60A5FA",
-    accent: "#909090",
+    accent: "#A5B4FC",
   },
   radius: { md: 14, xl: 24, pill: 999 },
   spacing: { xs: 6, sm: 10, md: 16, lg: 24, xl: 32 },
@@ -136,10 +171,6 @@ const darkTheme: Theme = {
     },
   },
 };
-// ─────────────────────────────────────────────
-// CONTEXT
-// ─────────────────────────────────────────────
-
 const ThemeContext = createContext<ThemeCtx>({
   theme: lightTheme,
   preference: "system",

@@ -2,8 +2,6 @@
 import { Screen, ThemedText } from "@/components/screens/screen";
 import { ModuleCard, StatCard } from "@/components/ui/DashboardCards";
 import { MenuButton } from "@/components/ui/MenuButton"; // SIDEMENU
-import { OfflineBanner } from "@/components/ui/OfflineBanner";
-import { CustomScrollView } from "@/components/ui/scrollView";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { useAuth } from "@/src/contexts/auth-context";
 import { formatMinutes, useOpenJobCards } from "@/src/jobcards/controller";
@@ -12,7 +10,6 @@ import { formatMinutes, useOpenJobCards } from "@/src/jobcards/controller";
 import { useTabBar } from "@/src/contexts/tabbar-context";
 import { useTheme } from "@/src/contexts/theme-context";
 import {
-  useGetTotalInspectionCountQuery,
   useLazyGetInspectionsByFleetQuery,
   useListCategoriesQuery,
   useListFleetsQuery,
@@ -36,11 +33,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
+  InteractionManager,
   Pressable,
   RefreshControl,
   StyleSheet,
   View,
 } from "react-native";
+import { OfflineBanner } from "../ui/OfflineBanner";
 
 // ── Attendance Hero Card (DISABLED — attendance system commented out) ────────
 /*
@@ -407,7 +406,6 @@ export default function HomeScreen() {
   // no separate hand-rolled AsyncStorage cache needed, which also removes
   // the bug where a genuine "0 inspections now" (e.g. right after clearing
   // test data) could never overwrite a stale cached non-zero value.
-  const { refetch: refetchInspectionCount } = useGetTotalInspectionCountQuery();
   const [recentInspections, setRecentInspections] = useState<any[]>([]);
   const [inspectionsCalculating, setInspectionsCalculating] = useState(false);
   const [refresh, setRefresh] = useState(false);
@@ -446,15 +444,28 @@ export default function HomeScreen() {
         // Run all fleet queries in parallel — this is only for the "recent
         // activity" list below; the total count comes from
         // useGetTotalInspectionCountQuery above, not from these.
-        const results = await Promise.allSettled(
-          fleets.map((v) =>
-            // Same args as the inspection form's query => same cache entry, so
-            // this also keeps each vehicle's last inspection available offline.
-            getInspections({ fleetId: v.id, sortDirection: "DESC", limit: 1 })
-              .unwrap()
-              .catch(() => [] as any[]),
-          ),
+        await new Promise<void>((resolve) =>
+          InteractionManager.runAfterInteractions(() => resolve()),
         );
+        const results: PromiseSettledResult<any[]>[] = [];
+        const BATCH = 6;
+        for (let i = 0; i < fleets.length; i += BATCH) {
+          results.push(
+            ...(await Promise.allSettled(
+              fleets.slice(i, i + BATCH).map((v) =>
+                // Same args as the inspection form's query => same cache entry, so
+                // this also keeps each vehicle's last inspection available offline.
+                getInspections({
+                  fleetId: v.id,
+                  sortDirection: "DESC",
+                  limit: 1,
+                })
+                  .unwrap()
+                  .catch(() => [] as any[]),
+              ),
+            )),
+          );
+        }
 
         const allRecent: any[] = [];
         results.forEach((result) => {
@@ -526,11 +537,7 @@ export default function HomeScreen() {
     forceRecount.current = true;
     // refetchHistory() removed — attendance system disabled
     try {
-      await Promise.all([
-        refetchFleets(),
-        refetchCategories(),
-        refetchInspectionCount(),
-      ]);
+      await Promise.all([refetchFleets(), refetchCategories()]);
     } finally {
       setRefresh(false);
     }
@@ -585,7 +592,7 @@ export default function HomeScreen() {
         <RefreshControl refreshing={refresh} onRefresh={handleRefresh} />
       }
     >
-      <CustomScrollView>
+      <View>
         {/* Offline banner — only shows when actually offline */}
         <OfflineBanner />
 
@@ -733,7 +740,7 @@ export default function HomeScreen() {
             )}
           </View>
         </View>
-      </CustomScrollView>
+      </View>
     </Screen>
   );
 }

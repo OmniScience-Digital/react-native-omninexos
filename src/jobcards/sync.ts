@@ -6,6 +6,7 @@
 import { computeBaseline } from "./rules";
 import type { JobCardStore } from "./store";
 import type {
+  AddScalePayload,
   OutboxRow,
   StartTimePayload,
   SubmitResultPayload,
@@ -83,6 +84,25 @@ export interface JobCardApi {
     userId: string;
     userName: string;
     startedAt: string;
+  }): Promise<void>;
+  /** Create a scale on a job card. If this id already exists it must succeed quietly (a repeat of an earlier send). */
+  createScale(input: {
+    id: string;
+    jobCardId: string;
+    scaleName: string;
+    createdBy: string;
+  }): Promise<void>;
+  /** Create one work item on a scale, assigned to the technician. If this id already exists it must succeed quietly. */
+  createModule(input: {
+    id: string;
+    scaleId: string;
+    jobCardId: string;
+    moduleType: WorkItemType;
+    sequence: number;
+    addedBy: string;
+    addedAt: string;
+    assignedTo: string;
+    assignedToName: string;
   }): Promise<void>;
   uploadPhoto(storageKey: string, localUri: string): Promise<void>;
 }
@@ -323,6 +343,34 @@ async function sendStartTime(api: JobCardApi, row: OutboxRow): Promise<void> {
   });
 }
 
+/**
+ * A scale added on the phone: create the scale, then each chosen work item assigned to the technician.
+ * The ids were made on the phone, so a retry after a dropped connection never creates duplicates.
+ * The work items are assigned to the technician so they come back in the next pull.
+ */
+async function sendAddScale(api: JobCardApi, row: OutboxRow): Promise<void> {
+  const p = JSON.parse(row.payload) as AddScalePayload;
+  await api.createScale({
+    id: p.scaleId,
+    jobCardId: p.jobCardId,
+    scaleName: p.scaleName,
+    createdBy: p.userSub,
+  });
+  for (const m of p.modules) {
+    await api.createModule({
+      id: m.id,
+      scaleId: p.scaleId,
+      jobCardId: p.jobCardId,
+      moduleType: m.moduleType,
+      sequence: 1, // first of its type on a brand-new scale
+      addedBy: p.userSub,
+      addedAt: p.addedAt,
+      assignedTo: p.userSub,
+      assignedToName: p.userName,
+    });
+  }
+}
+
 export async function pushOutbox(
   store: JobCardStore,
   api: JobCardApi,
@@ -337,6 +385,7 @@ export async function pushOutbox(
     await store.markSyncing(row.id, now().toISOString());
     try {
       if (row.kind === "submit-result") await sendResult(store, api, row, now);
+      else if (row.kind === "add-scale") await sendAddScale(api, row);
       else await sendStartTime(api, row);
       const submittedAt =
         row.kind === "submit-result"
@@ -344,14 +393,6 @@ export async function pushOutbox(
           : null;
       await store.markDone(row, submittedAt, now().toISOString());
       summary.sent += 1;
-      if (cleanupFiles && row.kind === "submit-result") {
-        try {
-          const p = JSON.parse(row.payload) as SubmitResultPayload;
-          await cleanupFiles(Object.values(p.photos).flat());
-        } catch {
-          /* a photo that cannot be deleted is not a reason to fail a result that was sent */
-        }
-      }
     } catch (e) {
       const failures = row.attempts + 1;
       const blocked =
@@ -396,6 +437,9 @@ export function runSync(deps: SyncDeps, userSub: string): Promise<SyncSummary> {
   inFlight = (async (): Promise<SyncSummary> => {
     if (!(await deps.isOnline())) return { offline: true };
     const summary: SyncSummary = { offline: false };
+    const expiredPhotos = await deps.store
+      .expiredPhotoPaths(deps.now().toISOString())
+      .catch(() => []);
     summary.push = await pushOutbox(
       deps.store,
       deps.api,
@@ -412,6 +456,8 @@ export function runSync(deps: SyncDeps, userSub: string): Promise<SyncSummary> {
     } catch (e) {
       summary.pullError = errorText(e); // the phone keeps what it has
     }
+    if (summary.pull && expiredPhotos.length)
+      await deps.cleanupFiles?.(expiredPhotos).catch(() => {});
     await deps.store.pruneDone(deps.now().toISOString());
     return summary;
   })().finally(() => {

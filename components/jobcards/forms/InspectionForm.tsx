@@ -88,7 +88,7 @@ export default function InspectionForm({
           editable={editable}
           onChange={(v) => set({ asFoundSpanCoefficient: v })}
           error={errors.asFoundSpanCoefficient}
-          hint="Up to 8 digits"
+          hint="Exactly 8 digits"
         />
         <TextField
           testID="asFoundZeroValue"
@@ -99,7 +99,7 @@ export default function InspectionForm({
           editable={editable}
           onChange={(v) => set({ asFoundZeroValue: v })}
           error={errors.asFoundZeroValue}
-          hint="Up to 5 digits"
+          hint="Exactly 5 digits"
         />
         <TextField
           testID="asFoundSpeedCoefficient"

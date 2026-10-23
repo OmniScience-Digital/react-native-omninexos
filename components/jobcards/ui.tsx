@@ -235,6 +235,7 @@ export function TextField(props: {
   maxLength?: number;
   error?: string;
   hint?: string;
+  multiline?: boolean;
   placeholder?: string;
   editable?: boolean;
   testID?: string;

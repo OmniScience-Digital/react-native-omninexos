@@ -17,17 +17,19 @@ const finish = (errors: Errors): Validation => ({
   errors,
 });
 
-/** Whole numbers only, at most `max` digits ("1250", not "12.5" or "-3"). */
+/** Whole numbers only, at most `max` digits ("1250", not "12.5" or "-3"). With `exact`, exactly `max` digits. */
 export function checkDigits(
   label: string,
   value: string,
   max: number,
   required = true,
+  exact = false,
 ): string | null {
   const v = value.trim();
   if (!v) return required ? `${label} is required` : null;
   if (!/^\d+$/.test(v)) return `${label}: digits only`;
-  if (v.length > max) return `${label}: at most ${max} digits`;
+  if (exact ? v.length !== max : v.length > max)
+    return `${label}: ${exact ? "exactly" : "at most"} ${max} digits`;
   return null;
 }
 
@@ -63,11 +65,17 @@ export function validateInspection(f: InspectionForm): Validation {
   );
   put(
     "asFoundSpanCoefficient",
-    checkDigits("As found span coefficient", f.asFoundSpanCoefficient, 8),
+    checkDigits(
+      "As found span coefficient",
+      f.asFoundSpanCoefficient,
+      8,
+      true,
+      true,
+    ),
   );
   put(
     "asFoundZeroValue",
-    checkDigits("As found zero value", f.asFoundZeroValue, 5),
+    checkDigits("As found zero value", f.asFoundZeroValue, 5, true, true),
   );
   put(
     "asFoundSpeedCoefficient",
@@ -142,7 +150,7 @@ export function validateInspection(f: InspectionForm): Validation {
 // ---------------------------------------------------------------------- zero
 export function validateZero(f: ZeroForm): Validation {
   const e: Errors = {};
-  const m = checkDigits("New zero value", f.newZeroValue, 5);
+  const m = checkDigits("New zero value", f.newZeroValue, 5, true, true);
   if (m) e.newZeroValue = m;
   if (!f.photos.zero) e["photos.zero"] = "Zero calibration photo is required";
   return finish(e);
@@ -205,11 +213,17 @@ export function validateSpan(
     e.indicated = "Indicated must be different from Offset";
   }
   if (!baseline?.latestZero)
-    put("manualLatestZero", checkDigits("Latest zero", f.manualLatestZero, 5));
+    put(
+      "manualLatestZero",
+      checkDigits("Latest zero", f.manualLatestZero, 5, true, true),
+    );
   if (!baseline?.latestSpan)
-    put("manualLatestSpan", checkDigits("Latest span", f.manualLatestSpan, 8));
+    put(
+      "manualLatestSpan",
+      checkDigits("Latest span", f.manualLatestSpan, 8, true, true),
+    );
   needAnswer(e, "spanAdjusted", "Span adjusted", f.spanAdjusted);
-  put("newSpan", checkDigits("New span", f.newSpan, 8));
+  put("newSpan", checkDigits("New span", f.newSpan, 8, true, true));
   if (!f.photos.offset) e["photos.offset"] = "Offset photo is required";
   if (!f.photos.actual) e["photos.actual"] = "Actual photo is required";
   if (!f.photos.indicated)
@@ -232,7 +246,11 @@ export function liveSpanCalc(
   )
     return null;
   const { zero, span } = resolveBaseline(baseline, f);
-  if (checkDigits("", zero, 5) || checkDigits("", span, 8)) return null;
+  if (
+    checkDigits("", zero, 5, true, true) ||
+    checkDigits("", span, 8, true, true)
+  )
+    return null;
   const offset = toNumber(f.offset);
   const indicated = toNumber(f.indicated);
   if (indicated === offset) return null;

@@ -12,6 +12,7 @@ import type {
   AnyForm,
   ScaleBaseline,
   StartTimePayload,
+  WorkItemType,
   WorkItemView,
 } from "./types";
 
@@ -130,14 +131,64 @@ export async function saveDraft(
   await store.saveDraft(workItemId, form, new Date().toISOString());
 }
 
+/** Every type of work a scale can have, in the order it is created and shown. */
+const ALL_WORK_TYPES: readonly WorkItemType[] = [
+  "INSPECTION",
+  "ZERO_CALIBRATION",
+  "SPAN_CALIBRATION",
+];
+
+/**
+ * The technician adds a scale to an open job card. Its scope of work is the types of work chosen
+ * (all three when none are given). It shows at once and is sent when online.
+ */
+export async function addScale(args: {
+  jobCardId: string;
+  scaleName: string;
+  scopeOfWork: string;
+  moduleTypes?: WorkItemType[];
+}): Promise<void> {
+  if (!currentUser) throw new Error("Not signed in");
+  const scaleName = args.scaleName.trim();
+  if (!scaleName) throw new Error("Enter the scale name");
+  const chosen = args.moduleTypes?.length
+    ? ALL_WORK_TYPES.filter((t) => args.moduleTypes!.includes(t))
+    : ALL_WORK_TYPES;
+  const store = await getJobCardStore();
+  const nowIso = new Date().toISOString();
+  await store.enqueueAddScale({
+    id: newId(),
+    nowIso,
+    payload: {
+      scaleId: newId(),
+      jobCardId: args.jobCardId,
+      scaleName,
+      scopeOfWork: args.scopeOfWork.trim() || null,
+      userSub: currentUser.sub,
+      userName: currentUser.name,
+      addedAt: nowIso,
+      modules: chosen.map((moduleType) => ({ id: newId(), moduleType })),
+    },
+  });
+  notify();
+  void requestSync();
+}
+
 /** Validate, then save the finished work on the phone and start sending. Returns the problems if it is not complete. */
 export async function submitWorkItem(
   item: WorkItemView,
   form: AnyForm,
   baseline: ScaleBaseline | null,
+  opts?: { edit?: boolean },
 ): Promise<PrepareResult> {
   if (!currentUser) throw new Error("Not signed in");
   const nowIso = new Date().toISOString();
+  const store = await getJobCardStore();
+  let edit: { revision: number; editOf: string } | undefined;
+  if (opts?.edit) {
+    const history = await store.resultHistory(item.id);
+    edit = { revision: history.count + 1, editOf: history.lastId ?? "" };
+  }
   const prepared = prepareSubmission({
     item,
     form,
@@ -145,9 +196,9 @@ export async function submitWorkItem(
     userSub: currentUser.sub,
     nowIso,
     newId,
+    edit,
   });
   if (!prepared.ok) return prepared;
-  const store = await getJobCardStore();
   await store.enqueueResult({
     id: prepared.id,
     workItemId: item.id,
@@ -156,6 +207,7 @@ export async function submitWorkItem(
     submittedAt: prepared.submittedAt,
     nowIso,
   });
+  if (opts?.edit) await store.saveDraft(item.id, form, nowIso); // the finished work now shows the edited answers
   notify();
   void requestSync(); // goes out at once if there is signal, otherwise waits in the outbox
   return prepared;
@@ -246,7 +298,7 @@ export function useOpenJobCards(
   const openIds = useMemo(() => {
     const ids = new Set<string>();
     for (const w of items)
-      if (w.jobCardStatus !== "CLOSED" && w.localState !== "SUBMITTED")
+      if (w.jobCardStatus !== "CLOSED" && w.localState === "PENDING")
         ids.add(w.jobCardId);
     return [...ids].sort();
   }, [items]);

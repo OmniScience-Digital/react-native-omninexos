@@ -190,6 +190,20 @@ const CREATE_TIME_ENTRY = /* GraphQL */ `
     }
   }
 `;
+const CREATE_SCALE = /* GraphQL */ `
+  mutation CreateScale($input: CreateJobCardScaleInput!) {
+    createJobCardScale(input: $input) {
+      id
+    }
+  }
+`;
+const CREATE_MODULE = /* GraphQL */ `
+  mutation CreateModule($input: CreateJobCardModuleInput!) {
+    createJobCardModule(input: $input) {
+      id
+    }
+  }
+`;
 
 const parseJson = (v: unknown): Record<string, unknown> => {
   try {
@@ -352,6 +366,42 @@ export const jobCardApi: JobCardApi = {
       });
     } catch (e) {
       if (!isAlreadyExists(e)) throw e;
+    }
+  },
+
+  async createScale(a) {
+    try {
+      await gql(CREATE_SCALE, {
+        input: {
+          id: a.id,
+          jobCardId: a.jobCardId,
+          scaleName: a.scaleName,
+          createdBy: a.createdBy,
+        },
+      });
+    } catch (e) {
+      if (!isAlreadyExists(e)) throw e; // the scale was already created by an earlier try
+    }
+  },
+
+  async createModule(a) {
+    try {
+      await gql(CREATE_MODULE, {
+        input: {
+          id: a.id,
+          scaleId: a.scaleId,
+          jobCardId: a.jobCardId,
+          moduleType: a.moduleType,
+          status: "PENDING",
+          sequence: a.sequence,
+          addedBy: a.addedBy,
+          addedAt: a.addedAt,
+          assignedTo: a.assignedTo,
+          assignedToName: a.assignedToName,
+        },
+      });
+    } catch (e) {
+      if (!isAlreadyExists(e)) throw e; // the work item was already created by an earlier try
     }
   },
 

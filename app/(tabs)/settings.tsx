@@ -7,7 +7,6 @@ import {
 import { Screen, ThemedText } from "@/components/screens/screen";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { CustomHeader } from "@/components/ui/customHeader";
-import { CustomScrollView } from "@/components/ui/scrollView";
 import "@/global.css";
 import { getCopyright } from "@/lib/utils";
 import { useAuth } from "@/src/contexts/auth-context";
@@ -86,8 +85,10 @@ export default function Settings() {
   // If the profile photo URL fails to load (expired, missing, no permission),
   // fall back to the user icon instead of a blank circle.
   const [imageFailed, setImageFailed] = useState(false);
+  const [imageLoaded, setImageLoaded] = useState(false);
   useEffect(() => {
     setImageFailed(false);
+    setImageLoaded(false);
   }, [photoUri]);
 
   const [dialogConfig, setDialogConfig] = useState<{
@@ -159,7 +160,7 @@ export default function Settings() {
         />
       }
     >
-      <CustomScrollView>
+      <View>
         {/* Header */}
         <CustomHeader
           title="Settings"
@@ -188,7 +189,8 @@ export default function Settings() {
                 },
               ]}
             >
-              {photoUri && !imageFailed ? (
+              <User size={26} color={theme.colors.accent} />
+              {photoUri && !imageFailed && (
                 <Image
                   source={{
                     uri: photoUri,
@@ -196,14 +198,17 @@ export default function Settings() {
                       ? `profile-${userId}-${photoVersion}`
                       : undefined,
                   }}
-                  style={styles.avatarImage}
+                  style={[styles.avatarImage, { opacity: imageLoaded ? 1 : 0 }]}
                   cachePolicy="memory-disk"
                   contentFit="cover"
                   transition={150}
+                  onLoad={(e) => {
+                    if (e.source.width > 1 && e.source.height > 1)
+                      setImageLoaded(true);
+                    else setImageFailed(true);
+                  }}
                   onError={() => setImageFailed(true)}
                 />
-              ) : (
-                <User size={26} color={theme.colors.accent} />
               )}
             </View>
 
@@ -340,7 +345,7 @@ export default function Settings() {
             {getCopyright()}
           </ThemedText>
         </View>
-      </CustomScrollView>
+      </View>
     </Screen>
   );
 }
@@ -365,6 +370,9 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   avatarImage: {
+    position: "absolute",
+    top: 0,
+    left: 0,
     width: 50,
     height: 50,
     borderRadius: 16,

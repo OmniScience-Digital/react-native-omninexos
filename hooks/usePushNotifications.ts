@@ -14,8 +14,19 @@ import { AppState, Platform } from "react-native";
 const TOKEN_CACHE_KEY = (uid: string) => `push:token:${uid}`;
 const NOTIF_CACHE_KEY = (uid: string) => `push:notifications:${uid}`;
 const MAX_STORED = 50;
+const TOKEN_SAVED_KEY = (uid: string) => `push:token-saved:${uid}`;
 const JC_ALERTED_KEY = (uid: string) => `push:jc-alerted:${uid}`;
 const JC_DONE_KEY = (uid: string) => `push:jc-done:${uid}`;
+
+const LIST_PUSH_TOKENS = `
+  query PushTokensByUser($userId: String!) {
+    pushTokensByUser(userId: $userId, limit: 50) {
+      items {
+        token
+      }
+    }
+  }
+`;
 
 const CREATE_OR_UPDATE_PUSH_TOKEN = `
   mutation CreatePushToken($input: CreatePushTokenInput!) {
@@ -101,21 +112,35 @@ export function usePushNotifications(userId: string) {
   }, [userId]);
 
   const storeTokenRemotely = useCallback(
-    async (token: string): Promise<void> => {
+    async (token: string): Promise<boolean> => {
       try {
-        await client.graphql({
-          query: CREATE_OR_UPDATE_PUSH_TOKEN,
-          variables: {
-            input: {
-              userId,
-              token,
-              platform: Platform.OS,
-              updatedAt: new Date().toISOString(),
-            },
-          },
+        const existing: any = await client.graphql({
+          query: LIST_PUSH_TOKENS,
+          variables: { userId },
           authMode: "userPool",
         });
-      } catch {}
+        const have = (existing?.data?.pushTokensByUser?.items ?? []).some(
+          (t: any) => t?.token === token,
+        );
+        if (!have) {
+          await client.graphql({
+            query: CREATE_OR_UPDATE_PUSH_TOKEN,
+            variables: {
+              input: {
+                userId,
+                token,
+                platform: Platform.OS,
+                updatedAt: new Date().toISOString(),
+              },
+            },
+            authMode: "userPool",
+          });
+        }
+        return true;
+      } catch (e) {
+        console.warn("[push] could not save the push token:", e);
+        return false;
+      }
     },
     [userId],
   );
@@ -171,7 +196,9 @@ export function usePushNotifications(userId: string) {
 
       setExpoPushToken(token);
       await AsyncStorage.setItem(TOKEN_CACHE_KEY(userId), token);
-      await storeTokenRemotely(token);
+      const saved = await storeTokenRemotely(token);
+      if (saved) await AsyncStorage.setItem(TOKEN_SAVED_KEY(userId), token);
+      else await AsyncStorage.removeItem(TOKEN_SAVED_KEY(userId));
       return token;
     } catch (e: any) {
       setError(e?.message ?? "Failed to register for notifications");
@@ -186,9 +213,24 @@ export function usePushNotifications(userId: string) {
     if (registeredRef.current) return;
     registeredRef.current = true;
 
-    AsyncStorage.getItem(TOKEN_CACHE_KEY(userId)).then((cached) => {
+    if (Platform.OS === "android") {
+      void Notifications.setNotificationChannelAsync("jobcards", {
+        name: "Job cards",
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: "#1A1A1A",
+      }).catch(() => {});
+    }
+
+    const ensureRegistered = async () => {
+      const cached = await AsyncStorage.getItem(TOKEN_CACHE_KEY(userId));
+      const saved = await AsyncStorage.getItem(TOKEN_SAVED_KEY(userId));
       if (cached) setExpoPushToken(cached);
-      else registerForPushNotifications();
+      if (!cached || saved !== cached) await registerForPushNotifications();
+    };
+    const registerTimer = setTimeout(() => void ensureRegistered(), 2500);
+    const appSub = AppState.addEventListener("change", (st) => {
+      if (st === "active") void ensureRegistered();
     });
 
     notificationListener.current =
@@ -224,6 +266,8 @@ export function usePushNotifications(userId: string) {
       });
 
     return () => {
+      clearTimeout(registerTimer);
+      appSub.remove();
       notificationListener.current?.remove();
       responseListener.current?.remove();
       registeredRef.current = false;
@@ -405,7 +449,9 @@ export function usePushNotifications(userId: string) {
 
         const raw = await AsyncStorage.getItem(JC_ALERTED_KEY(userId));
         const seen = new Set<string>(raw ? JSON.parse(raw) : []);
-        const open = items.filter((w) => w.localState === "PENDING");
+        const open = items.filter(
+          (w) => w.localState === "PENDING" && w.jobCardStatus !== "CLOSED",
+        );
         if (raw === null) {
           await AsyncStorage.setItem(
             JC_ALERTED_KEY(userId),
@@ -437,8 +483,10 @@ export function usePushNotifications(userId: string) {
       } catch {}
     };
 
-    void importDelivered();
-    void alertNewWork();
+    const firstCheck = setTimeout(() => {
+      void importDelivered();
+      void alertNewWork();
+    }, 1500);
     const unsubJc = subscribeJobCards(() => void alertNewWork());
     const app = AppState.addEventListener("change", (st) => {
       if (st === "active") {
@@ -448,6 +496,7 @@ export function usePushNotifications(userId: string) {
     });
     return () => {
       stopped = true;
+      clearTimeout(firstCheck);
       unsubJc();
       app.remove();
     };

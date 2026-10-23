@@ -33,6 +33,7 @@ export interface CachedScale {
   id: string;
   jobCardId: string;
   scaleName: string;
+  scopeOfWork?: string | null;
 }
 
 export interface CachedWorkItem {
@@ -52,7 +53,9 @@ export interface WorkItemView extends CachedWorkItem {
   jcNumber: string;
   customerName?: string | null;
   jobCardStatus: string;
+  jcTitle?: string | null;
   scaleName: string;
+  scopeOfWork?: string | null;
 }
 
 /** The latest zero and span saved for a scale. The span calculation needs them, so they are kept for offline use. */
@@ -63,7 +66,7 @@ export interface ScaleBaseline {
   updatedAt: string;
 }
 
-export type OutboxKind = "submit-result" | "start-time";
+export type OutboxKind = "submit-result" | "start-time" | "add-scale";
 /** pending: ready to send | syncing: being sent now | done: sent | blocked: needs attention (see last error) */
 export type OutboxStatus = "pending" | "syncing" | "done" | "blocked";
 
@@ -152,6 +155,18 @@ export interface SubmitResultPayload {
   photos: Record<string, string | string[]>;
   /** local path -> the storage key it was uploaded to (filled in as uploads finish) */
   uploaded: Record<string, string>;
+}
+
+/** A scale the technician added on the phone, with the work to do on it. Ids are made here so a retry never duplicates. */
+export interface AddScalePayload {
+  scaleId: string;
+  jobCardId: string;
+  scaleName: string;
+  scopeOfWork: string | null;
+  userSub: string;
+  userName: string;
+  addedAt: string;
+  modules: { id: string; moduleType: WorkItemType }[];
 }
 
 export interface StartTimePayload {

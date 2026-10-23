@@ -12,6 +12,8 @@ export default function JobCardsRoute() {
   const { user } = useAuth();
   const { workItem } = useLocalSearchParams<{ workItem?: string }>();
   const [openId, setOpenId] = useState<string | null>(null);
+  const [jobCardId, setJobCardId] = useState<string | null>(null);
+  const [showWork, setShowWork] = useState(false);
 
   // a push notification opens its work item straight away
   useEffect(() => {
@@ -20,19 +22,36 @@ export default function JobCardsRoute() {
 
   // the Android back button goes from a work item back to the list (not out of the module)
   useEffect(() => {
-    if (!openId) return;
+    if (!openId && !jobCardId) return;
     const sub = BackHandler.addEventListener("hardwareBackPress", () => {
-      setOpenId(null);
+      if (openId) setOpenId(null);
+      else if (showWork) setShowWork(false);
+      else setJobCardId(null);
       return true;
     });
     return () => sub.remove();
-  }, [openId]);
+  }, [openId, jobCardId, showWork]);
 
   if (openId)
     return (
       <WorkItemScreen workItemId={openId} onBack={() => setOpenId(null)} />
     );
   return (
-    <JobCardsHome userSub={user?.sub ?? user?.username} onOpen={setOpenId} />
+    <JobCardsHome
+      userSub={user?.sub ?? user?.username}
+      onOpen={setOpenId}
+      jobCardId={jobCardId}
+      onSelectJobCard={(id) => {
+        setShowWork(false);
+        setJobCardId(id);
+      }}
+      onBackToList={() => {
+        setShowWork(false);
+        setJobCardId(null);
+      }}
+      showWork={showWork}
+      onShowWork={() => setShowWork(true)}
+      onHideWork={() => setShowWork(false)}
+    />
   );
 }

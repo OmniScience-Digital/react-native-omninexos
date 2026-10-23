@@ -17,6 +17,7 @@ interface NonTabScreenProps {
   subtitle?: string;
   children: React.ReactNode;
   showBack?: boolean;
+  onBack?: () => void;
   scrollable?: boolean;
   footerText?: string;
   refreshControl?: React.ReactElement<
@@ -29,6 +30,7 @@ export function NonTabScreen({
   subtitle,
   children,
   showBack = true,
+  onBack,
   scrollable = true,
   footerText = `Omninexos © ${new Date().getFullYear()}`,
   refreshControl,
@@ -49,7 +51,7 @@ export function NonTabScreen({
         >
           {showBack && (
             <Pressable
-              onPress={() => router.back()}
+              onPress={onBack ?? (() => router.back())}
               style={({ pressed }) => [
                 styles.backButton,
                 {

@@ -2,19 +2,19 @@
 // Turns a filled-in form into the outbox record. Pure: validation, the result, the photo list and the ids/times are
 // all decided here, so it can be tested without a phone.
 import {
-    buildResult,
-    photosOf,
-    validateInspection,
-    validateSpan,
-    validateZero,
-    type Errors,
+  buildResult,
+  photosOf,
+  validateInspection,
+  validateSpan,
+  validateZero,
+  type Errors,
 } from "./rules";
 import type {
-    InspectionForm,
-    SpanForm,
-    SubmitResultPayload,
-    WorkItemType,
-    ZeroForm,
+  InspectionForm,
+  SpanForm,
+  SubmitResultPayload,
+  WorkItemType,
+  ZeroForm,
 } from "./types";
 
 export type PrepareResult =
@@ -31,6 +31,8 @@ export function prepareSubmission(args: {
   userSub: string;
   nowIso: string;
   newId: () => string;
+  /** Set when finished work is being edited: this goes out as a NEW result that points at the one before it. */
+  edit?: { revision: number; editOf: string };
 }): PrepareResult {
   const { item, form, baseline } = args;
   const v =
@@ -51,7 +53,12 @@ export function prepareSubmission(args: {
       moduleType: item.moduleType,
       submittedAt: args.nowIso,
       submittedBy: args.userSub,
-      result: buildResult(item.moduleType, form, baseline),
+      result: {
+        ...buildResult(item.moduleType, form, baseline),
+        ...(args.edit
+          ? { revision: args.edit.revision, editOf: args.edit.editOf }
+          : {}),
+      },
       photos: photosOf(item.moduleType, form),
       uploaded: {},
     },

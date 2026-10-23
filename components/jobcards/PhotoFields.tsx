@@ -10,7 +10,7 @@ import {
 } from "@/src/jobcards/photos";
 import { Camera, Images, X } from "lucide-react-native";
 import { useState } from "react";
-import { Alert, Image, Pressable, StyleSheet, View } from "react-native";
+import { Alert, Image, Modal, Pressable, StyleSheet, View } from "react-native";
 import { DANGER, Field, MED, SecondaryButton } from "./ui";
 
 const ICamera = Camera as React.ComponentType<{
@@ -34,6 +34,7 @@ function Thumb({
 }) {
   const { theme } = useTheme();
   const [gone, setGone] = useState(false);
+  const [open, setOpen] = useState(false);
   return (
     <View style={styles.thumbWrap}>
       {gone ? (
@@ -54,13 +55,41 @@ function Thumb({
           </ThemedText>
         </View>
       ) : (
-        <Image
-          source={{ uri }}
-          onError={() => setGone(true)}
-          style={[styles.thumb, { borderColor: theme.colors.border }]}
-          accessibilityLabel="Photo"
-        />
+        <Pressable
+          onPress={() => setOpen(true)}
+          accessibilityRole="imagebutton"
+          accessibilityLabel="View photo"
+        >
+          <Image
+            source={{ uri }}
+            onError={() => setGone(true)}
+            style={[styles.thumb, { borderColor: theme.colors.border }]}
+            accessibilityLabel="Photo"
+          />
+        </Pressable>
       )}
+      <Modal
+        visible={open}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={() => setOpen(false)}
+      >
+        <Pressable
+          style={{
+            flex: 1,
+            backgroundColor: "black",
+            justifyContent: "center",
+          }}
+          onPress={() => setOpen(false)}
+        >
+          <Image
+            source={{ uri }}
+            style={{ width: "100%", height: "85%" }}
+            resizeMode="contain"
+          />
+        </Pressable>
+      </Modal>
       {editable && (
         <Pressable
           onPress={onRemove}
