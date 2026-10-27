@@ -1,9 +1,19 @@
 // hooks/usePushNotifications.ts
 import { client } from "@/src/amplify";
-import { getWorkItemState, resolveMyIds } from "@/src/jobcards/api";
+import {
+  alertBody,
+  alertKey,
+  alertTitle,
+  cardsFromWork,
+  currentAlertKeys,
+  freshJobCardAlerts,
+  isJobCardAlert,
+  jobCardAlertsToClear,
+} from "@/src/jobcards/alerts";
+import { getWorkItemState } from "@/src/jobcards/api";
 import { getJobCardUser, subscribeJobCards } from "@/src/jobcards/controller";
+import { normEmail } from "@/src/jobcards/people";
 import { getJobCardStore } from "@/src/jobcards/sqliteDriver";
-import { WORK_ITEM_LABEL } from "@/src/jobcards/types";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Constants from "expo-constants";
 import * as Device from "expo-device";
@@ -15,7 +25,7 @@ const TOKEN_CACHE_KEY = (uid: string) => `push:token:${uid}`;
 const NOTIF_CACHE_KEY = (uid: string) => `push:notifications:${uid}`;
 const MAX_STORED = 50;
 const TOKEN_SAVED_KEY = (uid: string) => `push:token-saved:${uid}`;
-const JC_ALERTED_KEY = (uid: string) => `push:jc-alerted:${uid}`;
+const JC_ALERTED_KEY = (uid: string) => `push:jc-alerted-cards:${uid}`; // job cards announced (per assignment)
 const JC_DONE_KEY = (uid: string) => `push:jc-done:${uid}`;
 
 const LIST_PUSH_TOKENS = `
@@ -285,10 +295,17 @@ export function usePushNotifications(userId: string) {
         const haveWork = new Set(
           prev.map((n) => n.data?.workItemId).filter(Boolean),
         );
+        // one alert per job card: the push and the one this phone makes itself must not both show
+        const haveCard = new Set(
+          prev
+            .filter((n) => isJobCardAlert(n.data))
+            .map((n) => n.data!.jobCardId),
+        );
         const fresh = incoming.filter(
           (n) =>
             !haveId.has(n.id) &&
-            !(n.data?.workItemId && haveWork.has(n.data.workItemId)),
+            !(n.data?.workItemId && haveWork.has(n.data.workItemId)) &&
+            !(isJobCardAlert(n.data) && haveCard.has(n.data!.jobCardId)),
         );
         if (fresh.length === 0) return prev;
         const updated = [...fresh, ...prev].sort(
@@ -367,7 +384,6 @@ export function usePushNotifications(userId: string) {
           );
 
           const verdict = new Map<string, "finished" | "removed" | "unknown">();
-          let mine: string[] | null = null;
           for (const n of gone) {
             const wid: string = n.data!.workItemId;
             if (verdict.has(wid)) continue;
@@ -377,16 +393,14 @@ export function usePushNotifications(userId: string) {
             }
             try {
               const st = await getWorkItemState(wid);
-              mine = mine ?? (await resolveMyIds(u.sub));
+              // work items are no longer assigned per person, so "someone else's" is never a reason to remove it
               verdict.set(
                 wid,
                 !st
                   ? "removed"
                   : st.status === "SUBMITTED"
                     ? "finished"
-                    : st.assignedTo && !mine.includes(st.assignedTo)
-                      ? "removed"
-                      : "unknown",
+                    : "unknown",
               );
             } catch {
               verdict.set(wid, "unknown");
@@ -447,38 +461,80 @@ export function usePushNotifications(userId: string) {
           }
         }
 
+        // ----- alerts are per JOB CARD: "New Jc : <number>" -----
+        const me = { ids: new Set([u.sub]), email: normEmail(u.email) };
+        const cards = cardsFromWork(items, me);
+
+        // clear the alerts of job cards that are closed or have no work left to do
+        const clear = new Set(
+          jobCardAlertsToClear(
+            notifRef.current,
+            cards,
+            await store.getMeta("lastPullAt"),
+          ),
+        );
+        if (clear.size > 0 && !stopped) {
+          const clearedCards = new Set(
+            notifRef.current
+              .filter((n) => clear.has(n.id))
+              .map((n) => n.data!.jobCardId),
+          );
+          try {
+            for (const n of await Notifications.getPresentedNotificationsAsync()) {
+              const d = n.request.content.data as any;
+              if (isJobCardAlert(d) && clearedCards.has(d.jobCardId))
+                await Notifications.dismissNotificationAsync(
+                  n.request.identifier,
+                );
+            }
+          } catch {}
+          setNotifications((prev) => {
+            const updated = prev.filter(
+              (n) =>
+                !(
+                  clear.has(n.id) ||
+                  (isJobCardAlert(n.data) &&
+                    clearedCards.has(n.data!.jobCardId))
+                ),
+            );
+            const stored: StoredNotification[] = updated
+              .slice(0, MAX_STORED)
+              .map((n) => ({ ...n, receivedAt: n.receivedAt.toISOString() }));
+            AsyncStorage.setItem(
+              NOTIF_CACHE_KEY(userId),
+              JSON.stringify(stored),
+            ).catch(() => {});
+            return updated;
+          });
+        }
+
+        // announce job cards newly assigned to me
         const raw = await AsyncStorage.getItem(JC_ALERTED_KEY(userId));
         const seen = new Set<string>(raw ? JSON.parse(raw) : []);
-        const open = items.filter(
-          (w) => w.localState === "PENDING" && w.jobCardStatus !== "CLOSED",
-        );
         if (raw === null) {
+          // first run: what is already assigned to me is remembered quietly, not announced
           await AsyncStorage.setItem(
             JC_ALERTED_KEY(userId),
-            JSON.stringify(open.map((w) => w.id)),
+            JSON.stringify(currentAlertKeys(cards)),
           );
           return;
         }
-        const fresh = open.filter((w) => !seen.has(w.id));
+        const fresh = freshJobCardAlerts(cards, seen);
         if (fresh.length === 0) return;
         add(
-          fresh.map((w) => ({
-            id: `jc-${w.id}`,
-            title: "New job card work",
-            body: `${WORK_ITEM_LABEL[w.moduleType]} - ${w.scaleName} (${w.jcNumber})`,
-            data: {
-              type: "jobcard-assigned",
-              workItemId: w.id,
-              jobCardId: w.jobCardId,
-            },
-            receivedAt: w.assignedAt ? new Date(w.assignedAt) : new Date(),
+          fresh.map((c: any) => ({
+            id: `jc-${c.jobCardId}`,
+            title: alertTitle(c.jcNumber),
+            body: alertBody(c.customerName),
+            data: { type: "jobcard-assigned", jobCardId: c.jobCardId },
+            receivedAt: c.assignedAt ? new Date(c.assignedAt) : new Date(),
             read: false,
           })),
         );
-        for (const w of fresh) seen.add(w.id);
+        for (const c of fresh) seen.add(alertKey(c));
         await AsyncStorage.setItem(
           JC_ALERTED_KEY(userId),
-          JSON.stringify([...seen]),
+          JSON.stringify([...seen].slice(-300)),
         );
       } catch {}
     };

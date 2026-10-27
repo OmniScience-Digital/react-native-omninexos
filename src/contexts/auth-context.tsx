@@ -89,6 +89,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return false;
   };
 
+  // Only these mean "this person really is signed out". Anything else (for example "No current user", which iOS can
+  // throw for a moment while it is still opening its secure storage at launch) must NOT sign them out.
+  const isRealAuthError = (e: any): boolean =>
+    [
+      "NotAuthorizedException",
+      "UserNotFoundException",
+      "PasswordResetRequiredException",
+      "UserNotConfirmedException",
+    ].includes(e?.name) ||
+    /refresh token (has been revoked|is expired)/i.test(e?.message ?? "");
+  let transientTries = 0;
+
   // ── Full online auth load ─────────────────────────────────────────────────
   const loadAuthState = async () => {
     try {
@@ -105,6 +117,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       const attributes = await fetchUserAttributes();
+      transientTries = 0;
       setUser(attributes);
       setIsAuthenticated(true);
       setIsOfflineAuth(false);
@@ -163,6 +176,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setPermission(null);
           setIsAuthenticated(false);
         }
+      } else if (!isRealAuthError(error)) {
+        // Not a real sign-out: keep the person signed in from what this phone knows, and look again shortly
+        await restoreFromCache();
+        if (transientTries < 3) {
+          transientTries += 1;
+          setTimeout(() => void loadAuthState(), 2000 * transientTries);
+        }
       } else {
         // Real auth error (token expired, revoked, etc.) — sign out
         await clearPersistedAuthState();
@@ -190,6 +210,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // with the server in the background (a signed-out or removed user is sent to sign-in when it answers).
       if (await restoreFromCache()) {
         setIsOfflineAuth(false);
+        // Let the sign-in session settle first (it is read from the phone, so this is quick), so the screens
+        // do not ask the server for things before the app can prove who is asking.
+        await Promise.race([
+          fetchAuthSession().catch(() => undefined),
+          new Promise((resolve) => setTimeout(resolve, 2500)),
+        ]);
         if (mounted) setIsLoading(false);
         void loadAuthState();
         return;

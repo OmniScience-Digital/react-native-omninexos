@@ -49,6 +49,7 @@ eas build --platform ios --profile development
 
 npx eas build -p android
 
+npx tsc --noEmit
 
 //zip files
 

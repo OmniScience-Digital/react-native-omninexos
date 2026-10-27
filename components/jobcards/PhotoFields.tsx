@@ -1,5 +1,10 @@
 // components/jobcards/PhotoFields.tsx
 // Photo inputs: one photo, or a list with a minimum and maximum. Photos are saved on the phone as soon as they are taken.
+//
+// A finished photo on the server is stored in the draft as "remote:<storage key>" (that marker is what stops it being
+// uploaded again when the correction is sent). Passing that straight to <Image> throws "No suitable image URL
+// loader" on iOS, so it is resolved to a signed S3 URL first. Local photos (file://, content://) are rendered
+// directly and never resolved.
 import { ThemedText } from "@/components/screens/screen";
 import { useTheme } from "@/src/contexts/theme-context";
 import {
@@ -8,9 +13,19 @@ import {
   pickPhotos,
   takePhoto,
 } from "@/src/jobcards/photos";
+import { isRemotePhoto, remoteKeyOf } from "@/src/jobcards/remote";
+import { getUrl } from "aws-amplify/storage";
 import { Camera, Images, X } from "lucide-react-native";
-import { useState } from "react";
-import { Alert, Image, Modal, Pressable, StyleSheet, View } from "react-native";
+import { useEffect, useState } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  Image,
+  Modal,
+  Pressable,
+  StyleSheet,
+  View,
+} from "react-native";
 import { DANGER, Field, MED, SecondaryButton } from "./ui";
 
 const ICamera = Camera as React.ComponentType<{
@@ -23,6 +38,76 @@ const IImages = Images as React.ComponentType<{
 }>;
 const IX = X as React.ComponentType<{ size?: number; color?: string }>;
 
+/** Signed URLs, kept for the app session. getUrl's signed links last one hour; a failure falls back to "Sent". */
+const signedCache = new Map<string, string>();
+
+/**
+ * Turns a photo URI into a URL <Image> can load.
+ *   - Local (file://, content://, data:...)   → returned as-is.
+ *   - Remote marker (remote:<storage key>)    → resolved to a signed S3 URL via Amplify.
+ * Never throws: a failure leaves `resolved` null with `failed` true, so the caller can show a placeholder.
+ */
+function usePhotoUri(uri: string | null): {
+  resolved: string | null;
+  loading: boolean;
+  failed: boolean;
+} {
+  const [state, setState] = useState<{
+    resolved: string | null;
+    loading: boolean;
+    failed: boolean;
+  }>(() => {
+    if (!uri) return { resolved: null, loading: false, failed: false };
+    if (!isRemotePhoto(uri))
+      return { resolved: uri, loading: false, failed: false };
+    const hit = signedCache.get(uri);
+    return hit
+      ? { resolved: hit, loading: false, failed: false }
+      : { resolved: null, loading: true, failed: false };
+  });
+
+  useEffect(() => {
+    if (!uri) {
+      setState({ resolved: null, loading: false, failed: false });
+      return;
+    }
+    if (!isRemotePhoto(uri)) {
+      setState({ resolved: uri, loading: false, failed: false });
+      return;
+    }
+    const hit = signedCache.get(uri);
+    if (hit) {
+      setState({ resolved: hit, loading: false, failed: false });
+      return;
+    }
+    let cancelled = false;
+    setState({ resolved: null, loading: true, failed: false });
+    (async () => {
+      try {
+        const r = await getUrl({ path: remoteKeyOf(uri) });
+        const signed = String(r.url);
+        signedCache.set(uri, signed);
+        if (!cancelled)
+          setState({ resolved: signed, loading: false, failed: false });
+      } catch {
+        if (!cancelled)
+          setState({ resolved: null, loading: false, failed: true });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [uri]);
+
+  return state;
+}
+
+/** Delete the local file for a photo, if there is one. A remote photo lives on the server: nothing to delete. */
+const removeLocalIfAny = (uri: string) => {
+  if (isRemotePhoto(uri)) return;
+  void deletePhotoFiles([uri]);
+};
+
 function Thumb({
   uri,
   onRemove,
@@ -33,11 +118,18 @@ function Thumb({
   editable: boolean;
 }) {
   const { theme } = useTheme();
-  const [gone, setGone] = useState(false);
+  const { resolved, loading, failed } = usePhotoUri(uri);
+  const [broken, setBroken] = useState(false);
   const [open, setOpen] = useState(false);
+  // A new URI replaces the old one (retake, or a different remote photo): any previous load failure no longer applies.
+  useEffect(() => {
+    setBroken(false);
+  }, [uri]);
+  const showFallback = loading || failed || broken || !resolved;
+
   return (
     <View style={styles.thumbWrap}>
-      {gone ? (
+      {showFallback ? (
         <View
           style={[
             styles.thumb,
@@ -47,12 +139,18 @@ function Thumb({
               justifyContent: "center",
             },
           ]}
-          accessibilityLabel="Photo already sent"
+          accessibilityLabel={loading ? "Loading photo" : "Photo already sent"}
         >
-          <ICamera size={20} color={theme.colors.textMuted} />
-          <ThemedText muted style={{ fontSize: 10, marginTop: 2 }}>
-            Sent
-          </ThemedText>
+          {loading ? (
+            <ActivityIndicator size="small" color={theme.colors.primary} />
+          ) : (
+            <>
+              <ICamera size={20} color={theme.colors.textMuted} />
+              <ThemedText muted style={{ fontSize: 10, marginTop: 2 }}>
+                Sent
+              </ThemedText>
+            </>
+          )}
         </View>
       ) : (
         <Pressable
@@ -61,15 +159,15 @@ function Thumb({
           accessibilityLabel="View photo"
         >
           <Image
-            source={{ uri }}
-            onError={() => setGone(true)}
+            source={{ uri: resolved! }}
+            onError={() => setBroken(true)}
             style={[styles.thumb, { borderColor: theme.colors.border }]}
             accessibilityLabel="Photo"
           />
         </Pressable>
       )}
       <Modal
-        visible={open}
+        visible={open && !showFallback}
         transparent
         animationType="fade"
         statusBarTranslucent
@@ -83,11 +181,13 @@ function Thumb({
           }}
           onPress={() => setOpen(false)}
         >
-          <Image
-            source={{ uri }}
-            style={{ width: "100%", height: "85%" }}
-            resizeMode="contain"
-          />
+          {resolved && (
+            <Image
+              source={{ uri: resolved }}
+              style={{ width: "100%", height: "85%" }}
+              resizeMode="contain"
+            />
+          )}
         </Pressable>
       </Modal>
       {editable && (
@@ -143,7 +243,7 @@ export function PhotoField({
     try {
       const next = await get();
       if (next) {
-        if (uri) void deletePhotoFiles([uri]); // replacing: the old file is no longer needed
+        if (uri) removeLocalIfAny(uri); // replacing: the old local file is no longer needed
         onChange(next);
       }
     } catch (e) {
@@ -163,7 +263,7 @@ export function PhotoField({
             uri={uri}
             editable={editable}
             onRemove={() => {
-              void deletePhotoFiles([uri]);
+              removeLocalIfAny(uri);
               onChange(null);
             }}
           />
@@ -265,7 +365,7 @@ export function PhotoListField({
               uri={u}
               editable={editable}
               onRemove={() => {
-                void deletePhotoFiles([u]);
+                removeLocalIfAny(u);
                 onChange(uris.filter((_, j) => j !== i));
               }}
             />

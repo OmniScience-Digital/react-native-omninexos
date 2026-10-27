@@ -1,24 +1,32 @@
-// components/jobcards/JobCardsHome.tsx
+// components/jobcards/jobCardsHome.tsx
 // Job cards for the signed-in technician. Three levels, all read from the phone so they open instantly offline:
 //   list  ->  job card page (details, notes)  ->  scales and work (where work is opened and scales are added)
+//
+// Tabs:
+//   Open - an OPEN job card that still has work waiting (its finished work is reachable from the detail page).
+//   Done - an OPEN job card whose every piece of work is finished. It stays here (still editable) until the office
+//          closes it. There is no time window and no filter: the office closing it is what ends it.
+// A CLOSED job card is never on the phone at all: closeJobCard in the store removes every trace of it.
 import { NonTabScreen } from "@/components/screens/non-tab-screen";
 import { ThemedText } from "@/components/screens/screen";
 import { OfflineBanner } from "@/components/ui/OfflineBanner";
 import { CustomScrollView } from "@/components/ui/scrollView";
 import { useTheme } from "@/src/contexts/theme-context";
 import {
-    noteWorkStarted,
+    formatMinutes,
+    leaveJobCardSession,
     requestSync,
     retryBlocked,
+    startJobCardSession,
     useJobCardData,
     useJobCardSyncing,
+    useJobCardTimes,
 } from "@/src/jobcards/controller";
 import { WORK_ITEM_LABEL, type WorkItemView } from "@/src/jobcards/types";
 import { useNetInfo } from "@react-native-community/netinfo";
 import {
     Building2,
     CalendarDays,
-    Check,
     ChevronRight,
     ClipboardList,
     CloudOff,
@@ -27,19 +35,14 @@ import {
     Package,
     Plus,
     RefreshCw,
-    Search,
-    SlidersHorizontal,
-    StickyNote,
     Timer,
 } from "lucide-react-native";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
     ActivityIndicator,
-    Modal,
     Pressable,
     RefreshControl,
     StyleSheet,
-    TextInput,
     TouchableOpacity,
     View,
 } from "react-native";
@@ -51,17 +54,13 @@ const asIcon = (c: unknown) => c as IconType;
 const IChevron = asIcon(ChevronRight);
 const ICloud = asIcon(CloudOff);
 const IRefresh = asIcon(RefreshCw);
-const ISearch = asIcon(Search);
-const ISliders = asIcon(SlidersHorizontal);
 const ICalendar = asIcon(CalendarDays);
 const ILayers = asIcon(Layers);
 const IBuilding = asIcon(Building2);
 const IPackage = asIcon(Package);
-const INote = asIcon(StickyNote);
 const IClipboard = asIcon(ClipboardList);
 const IExternal = asIcon(ExternalLink);
 const IPlus = asIcon(Plus);
-const ICheck = asIcon(Check);
 const ITimer = asIcon(Timer);
 
 // Tuning knob for the white gap under the header (all three pages).
@@ -69,12 +68,6 @@ const ITimer = asIcon(Timer);
 const PULL_UP = 28;
 
 type Tab = "open" | "done";
-type Sort = "newest" | "oldest" | "number";
-const SORT_LABEL: Record<Sort, string> = {
-  newest: "Newest assigned first",
-  oldest: "Oldest assigned first",
-  number: "Job card number",
-};
 
 const ago = (iso: string | null): string => {
   if (!iso) return "never";
@@ -141,6 +134,9 @@ export function groupByJobCard(items: WorkItemView[]) {
       closed: boolean;
       assignedAt: string | null;
       lastSubmittedAt: string | null;
+      closedAt: string | null;
+      pending: number;
+      finished: number;
       scales: Map<
         string,
         { name: string; scopeOfWork?: string | null; items: WorkItemView[] }
@@ -158,12 +154,17 @@ export function groupByJobCard(items: WorkItemView[]) {
         closed: w.jobCardStatus === "CLOSED",
         assignedAt: w.assignedAt ?? null,
         lastSubmittedAt: null,
+        closedAt: w.jobCardClosedAt ?? null,
+        pending: 0,
+        finished: 0,
         scales: new Map(),
       };
       groups.set(w.jobCardId, g);
     }
     if (w.assignedAt && (!g.assignedAt || w.assignedAt < g.assignedAt))
       g.assignedAt = w.assignedAt;
+    if (w.localState === "PENDING") g.pending += 1;
+    else g.finished += 1;
     if (
       w.submittedAt &&
       (!g.lastSubmittedAt || w.submittedAt > g.lastSubmittedAt)
@@ -221,74 +222,58 @@ export default function JobCardsHome({
   const offline =
     net.isConnected === false || net.isInternetReachable === false;
 
-  const {
-    loaded,
-    items: allItems,
-    unsent,
-    blocked,
-    lastPullAt,
-    reload,
-  } = useJobCardData(userSub);
-  // Closed job cards are no longer the technician's concern: they leave the app (the results stay with the office)
-  const items = useMemo(
-    () => allItems.filter((w) => w.jobCardStatus !== "CLOSED"),
-    [allItems],
-  );
+  // No filtering: a CLOSED job card is never on the phone (closeJobCard in the store removes it).
+  const { loaded, items, unsent, blocked, lastPullAt, reload } =
+    useJobCardData(userSub);
   const syncing = useJobCardSyncing();
+  const times = useJobCardTimes(userSub);
+  // back on the list: the technician has left the job card, so time stops
+  useEffect(() => {
+    if (!jobCardId) void leaveJobCardSession();
+  }, [jobCardId]);
   const [tab, setTab] = useState<Tab>("open");
   const [refreshing, setRefreshing] = useState(false);
-  const [query, setQuery] = useState("");
-  const [sort, setSort] = useState<Sort>("newest");
-  const [sortOpen, setSortOpen] = useState(false);
   const [adding, setAdding] = useState(false);
 
-  const shown = useMemo(
-    () =>
-      items.filter((w) =>
-        tab === "open"
-          ? w.localState === "PENDING"
-          : w.localState !== "PENDING",
-      ),
-    [items, tab],
-  );
-  const groups = useMemo(() => groupByJobCard(shown), [shown]);
+  const jobCards = useMemo(() => groupByJobCard(items), [items]);
+
+  // Open: an OPEN job card that still has work waiting.
+  // Done: an OPEN job card whose every piece of work is finished. It stays here (still editable) until the office
+  // closes it: the office closing it is what ends it, not a time window.
+  const groups = useMemo(() => {
+    return jobCards.filter((g) => {
+      if (g.closed) return false; // defensive: a CLOSED row should never reach here
+      if (tab === "open") return g.pending > 0;
+      return g.pending === 0;
+    });
+  }, [jobCards, tab]);
 
   const listGroups = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const found = q
-      ? groups.filter(
-          (g) =>
-            g.jcNumber.toLowerCase().includes(q) ||
-            (g.customerName ?? "").toLowerCase().includes(q),
-        )
-      : groups;
     const byDate = (a: string | null, b: string | null) =>
       (a ?? "").localeCompare(b ?? "");
     // In Done, "newest" means most recently finished (or edited), so edited work comes back to the top
     const when = (g: (typeof groups)[number]) =>
       tab === "done" ? g.lastSubmittedAt : g.assignedAt;
-    return [...found].sort((a, b) =>
-      sort === "number"
-        ? a.jcNumber.localeCompare(b.jcNumber)
-        : sort === "oldest"
-          ? byDate(when(a), when(b))
-          : byDate(when(b), when(a)),
-    );
-  }, [groups, query, sort, tab]);
+    return [...groups].sort((a, b) => byDate(when(b), when(a)));
+  }, [groups, tab]);
 
-  const detailGroup = jobCardId
-    ? groups.find((g) => g.jobCardId === jobCardId)
-    : undefined;
+  // Inside a job card: show EVERY piece of work it has, pending and finished. That is what lets a technician open,
+  // correct and re-send finished work — the reason "View Work" exists, and the reason a fully-done JC stays in
+  // Done: it is still editable until the office closes it.
+  const detailGroup = useMemo(() => {
+    if (!jobCardId) return undefined;
+    const mine = items.filter((w) => w.jobCardId === jobCardId);
+    return groupByJobCard(mine)[0];
+  }, [items, jobCardId]);
   const detailInfo = jobCardId
     ? items.find((w) => w.jobCardId === jobCardId)
     : undefined;
-  const detailClosed = detailInfo?.jobCardStatus === "CLOSED";
   const detailScales = detailGroup ? detailGroup.scales.size : 0;
   const detailItems = detailGroup
     ? [...detailGroup.scales.values()].reduce((n, s) => n + s.items.length, 0)
     : 0;
   const empty = jobCardId ? !detailGroup : listGroups.length === 0;
-  const openCount = items.filter((w) => w.localState === "PENDING").length;
+  const openCount = jobCards.filter((g) => !g.closed && g.pending > 0).length;
 
   const refresh = async () => {
     setRefreshing(true);
@@ -335,10 +320,9 @@ export default function JobCardsHome({
     </View>
   );
 
-  const statusBadge = (closed: boolean) =>
-    closed ? (
-      <Badge tone="warning" label="Closed" />
-    ) : tab === "open" ? (
+  // A visible job card is either Open (still has work waiting) or Done (all work finished).
+  const statusBadge = (pending: number) =>
+    pending > 0 ? (
       <Badge tone="info" label="Open" />
     ) : (
       <Badge tone="success" label="Done" />
@@ -362,6 +346,26 @@ export default function JobCardsHome({
         ? "Scales and work"
         : undefined;
 
+  const detailTime = jobCardId ? times.get(jobCardId) : undefined;
+  const detailRows: [IconType, string, string][] = [
+    [IBuilding, "Customer", detailInfo?.customerName || "—"],
+    [ILayers, "Scale(s)", String(detailScales)],
+    [IPackage, "Item(s)", String(detailItems)],
+    [
+      ITimer,
+      "Time worked",
+      `${formatMinutes(detailTime?.totalMinutes ?? 0)}${detailTime?.running ? " · running" : ""}`,
+    ],
+    ...(detailTime && detailTime.myMinutes !== detailTime.totalMinutes
+      ? [
+          [ITimer, "Your time", formatMinutes(detailTime.myMinutes)] as [
+            IconType,
+            string,
+            string,
+          ],
+        ]
+      : []),
+  ];
   const assigned = assignedLabel(detailGroup?.assignedAt);
 
   return (
@@ -388,7 +392,7 @@ export default function JobCardsHome({
         ]}
         contentContainerStyle={{
           paddingTop: 0,
-          paddingBottom: level === "work" && !detailClosed ? 96 : 4,
+          paddingBottom: level === "work" ? 96 : 4,
         }}
         refreshControl={
           <RefreshControl
@@ -436,36 +440,6 @@ export default function JobCardsHome({
                   </TouchableOpacity>
                 );
               })}
-            </View>
-
-            <View style={styles.searchRow}>
-              <View style={styles.searchBox}>
-                <ISearch size={16} color={colors.textMuted} />
-                <TextInput
-                  value={query}
-                  onChangeText={setQuery}
-                  placeholder="Search job cards..."
-                  placeholderTextColor={colors.textMuted}
-                  autoCorrect={false}
-                  autoCapitalize="none"
-                  returnKeyType="search"
-                  accessibilityLabel="Search job cards"
-                  testID="jc-search"
-                  style={styles.searchInput}
-                />
-              </View>
-              <Pressable
-                onPress={() => setSortOpen(true)}
-                accessibilityRole="button"
-                accessibilityLabel="Sort job cards"
-                testID="jc-sort"
-                style={({ pressed }) => [
-                  styles.filterBtn,
-                  { opacity: pressed ? 0.7 : 1 },
-                ]}
-              >
-                <ISliders size={16} color={colors.text} />
-              </Pressable>
             </View>
 
             <View style={styles.status}>
@@ -525,11 +499,9 @@ export default function JobCardsHome({
             <ThemedText style={[MED, { fontSize: 14 }]}>
               {jobCardId
                 ? "Nothing here"
-                : query.trim()
-                  ? "No job cards match"
-                  : tab === "open"
-                    ? "No open job cards"
-                    : "Nothing finished yet"}
+                : tab === "open"
+                  ? "No open job cards"
+                  : "Nothing finished yet"}
             </ThemedText>
             <ThemedText
               muted
@@ -540,11 +512,9 @@ export default function JobCardsHome({
             >
               {jobCardId
                 ? "Go back to see your other job cards."
-                : query.trim()
-                  ? "Try a different job card number or customer."
-                  : tab === "open"
-                    ? "New work appears here when it is assigned to you. Pull down to refresh."
-                    : "Finished work stays here for two weeks."}
+                : tab === "open"
+                  ? "New work appears here when it is assigned to you. Pull down to refresh."
+                  : "A job card appears here when all of its work is done. It stays until the office closes it."}
             </ThemedText>
           </View>
         )}
@@ -562,8 +532,7 @@ export default function JobCardsHome({
               <Pressable
                 key={g.jobCardId}
                 onPress={() => {
-                  if (tab === "open" && !g.closed)
-                    void noteWorkStarted(g.jobCardId);
+                  if (tab === "open") void startJobCardSession(g.jobCardId);
                   onSelectJobCard(g.jobCardId);
                 }}
                 accessibilityRole="button"
@@ -590,17 +559,32 @@ export default function JobCardsHome({
                     {scaleCount} {scaleCount === 1 ? "scale" : "scales"} ·{" "}
                     {itemCount} {itemCount === 1 ? "item" : "items"}
                   </ThemedText>
-                  {!!when && (
+                  {(!!when ||
+                    (times.get(g.jobCardId)?.totalMinutes ?? 0) > 0) && (
                     <View style={styles.assignedRow}>
-                      <ICalendar size={12} color={colors.accent} />
-                      <ThemedText muted style={{ fontSize: 11 }}>
-                        {when}
-                      </ThemedText>
+                      {!!when && (
+                        <>
+                          <ICalendar size={12} color={colors.accent} />
+                          <ThemedText muted style={{ fontSize: 11 }}>
+                            {when}
+                          </ThemedText>
+                        </>
+                      )}
+                      {(times.get(g.jobCardId)?.totalMinutes ?? 0) > 0 && (
+                        <>
+                          <ITimer size={12} color={colors.accent} />
+                          <ThemedText muted style={{ fontSize: 11 }}>
+                            {formatMinutes(
+                              times.get(g.jobCardId)!.totalMinutes,
+                            )}
+                          </ThemedText>
+                        </>
+                      )}
                     </View>
                   )}
                 </View>
                 <View style={styles.jcRight}>
-                  {statusBadge(g.closed)}
+                  {statusBadge(g.pending)}
                   <IChevron size={16} color={colors.textMuted} />
                 </View>
               </Pressable>
@@ -631,7 +615,7 @@ export default function JobCardsHome({
             </View>
 
             <View style={styles.pills}>
-              {statusBadge(detailClosed)}
+              {statusBadge(detailGroup?.pending ?? 0)}
               {!!assigned && (
                 <View style={styles.pillItem}>
                   <ICalendar size={13} color={colors.accent} />
@@ -655,13 +639,7 @@ export default function JobCardsHome({
                   Job Card Details
                 </ThemedText>
               </View>
-              {(
-                [
-                  [IBuilding, "Customer", detailInfo?.customerName || "—"],
-                  [ILayers, "Scale(s)", String(detailScales)],
-                  [IPackage, "Item(s)", String(detailItems)],
-                ] as const
-              ).map(([Icon, label, value], i) => (
+              {detailRows.map(([Icon, label, value], i) => (
                 <View
                   key={label}
                   style={[styles.detailRow, i === 0 && { borderTopWidth: 0 }]}
@@ -794,48 +772,10 @@ export default function JobCardsHome({
             onClose={() => setAdding(false)}
           />
         )}
-
-        {/* sort options (the filter button in the design) */}
-        <Modal
-          visible={sortOpen}
-          transparent
-          animationType="fade"
-          statusBarTranslucent
-          onRequestClose={() => setSortOpen(false)}
-        >
-          <Pressable
-            style={styles.sheetBackdrop}
-            onPress={() => setSortOpen(false)}
-            accessibilityLabel="Close"
-          >
-            <View style={styles.sheet}>
-              <ThemedText style={[MED, { fontSize: 15, marginBottom: 6 }]}>
-                Sort job cards
-              </ThemedText>
-              {(Object.keys(SORT_LABEL) as Sort[]).map((key) => (
-                <Pressable
-                  key={key}
-                  onPress={() => {
-                    setSort(key);
-                    setSortOpen(false);
-                  }}
-                  accessibilityRole="radio"
-                  accessibilityState={{ selected: sort === key }}
-                  style={styles.sheetRow}
-                >
-                  <ThemedText style={{ flex: 1, fontSize: 14 }}>
-                    {SORT_LABEL[key]}
-                  </ThemedText>
-                  {sort === key && <ICheck size={16} color={colors.primary} />}
-                </Pressable>
-              ))}
-            </View>
-          </Pressable>
-        </Modal>
       </CustomScrollView>
 
       {/* floating add-scale button (work page only) */}
-      {level === "work" && !detailClosed && (
+      {level === "work" && (
         <Pressable
           onPress={() => setAdding(true)}
           accessibilityRole="button"
@@ -878,42 +818,6 @@ const getStyles = (colors: any, isDark: boolean) =>
     },
     segmentActive: {
       backgroundColor: isDark ? colors.border : colors.card,
-    },
-
-    searchRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 8,
-      marginBottom: 8,
-    },
-    searchBox: {
-      flex: 1,
-      flexDirection: "row",
-      alignItems: "center",
-      gap: 8,
-      height: 38,
-      paddingHorizontal: 12,
-      borderRadius: 12,
-      borderWidth: 1,
-      borderColor: colors.border,
-      backgroundColor: colors.card,
-    },
-    searchInput: {
-      flex: 1,
-      fontSize: 13,
-      color: colors.text,
-      fontFamily: "sans-regular",
-      paddingVertical: 0,
-    },
-    filterBtn: {
-      width: 38,
-      height: 38,
-      borderRadius: 12,
-      borderWidth: 1,
-      borderColor: colors.border,
-      backgroundColor: colors.card,
-      alignItems: "center",
-      justifyContent: "center",
     },
 
     status: {
@@ -1016,7 +920,6 @@ const getStyles = (colors: any, isDark: boolean) =>
       justifyContent: "center",
       backgroundColor: colors.primary + (isDark ? "26" : "14"),
     },
-    noteHead: { flexDirection: "row", alignItems: "center", gap: 10 },
     primaryBtn: {
       flexDirection: "row",
       alignItems: "center",
@@ -1108,25 +1011,5 @@ const getStyles = (colors: any, isDark: boolean) =>
       shadowOpacity: isDark ? 0.4 : 0.2,
       shadowRadius: 10,
       shadowOffset: { width: 0, height: 4 },
-    },
-
-    sheetBackdrop: {
-      flex: 1,
-      justifyContent: "flex-end",
-      backgroundColor: "rgba(0,0,0,0.4)",
-    },
-    sheet: {
-      backgroundColor: colors.card,
-      borderTopLeftRadius: 20,
-      borderTopRightRadius: 20,
-      padding: 16,
-      paddingBottom: 28,
-    },
-    sheetRow: {
-      flexDirection: "row",
-      alignItems: "center",
-      paddingVertical: 13,
-      borderTopWidth: StyleSheet.hairlineWidth,
-      borderTopColor: colors.border,
     },
   });

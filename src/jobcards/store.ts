@@ -2,15 +2,18 @@
 // Everything the Job Cards module keeps ON THE PHONE: the assigned work, the half-filled forms, and the outbox of
 // finished work waiting to be sent. It talks to SQLite through the small SqlDriver interface, so the same code runs on
 // the phone (expo-sqlite) and in tests (a real SQL engine).
+import type { TimeRow } from "./time";
 import type {
   AddScalePayload,
   CachedJobCard,
   CachedScale,
+  EndTimePayload,
   LocalState,
   OutboxKind,
   OutboxRow,
   OutboxStatus,
   ScaleBaseline,
+  StartTimePayload,
   WorkItemType,
   WorkItemView,
 } from "./types";
@@ -28,17 +31,14 @@ export interface SqlDriver {
     sql: string,
     params?: SqlValue[],
   ): Promise<T | null>;
-  /**
-   * All-or-nothing: if `fn` throws, nothing it did is kept. `fn` must use the `tx` it is given (not the outer driver)
-   * for its queries, so they run inside the transaction.
-   */
   transaction<T>(fn: (tx: SqlDriver) => Promise<T>): Promise<T>;
 }
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS jc_jobcards (
   id TEXT PRIMARY KEY, jc_number TEXT NOT NULL, customer_name TEXT, title TEXT,
-  status TEXT NOT NULL, updated_at TEXT NOT NULL
+  status TEXT NOT NULL, updated_at TEXT NOT NULL, closed_at TEXT,
+  assigned_to TEXT, assigned_to_name TEXT, assigned_to_email TEXT, assigned_at TEXT
 );
 CREATE TABLE IF NOT EXISTS jc_scales (
   id TEXT PRIMARY KEY, job_card_id TEXT NOT NULL, scale_name TEXT NOT NULL, scope_of_work TEXT
@@ -52,6 +52,9 @@ CREATE INDEX IF NOT EXISTS idx_jc_wi_user ON jc_workitems(user_sub, local_state)
 CREATE TABLE IF NOT EXISTS jc_baseline (
   scale_id TEXT PRIMARY KEY, latest_zero TEXT, latest_span TEXT, updated_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS jc_remote_results (
+  work_item_id TEXT PRIMARY KEY, submission_id TEXT NOT NULL, revision INTEGER NOT NULL, submitted_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS jc_drafts (
   work_item_id TEXT PRIMARY KEY, form_json TEXT NOT NULL, updated_at TEXT NOT NULL
 );
@@ -62,6 +65,14 @@ CREATE TABLE IF NOT EXISTS jc_outbox (
 );
 CREATE INDEX IF NOT EXISTS idx_jc_outbox_due ON jc_outbox(status, created_at);
 CREATE TABLE IF NOT EXISTS jc_meta (key TEXT PRIMARY KEY, value TEXT);
+CREATE TABLE IF NOT EXISTS jc_sessions (
+  id TEXT PRIMARY KEY, job_card_id TEXT NOT NULL, user_sub TEXT NOT NULL, user_name TEXT,
+  started_at TEXT NOT NULL, ended_at TEXT, beat_at TEXT NOT NULL, user_email TEXT
+);
+CREATE TABLE IF NOT EXISTS jc_time_cache (
+  id TEXT PRIMARY KEY, job_card_id TEXT NOT NULL, user_id TEXT NOT NULL, user_name TEXT,
+  started_at TEXT NOT NULL, ended_at TEXT, user_email TEXT, last_active_at TEXT, start_reason TEXT
+);
 `;
 
 export interface PullData {
@@ -69,7 +80,6 @@ export interface PullData {
   nowIso: string;
   jobCards: CachedJobCard[];
   scales: CachedScale[];
-  /** Everything currently assigned to this user and still to do, according to the server. */
   items: {
     id: string;
     jobCardId: string;
@@ -78,15 +88,26 @@ export interface PullData {
     sequence: number;
     assignedAt?: string | null;
   }[];
-  /** Only scales whose baseline was read successfully: the others keep what is already saved. */
   baselines: {
     scaleId: string;
     latestZero: string | null;
     latestSpan: string | null;
   }[];
+  incompleteJobCardIds?: string[];
+  doneItems?: {
+    id: string;
+    jobCardId: string;
+    scaleId: string;
+    moduleType: string;
+    sequence: number;
+    assignedAt?: string | null;
+    submittedAt: string;
+    submissionId: string;
+    revision: number;
+    draft: unknown;
+  }[];
 }
 
-/** How long finished work stays in the list (and on the phone) before it is cleaned up. */
 export const KEEP_SUBMITTED_DAYS = 14;
 export const KEEP_DONE_OUTBOX_DAYS = 7;
 const DAY_MS = 86_400_000;
@@ -99,12 +120,15 @@ const toView = (r: Record<string, unknown>): WorkItemView => ({
   moduleType: r.module_type as WorkItemType,
   sequence: (r.sequence as number) ?? 0,
   localState: r.local_state as LocalState,
-  assignedAt: (r.assigned_at as string) ?? null,
+  assignedAt: (r.jc_assigned_at as string) ?? (r.assigned_at as string) ?? null,
   submittedAt: (r.submitted_at as string) ?? null,
   jcNumber: (r.jc_number as string) ?? "Unknown job card",
   customerName: (r.customer_name as string) ?? null,
   jobCardStatus: (r.jc_status as string) ?? "OPEN",
+  jobCardClosedAt: (r.jc_closed_at as string) ?? null,
   jcTitle: (r.jc_title as string) ?? null,
+  jobCardAssignedTo: (r.jc_assigned_to as string) ?? null,
+  jobCardAssignedToEmail: (r.jc_assigned_email as string) ?? null,
   scaleName: (r.scale_name as string) ?? "Unknown scale",
   scopeOfWork: (r.scope_of_work as string) ?? null,
 });
@@ -132,12 +156,36 @@ export class JobCardStore {
     } catch {
       /* the column is already there */
     }
+    try {
+      await this.db.exec("ALTER TABLE jc_jobcards ADD COLUMN closed_at TEXT");
+    } catch {
+      /* the column is already there */
+    }
+    const added = [
+      "ALTER TABLE jc_jobcards ADD COLUMN assigned_to TEXT",
+      "ALTER TABLE jc_jobcards ADD COLUMN assigned_to_name TEXT",
+      "ALTER TABLE jc_jobcards ADD COLUMN assigned_to_email TEXT",
+      "ALTER TABLE jc_jobcards ADD COLUMN assigned_at TEXT",
+      "ALTER TABLE jc_sessions ADD COLUMN user_email TEXT",
+      "ALTER TABLE jc_time_cache ADD COLUMN user_email TEXT",
+      "ALTER TABLE jc_time_cache ADD COLUMN last_active_at TEXT",
+      "ALTER TABLE jc_time_cache ADD COLUMN start_reason TEXT",
+    ];
+    for (const sql of added) {
+      try {
+        await this.db.exec(sql);
+      } catch {
+        /* the column is already there */
+      }
+    }
   }
 
   // ------------------------------------------------------------------ reading
   async listMyWork(userSub: string): Promise<WorkItemView[]> {
     const rows = await this.db.all(
-      `SELECT w.*, j.jc_number, j.customer_name, j.title AS jc_title, j.status AS jc_status, s.scale_name, s.scope_of_work
+      `SELECT w.*, j.jc_number, j.customer_name, j.title AS jc_title, j.status AS jc_status, j.closed_at AS jc_closed_at,
+               j.assigned_to AS jc_assigned_to, j.assigned_to_email AS jc_assigned_email, j.assigned_at AS jc_assigned_at,
+               s.scale_name, s.scope_of_work
          FROM jc_workitems w
          LEFT JOIN jc_jobcards j ON j.id = w.job_card_id
          LEFT JOIN jc_scales s ON s.id = w.scale_id
@@ -151,7 +199,9 @@ export class JobCardStore {
 
   async getWorkItem(id: string): Promise<WorkItemView | null> {
     const r = await this.db.first(
-      `SELECT w.*, j.jc_number, j.customer_name, j.title AS jc_title, j.status AS jc_status, s.scale_name, s.scope_of_work
+      `SELECT w.*, j.jc_number, j.customer_name, j.title AS jc_title, j.status AS jc_status, j.closed_at AS jc_closed_at,
+               j.assigned_to AS jc_assigned_to, j.assigned_to_email AS jc_assigned_email, j.assigned_at AS jc_assigned_at,
+               s.scale_name, s.scope_of_work
          FROM jc_workitems w
          LEFT JOIN jc_jobcards j ON j.id = w.job_card_id
          LEFT JOIN jc_scales s ON s.id = w.scale_id
@@ -177,7 +227,6 @@ export class JobCardStore {
   }
 
   // ------------------------------------------------------------------- drafts
-  /** The half-filled form, saved as the technician types so nothing is lost if the app is closed. */
   async saveDraft(
     workItemId: string,
     form: unknown,
@@ -199,7 +248,7 @@ export class JobCardStore {
     try {
       return JSON.parse(r.form_json as string) as T;
     } catch {
-      return null; // a damaged draft is ignored rather than crashing the form
+      return null;
     }
   }
 
@@ -210,17 +259,17 @@ export class JobCardStore {
   }
 
   // --------------------------------------------------- applying what the server said
-  /**
-   * Replace the cached assignments with the server's latest. Work already done on this phone is never touched:
-   * QUEUED and SUBMITTED items keep their state, and anything still waiting in the outbox is left alone.
-   */
   async applyPull(d: PullData): Promise<void> {
     await this.db.transaction(async (tx) => {
       for (const j of d.jobCards) {
         await tx.run(
-          `INSERT INTO jc_jobcards (id, jc_number, customer_name, title, status, updated_at) VALUES (?, ?, ?, ?, ?, ?)
+          `INSERT INTO jc_jobcards (id, jc_number, customer_name, title, status, updated_at, closed_at,
+                                    assigned_to, assigned_to_name, assigned_to_email, assigned_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(id) DO UPDATE SET jc_number = excluded.jc_number, customer_name = excluded.customer_name,
-             title = excluded.title, status = excluded.status, updated_at = excluded.updated_at`,
+             title = excluded.title, status = excluded.status, updated_at = excluded.updated_at, closed_at = excluded.closed_at,
+             assigned_to = excluded.assigned_to, assigned_to_name = excluded.assigned_to_name,
+             assigned_to_email = excluded.assigned_to_email, assigned_at = excluded.assigned_at`,
           [
             j.id,
             j.jcNumber,
@@ -228,6 +277,11 @@ export class JobCardStore {
             j.title ?? null,
             j.status,
             d.nowIso,
+            j.closedAt ?? null,
+            j.assignedTo ?? null,
+            j.assignedToName ?? null,
+            j.assignedToEmail ?? null,
+            j.assignedAt ?? null,
           ],
         );
       }
@@ -247,7 +301,6 @@ export class JobCardStore {
           [b.scaleId, b.latestZero, b.latestSpan, d.nowIso],
         );
       }
-      // local_state is deliberately NOT in the update: it belongs to this phone
       for (const i of d.items) {
         await tx.run(
           `INSERT INTO jc_workitems (id, user_sub, job_card_id, scale_id, module_type, sequence, assigned_at, updated_at)
@@ -268,13 +321,23 @@ export class JobCardStore {
         );
       }
 
-      // No longer assigned to me (reassigned, removed, or done elsewhere): drop what I have not done
+      const openIds = new Set(d.jobCards.map((j) => j.id));
+      const incomplete = new Set(d.incompleteJobCardIds ?? []);
+      const known = await tx.all<{ id: string }>("SELECT id FROM jc_jobcards");
+      for (const k of known) {
+        if (openIds.has(k.id) || incomplete.has(k.id)) continue;
+        await this.closeJobCard(tx, k.id, d.nowIso);
+      }
+
       const keep = new Set(d.items.map((i) => i.id));
-      const mine = await tx.all<{ id: string; scale_id: string }>(
-        "SELECT id, scale_id FROM jc_workitems WHERE user_sub = ? AND local_state = 'PENDING'",
-        [d.userSub],
+      const mine = (
+        await tx.all<{ id: string; scale_id: string; job_card_id: string }>(
+          "SELECT id, scale_id, job_card_id FROM jc_workitems WHERE user_sub = ? AND local_state = 'PENDING'",
+          [d.userSub],
+        )
+      ).filter(
+        (r) => openIds.has(r.job_card_id) && !incomplete.has(r.job_card_id),
       );
-      // A scale added on this phone that has not reached the server yet is not "removed": it is just not sent
       const unsent = new Set(
         (
           await tx.all<{ s: string }>(
@@ -291,21 +354,71 @@ export class JobCardStore {
         }
       }
 
-      // Finished work older than the keep period
+      for (const di of d.doneItems ?? []) {
+        const local = await tx.first(
+          "SELECT local_state, submitted_at FROM jc_workitems WHERE id = ?",
+          [di.id],
+        );
+        const remoteRow = [di.id, di.submissionId, di.revision, di.submittedAt];
+        const upsertRemote = () =>
+          tx.run(
+            `INSERT INTO jc_remote_results (work_item_id, submission_id, revision, submitted_at) VALUES (?, ?, ?, ?)
+             ON CONFLICT(work_item_id) DO UPDATE SET submission_id = excluded.submission_id, revision = excluded.revision,
+               submitted_at = excluded.submitted_at`,
+            remoteRow as SqlValue[],
+          );
+        const draft = () =>
+          tx.run(
+            `INSERT INTO jc_drafts (work_item_id, form_json, updated_at) VALUES (?, ?, ?)
+             ON CONFLICT(work_item_id) DO UPDATE SET form_json = excluded.form_json, updated_at = excluded.updated_at`,
+            [di.id, JSON.stringify(di.draft), d.nowIso],
+          );
+        if (!local) {
+          await tx.run(
+            `INSERT INTO jc_workitems (id, user_sub, job_card_id, scale_id, module_type, sequence, local_state, assigned_at, submitted_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, 'SUBMITTED', ?, ?, ?)`,
+            [
+              di.id,
+              d.userSub,
+              di.jobCardId,
+              di.scaleId,
+              di.moduleType,
+              di.sequence,
+              di.assignedAt ?? null,
+              di.submittedAt,
+              d.nowIso,
+            ],
+          );
+          await draft();
+          await upsertRemote();
+        } else if (local.local_state === "SUBMITTED") {
+          if (
+            !local.submitted_at ||
+            di.submittedAt > (local.submitted_at as string)
+          ) {
+            await tx.run(
+              "UPDATE jc_workitems SET submitted_at = ?, updated_at = ? WHERE id = ?",
+              [di.submittedAt, d.nowIso, di.id],
+            );
+            await draft();
+          }
+          await upsertRemote();
+        }
+      }
+
       const cutoff = new Date(
         new Date(d.nowIso).getTime() - KEEP_SUBMITTED_DAYS * DAY_MS,
       ).toISOString();
       await tx.run(
         `DELETE FROM jc_drafts WHERE work_item_id IN
-           (SELECT id FROM jc_workitems WHERE local_state = 'SUBMITTED' AND submitted_at IS NOT NULL AND submitted_at < ?)`,
+           (SELECT id FROM jc_workitems WHERE local_state = 'SUBMITTED' AND submitted_at IS NOT NULL AND submitted_at < ? AND job_card_id NOT IN (SELECT id FROM jc_jobcards WHERE status = 'OPEN'))`,
         [cutoff],
       );
       await tx.run(
-        "DELETE FROM jc_workitems WHERE local_state = 'SUBMITTED' AND submitted_at IS NOT NULL AND submitted_at < ?",
+        "DELETE FROM jc_workitems WHERE local_state = 'SUBMITTED' AND submitted_at IS NOT NULL AND submitted_at < ? AND job_card_id NOT IN (SELECT id FROM jc_jobcards WHERE status = 'OPEN')",
         [cutoff],
       );
 
-      // Tidy up job cards, scales and baselines nothing refers to any more
       await tx.run(
         "DELETE FROM jc_scales WHERE id NOT IN (SELECT scale_id FROM jc_workitems)",
       );
@@ -315,15 +428,38 @@ export class JobCardStore {
       await tx.run(
         "DELETE FROM jc_jobcards WHERE id NOT IN (SELECT job_card_id FROM jc_workitems)",
       );
+      await tx.run(
+        "DELETE FROM jc_remote_results WHERE work_item_id NOT IN (SELECT id FROM jc_workitems)",
+      );
     });
   }
 
+  private async closeJobCard(
+    tx: SqlDriver,
+    jobCardId: string,
+    nowIso: string,
+  ): Promise<void> {
+    await tx.run(
+      "UPDATE jc_sessions SET ended_at = ?, beat_at = ? WHERE job_card_id = ? AND ended_at IS NULL",
+      [nowIso, nowIso, jobCardId],
+    );
+    const rows = await tx.all<{ id: string; scale_id: string }>(
+      "SELECT id, scale_id FROM jc_workitems WHERE job_card_id = ?",
+      [jobCardId],
+    );
+    for (const r of rows) {
+      await tx.run("DELETE FROM jc_drafts WHERE work_item_id = ?", [r.id]);
+      await tx.run("DELETE FROM jc_remote_results WHERE work_item_id = ?", [
+        r.id,
+      ]);
+      await tx.run("DELETE FROM jc_baseline WHERE scale_id = ?", [r.scale_id]);
+    }
+    await tx.run("DELETE FROM jc_workitems WHERE job_card_id = ?", [jobCardId]);
+    await tx.run("DELETE FROM jc_scales WHERE job_card_id = ?", [jobCardId]);
+    await tx.run("DELETE FROM jc_jobcards WHERE id = ?", [jobCardId]);
+  }
+
   // ------------------------------------------------------------------- outbox
-  /**
-   * Finished work: put it in the outbox and mark the work item QUEUED, together. The draft is kept: it is what the
-   * finished work shows when it is opened again (it is removed with the work item when the keep period ends).
-   * The outbox row id is the id the server record will have.
-   */
   async enqueueResult(args: {
     id: string;
     workItemId: string;
@@ -352,21 +488,71 @@ export class JobCardStore {
     });
   }
 
-  /** How many results this work item has already sent, and the id of the latest (for editing finished work). */
+  async jobCardIdsToRefresh(userSub: string): Promise<string[]> {
+    const rows = await this.db.all(
+      `SELECT DISTINCT w.job_card_id AS id FROM jc_workitems w
+         LEFT JOIN jc_jobcards j ON j.id = w.job_card_id
+        WHERE w.user_sub = ? AND COALESCE(j.status, 'OPEN') <> 'CLOSED'
+          AND NOT EXISTS (SELECT 1 FROM jc_workitems p WHERE p.job_card_id = w.job_card_id
+                           AND p.user_sub = w.user_sub AND p.local_state = 'PENDING')`,
+      [userSub],
+    );
+    return rows.map((r) => r.id as string);
+  }
+
+  async upsertJobCard(j: CachedJobCard, nowIso: string): Promise<void> {
+    if (j.status === "CLOSED") {
+      await this.db.transaction((tx) => this.closeJobCard(tx, j.id, nowIso));
+      return;
+    }
+    await this.db.run(
+      `INSERT INTO jc_jobcards (id, jc_number, customer_name, title, status, updated_at, closed_at,
+                                assigned_to, assigned_to_name, assigned_to_email, assigned_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET jc_number = excluded.jc_number, customer_name = excluded.customer_name,
+         title = excluded.title, status = excluded.status, updated_at = excluded.updated_at, closed_at = excluded.closed_at,
+         assigned_to = excluded.assigned_to, assigned_to_name = excluded.assigned_to_name,
+         assigned_to_email = excluded.assigned_to_email, assigned_at = excluded.assigned_at`,
+      [
+        j.id,
+        j.jcNumber,
+        j.customerName ?? null,
+        j.title ?? null,
+        j.status,
+        nowIso,
+        j.closedAt ?? null,
+        j.assignedTo ?? null,
+        j.assignedToName ?? null,
+        j.assignedToEmail ?? null,
+        j.assignedAt ?? null,
+      ],
+    );
+  }
+
   async resultHistory(
     workItemId: string,
   ): Promise<{ lastId: string | null; count: number }> {
     const rows = await this.db.all(
-      "SELECT id FROM jc_outbox WHERE kind = 'submit-result' AND work_item_id = ? ORDER BY created_at DESC",
+      "SELECT id, created_at FROM jc_outbox WHERE kind = 'submit-result' AND work_item_id = ? ORDER BY created_at DESC",
       [workItemId],
     );
+    const remote = await this.db.first(
+      "SELECT submission_id, revision, submitted_at FROM jc_remote_results WHERE work_item_id = ?",
+      [workItemId],
+    );
+    const mineAt = rows.length ? (rows[0].created_at as string) : null;
+    const remoteNewer =
+      !!remote && (!mineAt || (remote.submitted_at as string) > mineAt);
     return {
-      lastId: rows.length ? (rows[0].id as string) : null,
-      count: rows.length,
+      lastId: remoteNewer
+        ? (remote!.submission_id as string)
+        : rows.length
+          ? (rows[0].id as string)
+          : null,
+      count: Math.max(rows.length, Number(remote?.revision ?? 0)),
     };
   }
 
-  /** A scale the technician adds: it and its work show at once, and are sent to the server when there is signal. */
   async enqueueAddScale(args: {
     id: string;
     payload: AddScalePayload;
@@ -408,10 +594,6 @@ export class JobCardStore {
     });
   }
 
-  /**
-   * "I have started working on this job card": queue it once. If one was queued for this job card in the last
-   * `withinMs`, nothing is added (the server also ignores a start for someone who is already being timed).
-   */
   async enqueueStartTimeOnce(args: {
     id: string;
     jobCardId: string;
@@ -435,7 +617,173 @@ export class JobCardStore {
     return true;
   }
 
-  /** What is ready to send, oldest first (results go in the order they were finished). */
+  // ------------------------------------------------------------ time sessions
+  async startSession(a: {
+    id: string;
+    jobCardId: string;
+    userSub: string;
+    userName: string;
+    userEmail?: string;
+    nowIso: string;
+  }): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      await tx.run(
+        "INSERT INTO jc_sessions (id, job_card_id, user_sub, user_name, started_at, ended_at, beat_at, user_email) VALUES (?, ?, ?, ?, ?, NULL, ?, ?)",
+        [
+          a.id,
+          a.jobCardId,
+          a.userSub,
+          a.userName,
+          a.nowIso,
+          a.nowIso,
+          a.userEmail ?? null,
+        ],
+      );
+      const payload: StartTimePayload = {
+        sessionId: a.id,
+        userSub: a.userSub,
+        userName: a.userName,
+        userEmail: a.userEmail,
+        startedAt: a.nowIso,
+      };
+      await tx.run(
+        `INSERT INTO jc_outbox (id, kind, work_item_id, job_card_id, payload, status, attempts, created_at, updated_at)
+         VALUES (?, 'start-time', NULL, ?, ?, 'pending', 0, ?, ?)`,
+        [
+          `${a.id}-start`,
+          a.jobCardId,
+          JSON.stringify(payload),
+          a.nowIso,
+          a.nowIso,
+        ],
+      );
+    });
+  }
+
+  async beatSession(id: string, nowIso: string): Promise<void> {
+    await this.db.run(
+      "UPDATE jc_sessions SET beat_at = ? WHERE id = ? AND ended_at IS NULL",
+      [nowIso, id],
+    );
+  }
+
+  async endSession(id: string, endIso: string, nowIso: string): Promise<void> {
+    const s = await this.db.first(
+      "SELECT job_card_id, started_at, ended_at FROM jc_sessions WHERE id = ?",
+      [id],
+    );
+    if (!s || s.ended_at) return;
+    const started = s.started_at as string;
+    const endedAt = endIso < started ? started : endIso;
+    await this.db.transaction(async (tx) => {
+      await tx.run("UPDATE jc_sessions SET ended_at = ? WHERE id = ?", [
+        endedAt,
+        id,
+      ]);
+      const payload: EndTimePayload = {
+        sessionId: id,
+        startedAt: started,
+        endedAt,
+      };
+      await tx.run(
+        `INSERT INTO jc_outbox (id, kind, work_item_id, job_card_id, payload, status, attempts, created_at, updated_at)
+         VALUES (?, 'end-time', NULL, ?, ?, 'pending', 0, ?, ?)`,
+        [
+          `${id}-end`,
+          s.job_card_id as string,
+          JSON.stringify(payload),
+          nowIso,
+          nowIso,
+        ],
+      );
+    });
+  }
+
+  async openSessions(
+    userSub: string,
+  ): Promise<{ id: string; beatAt: string }[]> {
+    const rows = await this.db.all(
+      "SELECT id, beat_at FROM jc_sessions WHERE user_sub = ? AND ended_at IS NULL",
+      [userSub],
+    );
+    return rows.map((r) => ({
+      id: r.id as string,
+      beatAt: r.beat_at as string,
+    }));
+  }
+
+  async jobCardIdsFor(userSub: string): Promise<string[]> {
+    const rows = await this.db.all(
+      "SELECT DISTINCT job_card_id FROM jc_workitems WHERE user_sub = ?",
+      [userSub],
+    );
+    return rows.map((r) => r.job_card_id as string);
+  }
+
+  async replaceTimeCache(
+    jobCardId: string,
+    rows: {
+      id: string;
+      userId: string;
+      userName?: string | null;
+      userEmail?: string | null;
+      startedAt: string;
+      endedAt: string | null;
+      lastActiveAt?: string | null;
+      startReason?: string | null;
+    }[],
+  ): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      await tx.run("DELETE FROM jc_time_cache WHERE job_card_id = ?", [
+        jobCardId,
+      ]);
+      for (const r of rows)
+        await tx.run(
+          "INSERT INTO jc_time_cache (id, job_card_id, user_id, user_name, started_at, ended_at, user_email, last_active_at, start_reason) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          [
+            r.id,
+            jobCardId,
+            r.userId,
+            r.userName ?? null,
+            r.startedAt,
+            r.endedAt,
+            r.userEmail ?? null,
+            r.lastActiveAt ?? null,
+            r.startReason ?? null,
+          ],
+        );
+    });
+  }
+
+  async timeRows(): Promise<{ cache: TimeRow[]; sessions: TimeRow[] }> {
+    const cache = await this.db.all("SELECT * FROM jc_time_cache");
+    const sessions = await this.db.all("SELECT * FROM jc_sessions");
+    return {
+      cache: cache.map((r) => ({
+        id: r.id as string,
+        jobCardId: r.job_card_id as string,
+        userId: r.user_id as string,
+        userName: (r.user_name as string) ?? null,
+        userEmail: (r.user_email as string) ?? null,
+        startedAt: r.started_at as string,
+        endedAt: (r.ended_at as string) ?? null,
+        lastActiveAt: (r.last_active_at as string) ?? null,
+        startReason: (r.start_reason as string) ?? null,
+      })),
+      sessions: sessions.map((r) => ({
+        id: r.id as string,
+        jobCardId: r.job_card_id as string,
+        userId: r.user_sub as string,
+        userName: (r.user_name as string) ?? null,
+        userEmail: (r.user_email as string) ?? null,
+        startedAt: r.started_at as string,
+        endedAt: (r.ended_at as string) ?? null,
+        lastActiveAt: (r.beat_at as string) ?? null,
+        startReason: "JOB_CARD_OPENED",
+      })),
+    };
+  }
+
   async dueOutbox(nowIso: string, limit = 20): Promise<OutboxRow[]> {
     const rows = await this.db.all(
       `SELECT * FROM jc_outbox WHERE status = 'pending' AND (next_attempt_at IS NULL OR next_attempt_at <= ?)
@@ -443,6 +791,46 @@ export class JobCardStore {
       [nowIso, limit],
     );
     return rows.map(toOutbox);
+  }
+
+  /**
+   * Blocked rows whose backoff time has passed are put back in the queue. This is what stops "1 need attention"
+   * from being a permanent state for a row that was merely retrying: it will be sent again automatically.
+   */
+  async requeueDueBlocked(nowIso: string): Promise<number> {
+    const rows = await this.db.all(
+      "SELECT id FROM jc_outbox WHERE status = 'blocked' AND next_attempt_at IS NOT NULL AND next_attempt_at <= ?",
+      [nowIso],
+    );
+    if (rows.length) {
+      await this.db.run(
+        "UPDATE jc_outbox SET status = 'pending', updated_at = ? WHERE status = 'blocked' AND next_attempt_at IS NOT NULL AND next_attempt_at <= ?",
+        [nowIso, nowIso],
+      );
+    }
+    return rows.length;
+  }
+
+  /**
+   * One-shot cleanup on app start: a row that is blocked with next_attempt_at = NULL is a PermanentError that the
+   * server has already rejected as "the work item no longer exists". It can never be sent, so mark it done with a
+   * note. The payload is kept in the row for 7 days (pruneDone) in case anyone needs to look.
+   */
+  async autoDismissStuckPermanent(nowIso: string): Promise<number> {
+    const rows = await this.db.all(
+      "SELECT id FROM jc_outbox WHERE status = 'blocked' AND next_attempt_at IS NULL",
+    );
+    if (rows.length) {
+      await this.db.run(
+        `UPDATE jc_outbox
+            SET status = 'done',
+                last_error = COALESCE(last_error, 'Dismissed: the server no longer accepts this result'),
+                updated_at = ?
+          WHERE status = 'blocked' AND next_attempt_at IS NULL`,
+        [nowIso],
+      );
+    }
+    return rows.length;
   }
 
   async markSyncing(id: string, nowIso: string): Promise<void> {
@@ -463,7 +851,6 @@ export class JobCardStore {
     );
   }
 
-  /** Sent. For a result, the work item becomes SUBMITTED. */
   async markDone(
     row: Pick<OutboxRow, "id" | "kind" | "workItemId">,
     submittedAt: string | null,
@@ -483,7 +870,6 @@ export class JobCardStore {
     });
   }
 
-  /** Not sent: try again at `nextAttemptAt`, or (`blocked`) wait until someone looks at it. */
   async markFailed(
     id: string,
     error: string,
@@ -503,7 +889,6 @@ export class JobCardStore {
     );
   }
 
-  /** The app was closed or crashed while sending: those rows go back in the queue. */
   async recoverStuck(nowIso: string): Promise<number> {
     const stuck = await this.db.all(
       "SELECT id FROM jc_outbox WHERE status = 'syncing'",
@@ -516,7 +901,6 @@ export class JobCardStore {
     return stuck.length;
   }
 
-  /** "Try again" for rows that were blocked. */
   async retryBlocked(nowIso: string): Promise<number> {
     const blocked = await this.db.all(
       "SELECT id FROM jc_outbox WHERE status = 'blocked'",
@@ -530,7 +914,6 @@ export class JobCardStore {
     return blocked.length;
   }
 
-  /** How many results are saved on the phone and not yet sent (drives the "waiting for signal" badge). */
   async unsentResultCount(): Promise<number> {
     const r = await this.db.first<{ n: number }>(
       "SELECT COUNT(*) AS n FROM jc_outbox WHERE kind = 'submit-result' AND status IN ('pending','syncing','blocked')",
@@ -538,9 +921,15 @@ export class JobCardStore {
     return r?.n ?? 0;
   }
 
+  /**
+   * Counts rows the technician actually has to act on. A blocked row whose next_attempt_at is set will retry by
+   * itself (see requeueDueBlocked), so it is "waiting to send", not "needs attention". Only rows stuck with
+   * next_attempt_at = NULL are counted here, and those are auto-dismissed on the next app open
+   * (autoDismissStuckPermanent). The badge should therefore only be visible for a few seconds, if ever.
+   */
   async blockedCount(): Promise<number> {
     const r = await this.db.first<{ n: number }>(
-      "SELECT COUNT(*) AS n FROM jc_outbox WHERE status = 'blocked'",
+      "SELECT COUNT(*) AS n FROM jc_outbox WHERE status = 'blocked' AND next_attempt_at IS NULL",
     );
     return r?.n ?? 0;
   }
@@ -558,14 +947,13 @@ export class JobCardStore {
     return r ? toOutbox(r) : null;
   }
 
-  /** Photos of finished work that is about to be cleared (call before the pull that clears it). */
   async expiredPhotoPaths(nowIso: string): Promise<string[]> {
     const cutoff = new Date(
       new Date(nowIso).getTime() - KEEP_SUBMITTED_DAYS * DAY_MS,
     ).toISOString();
     const rows = await this.db.all(
       `SELECT form_json FROM jc_drafts WHERE work_item_id IN
-         (SELECT id FROM jc_workitems WHERE local_state = 'SUBMITTED' AND submitted_at IS NOT NULL AND submitted_at < ?)`,
+         (SELECT id FROM jc_workitems WHERE local_state = 'SUBMITTED' AND submitted_at IS NOT NULL AND submitted_at < ? AND job_card_id NOT IN (SELECT id FROM jc_jobcards WHERE status = 'OPEN'))`,
       [cutoff],
     );
     const out: string[] = [];

@@ -288,6 +288,41 @@
               "isRequired": false,
               "attributes": []
             },
+            "assignedTo": {
+              "name": "assignedTo",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "assignedToName": {
+              "name": "assignedToName",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "assignedToEmail": {
+              "name": "assignedToEmail",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
+            "assignedAt": {
+              "name": "assignedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": []
+            },
+            "totalTimePostedAt": {
+              "name": "totalTimePostedAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": []
+            },
             "telegramGroupId": {
               "name": "telegramGroupId",
               "isArray": false,
@@ -1057,11 +1092,25 @@
               "isRequired": false,
               "attributes": []
             },
+            "userEmail": {
+              "name": "userEmail",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
             "startedAt": {
               "name": "startedAt",
               "isArray": false,
               "type": "AWSDateTime",
               "isRequired": true,
+              "attributes": []
+            },
+            "lastActiveAt": {
+              "name": "lastActiveAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
               "attributes": []
             },
             "endedAt": {
@@ -6099,7 +6148,8 @@
           "values": [
             "WORK_ITEM_ADDED",
             "WORK_ITEM_STARTED",
-            "RESULT_SUBMITTED"
+            "RESULT_SUBMITTED",
+            "JOB_CARD_OPENED"
           ]
         },
         "TimeEntryEndReason": {
@@ -6107,7 +6157,9 @@
           "values": [
             "ALL_SUBMITTED",
             "JOB_CLOSED",
-            "NO_WORK_ITEMS"
+            "NO_WORK_ITEMS",
+            "SESSION_ENDED",
+            "IDLE_TIMEOUT"
           ]
         },
         "PhotoChangeRequestStatus": {
@@ -6281,12 +6333,6 @@
               "isRequired": false,
               "isArrayNullable": false
             },
-            "workItemId": {
-              "name": "workItemId",
-              "isArray": false,
-              "type": "String",
-              "isRequired": true
-            },
             "jobCardId": {
               "name": "jobCardId",
               "isArray": false,
@@ -6299,17 +6345,29 @@
               "type": "String",
               "isRequired": true
             },
+            "customerName": {
+              "name": "customerName",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false
+            },
+            "workItemId": {
+              "name": "workItemId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false
+            },
             "scaleName": {
               "name": "scaleName",
               "isArray": false,
               "type": "String",
-              "isRequired": true
+              "isRequired": false
             },
             "workItemLabel": {
               "name": "workItemLabel",
               "isArray": false,
               "type": "String",
-              "isRequired": true
+              "isRequired": false
             }
           }
         },

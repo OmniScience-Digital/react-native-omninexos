@@ -4,14 +4,15 @@ import NetInfo from "@react-native-community/netinfo";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { jobCardApi, resolveMyIds } from "./api";
 import { newId } from "./ids";
+import { normEmail, type Me } from "./people";
 import { deletePhotoFiles } from "./photos";
 import { getJobCardStore } from "./sqliteDriver";
 import { prepareSubmission, type PrepareResult } from "./submission";
 import { runSync, type SyncSummary } from "./sync";
+import { computeTimes, type JobCardTime } from "./time";
 import type {
   AnyForm,
   ScaleBaseline,
-  StartTimePayload,
   WorkItemType,
   WorkItemView,
 } from "./types";
@@ -20,12 +21,34 @@ import type {
 export interface JobCardUser {
   sub: string;
   name: string;
+  /** Time and assignment are matched by email, so one person's two logins are one person. */
+  email?: string;
 }
 let currentUser: JobCardUser | null = null;
 export const getJobCardUser = () => currentUser;
 export const setJobCardUser = (u: JobCardUser | null) => {
   currentUser = u;
 };
+
+/**
+ * Persist the signed-in user in the phone's store, so the OS background task can sync without a UI. Called by
+ * startJobCards (foreground) and read by src/jobcards/background.ts (background). Passing null clears it, so a
+ * signed-out phone cannot sync as the previous technician.
+ */
+export async function persistJobCardUser(
+  user: JobCardUser | null,
+): Promise<void> {
+  const store = await getJobCardStore();
+  if (user) {
+    await store.setMeta("userSub", user.sub);
+    await store.setMeta("userName", user.name);
+    await store.setMeta("userEmail", normEmail(user.email) ?? "");
+  } else {
+    await store.setMeta("userSub", "");
+    await store.setMeta("userName", "");
+    await store.setMeta("userEmail", "");
+  }
+}
 
 // ------------------------------------------------------------ change notices
 const listeners = new Set<() => void>();
@@ -72,7 +95,7 @@ export async function requestSync(): Promise<SyncSummary | null> {
     return null;
   } finally {
     syncDepth -= 1;
-    notify(); // also tells the screen the "Syncing" line can go
+    notify();
   }
 }
 
@@ -86,30 +109,106 @@ export function useJobCardSyncing(): boolean {
 /** Called once at start: anything left half-sent by a crash goes back in the queue. */
 export async function startJobCards(user: JobCardUser): Promise<void> {
   setJobCardUser(user);
+  await persistJobCardUser(user); // so the OS background task can sync without a UI
   const store = await getJobCardStore();
-  await store.recoverStuck(new Date().toISOString());
+  const nowIso = new Date().toISOString();
+  await store.recoverStuck(nowIso);
+  // One-shot cleanup: any row stuck with next_attempt_at = NULL is a PermanentError the server has already
+  // rejected as "no longer exists". Mark it done so the "N need attention" badge clears on open.
+  await store.autoDismissStuckPermanent(nowIso);
+  // A session the app never got to close (crash, phone off): it ended when the app was last seen working
+  for (const s of await store.openSessions(user.sub))
+    await store.endSession(s.id, s.beatAt, nowIso);
   notify();
 }
 
-// -------------------------------------------------------------- doing the work
-/** Technician opened a work item: queue "started working" once per job card (the server also ignores repeats). */
-export async function noteWorkStarted(jobCardId: string): Promise<void> {
-  if (!currentUser) return;
-  const store = await getJobCardStore();
-  const payload: StartTimePayload = {
-    userSub: currentUser.sub,
-    userName: currentUser.name,
-    startedAt: new Date().toISOString(),
-  };
-  const queued = await store.enqueueStartTimeOnce({
-    id: newId(),
-    jobCardId,
-    payload: JSON.stringify(payload),
-    nowIso: payload.startedAt,
-    withinMs: 6 * 3_600_000,
-  });
-  if (queued) void requestSync();
+/** Called on sign-out: stop the background task from syncing as this user. */
+export async function stopJobCards(): Promise<void> {
+  setJobCardUser(null);
+  await persistJobCardUser(null);
+  notify();
 }
+
+// ------------------------------------------------------------- time sessions
+// Time worked is the time a job card is OPEN in the app. A session starts when the technician opens the job card
+// and ends the moment they leave it, lock the phone or switch to another app (it starts again when they return).
+// Each session is saved on the phone first and sent later, so it works without signal.
+let activeSession: { id: string; jobCardId: string } | null = null;
+let wantedJobCard: string | null = null;
+let beatTimer: ReturnType<typeof setInterval> | null = null;
+const BEAT_MS = 30_000;
+const SERVER_BEAT_EVERY = 2;
+let sessionQueue: Promise<unknown> = Promise.resolve();
+const inOrder = <T>(fn: () => Promise<T>): Promise<T> => {
+  const run = sessionQueue.then(fn, fn);
+  sessionQueue = run.catch(() => undefined);
+  return run;
+};
+
+const endActive = async () => {
+  if (beatTimer) {
+    clearInterval(beatTimer);
+    beatTimer = null;
+  }
+  const s = activeSession;
+  activeSession = null;
+  if (!s) return;
+  const store = await getJobCardStore();
+  const now = new Date().toISOString();
+  await store.endSession(s.id, now, now);
+  notify();
+  void requestSync();
+};
+
+export const startJobCardSession = (jobCardId: string): Promise<void> =>
+  inOrder(async () => {
+    if (!currentUser) return;
+    wantedJobCard = jobCardId;
+    if (activeSession?.jobCardId === jobCardId) return;
+    await endActive();
+    const store = await getJobCardStore();
+    const id = newId();
+    await store.startSession({
+      id,
+      jobCardId,
+      userSub: currentUser.sub,
+      userName: currentUser.name,
+      userEmail: normEmail(currentUser.email),
+      nowIso: new Date().toISOString(),
+    });
+    activeSession = { id, jobCardId };
+    let beats = 0;
+    beatTimer = setInterval(() => {
+      const s = activeSession;
+      if (!s) return;
+      const at = new Date().toISOString();
+      void getJobCardStore().then((st) => st.beatSession(s.id, at));
+      beats += 1;
+      if (beats % SERVER_BEAT_EVERY === 0)
+        void isOnline()
+          .then((online) =>
+            online ? jobCardApi.touchTimeEntry({ id: s.id, at }) : undefined,
+          )
+          .catch(() => {});
+    }, BEAT_MS);
+    notify();
+    void requestSync();
+  });
+
+export const pauseJobCardSession = (): Promise<void> => inOrder(endActive);
+
+export const resumeJobCardSession = (): Promise<void> => {
+  const id = wantedJobCard;
+  return id ? startJobCardSession(id) : Promise.resolve();
+};
+
+export const leaveJobCardSession = (): Promise<void> =>
+  inOrder(async () => {
+    wantedJobCard = null;
+    await endActive();
+  });
+
+export const noteWorkStarted = startJobCardSession;
 
 export async function loadWorkItem(id: string) {
   const store = await getJobCardStore();
@@ -131,17 +230,12 @@ export async function saveDraft(
   await store.saveDraft(workItemId, form, new Date().toISOString());
 }
 
-/** Every type of work a scale can have, in the order it is created and shown. */
 const ALL_WORK_TYPES: readonly WorkItemType[] = [
   "INSPECTION",
   "ZERO_CALIBRATION",
   "SPAN_CALIBRATION",
 ];
 
-/**
- * The technician adds a scale to an open job card. Its scope of work is the types of work chosen
- * (all three when none are given). It shows at once and is sent when online.
- */
 export async function addScale(args: {
   jobCardId: string;
   scaleName: string;
@@ -174,7 +268,6 @@ export async function addScale(args: {
   void requestSync();
 }
 
-/** Validate, then save the finished work on the phone and start sending. Returns the problems if it is not complete. */
 export async function submitWorkItem(
   item: WorkItemView,
   form: AnyForm,
@@ -194,6 +287,7 @@ export async function submitWorkItem(
     form,
     baseline,
     userSub: currentUser.sub,
+    userName: currentUser.name,
     nowIso,
     newId,
     edit,
@@ -207,9 +301,9 @@ export async function submitWorkItem(
     submittedAt: prepared.submittedAt,
     nowIso,
   });
-  if (opts?.edit) await store.saveDraft(item.id, form, nowIso); // the finished work now shows the edited answers
+  if (opts?.edit) await store.saveDraft(item.id, form, nowIso);
   notify();
-  void requestSync(); // goes out at once if there is signal, otherwise waits in the outbox
+  void requestSync();
   return prepared;
 }
 
@@ -229,7 +323,6 @@ export interface JobCardData {
   lastPullAt: string | null;
 }
 
-/** The technician's work, live: updates whenever something is saved, sent or refreshed. */
 export function useJobCardData(
   userSub: string | undefined,
 ): JobCardData & { reload: () => Promise<void> } {
@@ -243,7 +336,6 @@ export function useJobCardData(
 
   const reload = useCallback(async () => {
     if (!userSub) {
-      // nobody to load for yet: show "nothing here" rather than loading forever
       setData((d) => ({ ...d, loaded: true }));
       return;
     }
@@ -275,9 +367,7 @@ export function useJobCardData(
 // ---------------------------------------------------------- open job cards
 export interface OpenJobCardsSummary {
   loaded: boolean;
-  /** Job cards that are still open and have work left for this user */
   count: number;
-  /** Minutes this user has spent on those job cards (null until known) */
   minutes: number | null;
 }
 
@@ -288,12 +378,68 @@ export const formatMinutes = (m: number): string => {
   return h > 0 ? `${h}h ${r}m` : `${r}m`;
 };
 
-/** For the home screen: how many job cards are open for the user, and the time they have spent on them. */
+export function useJobCardMe(userSub: string | undefined): Me {
+  const [me, setMe] = useState<Me>({
+    ids: new Set(userSub ? [userSub] : []),
+    email: normEmail(currentUser?.email),
+  });
+
+  useEffect(() => {
+    if (!userSub) return;
+    let cancelled = false;
+    setMe({
+      ids: new Set([userSub]),
+      email: normEmail(getJobCardUser()?.email),
+    });
+    resolveMyIds(userSub)
+      .then((ids) => {
+        if (!cancelled)
+          setMe((m) => ({ ...m, ids: new Set([userSub, ...ids]) }));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [userSub]);
+
+  return me;
+}
+
+export function useJobCardTimes(
+  userSub: string | undefined,
+): Map<string, JobCardTime> {
+  const [times, setTimes] = useState<Map<string, JobCardTime>>(new Map());
+  const [version, setVersion] = useState(0);
+  const [tick, setTick] = useState(0);
+  const me = useJobCardMe(userSub);
+
+  useEffect(() => subscribeJobCards(() => setVersion((v) => v + 1)), []);
+  useEffect(() => {
+    const t = setInterval(() => setTick((n) => n + 1), 30_000);
+    return () => clearInterval(t);
+  }, []);
+  useEffect(() => {
+    if (!userSub) return;
+    let cancelled = false;
+    (async () => {
+      const store = await getJobCardStore();
+      const rows = await store.timeRows();
+      if (!cancelled)
+        setTimes(computeTimes(rows.cache, rows.sessions, me, Date.now()));
+    })().catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [userSub, me, version, tick]);
+
+  return times;
+}
+
 export function useOpenJobCards(
   userSub: string | undefined,
 ): OpenJobCardsSummary {
   const { loaded, items } = useJobCardData(userSub);
-  const [minutes, setMinutes] = useState<number | null>(null);
+  const times = useJobCardTimes(userSub);
 
   const openIds = useMemo(() => {
     const ids = new Set<string>();
@@ -302,41 +448,11 @@ export function useOpenJobCards(
         ids.add(w.jobCardId);
     return [...ids].sort();
   }, [items]);
-  const key = openIds.join(",");
 
-  useEffect(() => {
-    if (!userSub || openIds.length === 0) {
-      setMinutes(openIds.length === 0 ? 0 : null);
-      return;
-    }
-    let cancelled = false;
-    (async () => {
-      try {
-        if (!(await isOnline())) return; // keep the last known figure
-        const mine = new Set(await resolveMyIds(userSub));
-        let total = 0;
-        for (const id of openIds) {
-          const entries = await jobCardApi.listTimeEntries(id);
-          for (const e of entries) {
-            if (!mine.has(e.userId)) continue;
-            if (e.endedAt) total += e.minutes ?? 0;
-            else if (e.startedAt)
-              total += Math.max(
-                0,
-                (Date.now() - new Date(e.startedAt).getTime()) / 60_000,
-              );
-          }
-        }
-        if (!cancelled) setMinutes(total);
-      } catch (e) {
-        console.warn("[jobcards] could not total time spent:", e);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userSub, key]);
+  const minutes = useMemo(
+    () => openIds.reduce((n, id) => n + (times.get(id)?.myMinutes ?? 0), 0),
+    [openIds, times],
+  );
 
   return { loaded, count: openIds.length, minutes };
 }

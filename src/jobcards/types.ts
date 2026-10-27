@@ -25,8 +25,12 @@ export interface CachedJobCard {
   jcNumber: string;
   customerName?: string | null;
   title?: string | null;
-  /** OPEN | CLOSED, as of the last refresh */
   status: string;
+  closedAt?: string | null;
+  assignedTo?: string | null;
+  assignedToName?: string | null;
+  assignedToEmail?: string | null;
+  assignedAt?: string | null;
 }
 
 export interface CachedScale {
@@ -48,17 +52,18 @@ export interface CachedWorkItem {
   submittedAt?: string | null;
 }
 
-/** A work item with its job card and scale, as listed on the "My work" screen. */
 export interface WorkItemView extends CachedWorkItem {
   jcNumber: string;
   customerName?: string | null;
   jobCardStatus: string;
+  jobCardClosedAt?: string | null;
   jcTitle?: string | null;
+  jobCardAssignedTo?: string | null;
+  jobCardAssignedToEmail?: string | null;
   scaleName: string;
   scopeOfWork?: string | null;
 }
 
-/** The latest zero and span saved for a scale. The span calculation needs them, so they are kept for offline use. */
 export interface ScaleBaseline {
   scaleId: string;
   latestZero: string | null;
@@ -66,12 +71,14 @@ export interface ScaleBaseline {
   updatedAt: string;
 }
 
-export type OutboxKind = "submit-result" | "start-time" | "add-scale";
-/** pending: ready to send | syncing: being sent now | done: sent | blocked: needs attention (see last error) */
+export type OutboxKind =
+  | "submit-result"
+  | "start-time"
+  | "end-time"
+  | "add-scale";
 export type OutboxStatus = "pending" | "syncing" | "done" | "blocked";
 
 export interface OutboxRow {
-  /** The id the server will use for the record: generated on the phone, so a retry can never duplicate it. */
   id: string;
   kind: OutboxKind;
   workItemId: string | null;
@@ -84,9 +91,7 @@ export interface OutboxRow {
   createdAt: string;
 }
 
-// ---- the saved form (draft) and the payload sent to the server --------------
-
-export type YesNo = boolean | null; // null = not answered yet
+export type YesNo = boolean | null;
 
 export interface InspectionForm {
   asFoundTotalizer: string;
@@ -100,7 +105,6 @@ export interface InspectionForm {
   weighframeClean: YesNo;
   integratorPanelClean: YesNo;
   weighframeMovesFreely: YesNo;
-  /** "NA" = not applicable */
   torsionRodsMoveFreely: YesNo | "NA";
   rollersTurning: YesNo;
   beltTracking: YesNo;
@@ -122,7 +126,6 @@ export interface SpanForm {
   offset: string;
   actual: string;
   indicated: string;
-  /** Only used when no earlier zero/span is known for the scale: typed in by the technician. */
   manualLatestZero: string;
   manualLatestSpan: string;
   spanAdjusted: YesNo;
@@ -142,22 +145,17 @@ export type FormFor<T extends WorkItemType> = T extends "INSPECTION"
 
 export type AnyForm = InspectionForm | ZeroForm | SpanForm;
 
-/** What goes into a "submit-result" outbox row. Photos hold local file paths until they are uploaded. */
 export interface SubmitResultPayload {
   workItemId: string;
   scaleId: string;
   moduleType: WorkItemType;
   submittedAt: string;
   submittedBy: string;
-  /** readings and answers, without the photos */
   result: Record<string, unknown>;
-  /** photo field -> local path, or a list of local paths (scale photos) */
   photos: Record<string, string | string[]>;
-  /** local path -> the storage key it was uploaded to (filled in as uploads finish) */
   uploaded: Record<string, string>;
 }
 
-/** A scale the technician added on the phone, with the work to do on it. Ids are made here so a retry never duplicates. */
 export interface AddScalePayload {
   scaleId: string;
   jobCardId: string;
@@ -169,8 +167,16 @@ export interface AddScalePayload {
   modules: { id: string; moduleType: WorkItemType }[];
 }
 
+export interface EndTimePayload {
+  sessionId: string;
+  startedAt: string;
+  endedAt: string;
+}
+
 export interface StartTimePayload {
+  sessionId?: string;
   userSub: string;
   userName: string;
+  userEmail?: string;
   startedAt: string;
 }

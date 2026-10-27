@@ -1,6 +1,7 @@
 // hooks/useJobCardNotificationLinks.ts
 // Job card push notifications:
-//  - tapping one opens that work item (also when the app was closed and the tap launched it);
+//  - tapping one opens that job card (or, for an older notification, its work item), also when the app was closed and
+//    the tap launched it;
 //  - one arriving while the app is open refreshes the list, so the new work shows up at once.
 // Mount once for a signed-in user. It does not change the existing push setup in usePushNotifications.ts.
 import { requestSync } from "@/src/jobcards/controller";
@@ -29,7 +30,9 @@ export function useJobCardNotificationLinks(enabled: boolean) {
       handled.current = id;
       router.push({
         pathname: "/operations/jobcards",
-        params: { workItem: target.workItemId },
+        params: target.workItemId
+          ? { workItem: target.workItemId }
+          : { jobCard: target.jobCardId },
       });
       void Notifications.clearLastNotificationResponseAsync?.().catch?.(
         () => {},

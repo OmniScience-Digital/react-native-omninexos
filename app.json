@@ -82,7 +82,8 @@
       "expo-web-browser",
       "expo-sqlite",
       "expo-updates",
-      "./plugins/withGradleMemory.js"
+      "./plugins/withGradleMemory.js",
+      "expo-background-task"
     ],
     "experiments": {
       "typedRoutes": true,

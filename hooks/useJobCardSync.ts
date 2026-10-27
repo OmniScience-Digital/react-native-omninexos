@@ -8,15 +8,18 @@ import { AppState } from "react-native";
 
 const EVERY_MS = 60_000;
 
-export function useJobCardSync(user: { sub: string; name: string } | null) {
+export function useJobCardSync(
+  user: { sub: string; name: string; email?: string } | null,
+) {
   const sub = user?.sub;
   const name = user?.name ?? "";
+  const email = user?.email;
 
   useEffect(() => {
     if (!sub) return;
     let stopped = false;
     const startTimer = setTimeout(() => {
-      void startJobCards({ sub, name }).then(() => {
+      void startJobCards({ sub, name, email }).then(() => {
         if (!stopped) void requestSync();
       });
     }, 1500);
@@ -44,5 +47,5 @@ export function useJobCardSync(user: { sub: string; name: string } | null) {
       appSub.remove();
       clearInterval(timer);
     };
-  }, [sub, name]);
+  }, [sub, name, email]);
 }

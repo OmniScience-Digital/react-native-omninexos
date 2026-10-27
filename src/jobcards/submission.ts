@@ -31,6 +31,7 @@ export function prepareSubmission(args: {
   userSub: string;
   nowIso: string;
   newId: () => string;
+  userName?: string;
   /** Set when finished work is being edited: this goes out as a NEW result that points at the one before it. */
   edit?: { revision: number; editOf: string };
 }): PrepareResult {
@@ -55,6 +56,7 @@ export function prepareSubmission(args: {
       submittedBy: args.userSub,
       result: {
         ...buildResult(item.moduleType, form, baseline),
+        ...(args.userName ? { submittedByName: args.userName } : {}),
         ...(args.edit
           ? { revision: args.edit.revision, editOf: args.edit.editOf }
           : {}),
