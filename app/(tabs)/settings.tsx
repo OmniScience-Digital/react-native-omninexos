@@ -299,6 +299,13 @@ export default function Settings() {
               {UPDATE_ID ? ` · update ${UPDATE_ID}` : ""}
             </ThemedText>
           </AppCard>
+          <AppCard title="Background sync">
+            <Pressable onPress={() => router.push("../debug/background-runs")}>
+              <ThemedText muted variant="small">
+                View background sync log
+              </ThemedText>
+            </Pressable>
+          </AppCard>
           <AppCard title="Environment">
             <View className="flex-row items-center gap-2">
               <View

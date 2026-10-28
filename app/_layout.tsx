@@ -22,8 +22,6 @@ import StoreProvider, {
   useAppDispatch,
   useAppSelector,
 } from "@/src/state/redux";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { cognitoUserPoolsTokenProvider } from "aws-amplify/auth/cognito";
 import { useFonts } from "expo-font";
 import * as NavigationBar from "expo-navigation-bar";
 import { Stack, useRouter, useSegments } from "expo-router";
@@ -48,8 +46,8 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 initMonitoring();
 
 // Amplify is configured once in src/amplify.ts — do NOT call configure() again
-// here or the generated client and the auth provider end up with split state.
-cognitoUserPoolsTokenProvider.setKeyValueStorage(AsyncStorage);
+// here or the generated client and the auth provider end up with split state. The Cognito token storage is set
+// there too, so a headless background wake (see index.js) finds the session.
 
 SplashScreen.preventAutoHideAsync();
 WebBrowser.maybeCompleteAuthSession();

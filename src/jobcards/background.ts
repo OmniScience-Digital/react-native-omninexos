@@ -1,6 +1,6 @@
 // src/jobcards/background.ts
 // The OS-level background task. It wakes up (Android WorkManager / iOS BGTaskScheduler) roughly every 15 minutes
-// while the app is backgrounded but NOT force-quit, and calls requestSync() — the same function the foreground uses.
+// while the app is backgrounded but NOT force-quit, and runs the same sync the foreground uses.
 //
 // Limits you cannot beat:
 //   - If the user swipes the app away from recents, the OS stops the task until the app is opened again.
@@ -8,31 +8,48 @@
 // Both are platform rules, not something this file can change.
 import * as BackgroundTask from "expo-background-task";
 import * as TaskManager from "expo-task-manager";
-import { requestSync, setJobCardUser } from "./controller";
+import { beginBackgroundRun, finishBackgroundRun } from "../sync/backgroundLog";
+import { interpretOutcome } from "./backgroundOutcome";
+import { requestSyncDetailed, setJobCardUser } from "./controller";
 import { normEmail } from "./people";
 import { getJobCardStore } from "./sqliteDriver";
 
+// Keep this name unchanged: phones that already have the task registered keep working with no migration.
 const TASK_NAME = "jobcards-sync";
-/** Android WorkManager will not run a periodic task more often than this. */
+/** Android WorkManager will not run a periodic task more often than this. It is a floor, not a schedule. */
 const MIN_INTERVAL_MINUTES = 15;
 
 // 1. Define the task in global scope (before React mounts). This block runs at module load, once.
+//    IMPORTANT: this file must be imported from the app entry (index.js), not from a screen or layout, so the
+//    definition exists when the OS wakes the app with no UI.
 TaskManager.defineTask(TASK_NAME, async () => {
+  // Written before any work, so a run that is killed mid-way still leaves a "started, never finished" record.
+  const runId = await beginBackgroundRun("jobcards");
   try {
     // No UI and no in-memory user in a background wake: recover the identity from the phone's store.
     const store = await getJobCardStore();
     const sub = await store.getMeta("userSub");
-    if (!sub) {
-      // Nobody signed in: nothing to send or pull.
-      return BackgroundTask.BackgroundTaskResult.Success;
+    if (sub) {
+      const name = (await store.getMeta("userName")) ?? "";
+      const email = normEmail(await store.getMeta("userEmail")) ?? undefined;
+      setJobCardUser({ sub, name, email });
     }
-    const name = (await store.getMeta("userName")) ?? "";
-    const email = normEmail(await store.getMeta("userEmail")) ?? undefined;
-    setJobCardUser({ sub, name, email });
-    await requestSync();
-    return BackgroundTask.BackgroundTaskResult.Success;
+    const result = interpretOutcome(await requestSyncDetailed());
+    await finishBackgroundRun(runId, {
+      outcome: result.outcome,
+      sent: result.sent,
+      failedSends: result.failedSends,
+      blocked: result.blocked,
+      pulledItems: result.pulledItems,
+      error: result.error,
+    });
+    return result.failed
+      ? BackgroundTask.BackgroundTaskResult.Failed
+      : BackgroundTask.BackgroundTaskResult.Success;
   } catch (e) {
+    const error = e instanceof Error ? e.message : String(e);
     console.warn("[jobcards] background sync failed:", e);
+    await finishBackgroundRun(runId, { outcome: "error", error });
     return BackgroundTask.BackgroundTaskResult.Failed;
   }
 });

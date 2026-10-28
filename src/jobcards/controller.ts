@@ -71,9 +71,15 @@ export const isSyncing = () => syncDepth > 0;
 let lastSummary: SyncSummary | null = null;
 export const getLastSyncSummary = () => lastSummary;
 
-/** Send what is waiting and refresh the assigned work. Never throws: problems are kept for the next try. */
-export async function requestSync(): Promise<SyncSummary | null> {
-  if (!currentUser) return null;
+/** What a sync attempt did. `requestSync` hides this for the screens; the background task needs it to be honest. */
+export type SyncOutcome =
+  | { status: "no-user" } // nobody signed in: nothing was attempted
+  | { status: "error"; error: string } // the sync itself threw
+  | { status: "done"; summary: SyncSummary }; // ran (summary.offline says whether there was any signal)
+
+/** Send what is waiting and refresh the assigned work. Never throws, and says what happened. */
+export async function requestSyncDetailed(): Promise<SyncOutcome> {
+  if (!currentUser) return { status: "no-user" };
   syncDepth += 1;
   notify();
   try {
@@ -89,14 +95,23 @@ export async function requestSync(): Promise<SyncSummary | null> {
       currentUser.sub,
     );
     notify();
-    return lastSummary;
+    return { status: "done", summary: lastSummary };
   } catch (e) {
     console.warn("[jobcards] sync failed:", e);
-    return null;
+    return {
+      status: "error",
+      error: e instanceof Error ? e.message : String(e),
+    };
   } finally {
     syncDepth -= 1;
     notify();
   }
+}
+
+/** Send what is waiting and refresh the assigned work. Never throws: problems are kept for the next try. */
+export async function requestSync(): Promise<SyncSummary | null> {
+  const outcome = await requestSyncDetailed();
+  return outcome.status === "done" ? outcome.summary : null;
 }
 
 /** True while a sync is running, so the screen can say so. */
