@@ -1,7 +1,11 @@
 // hooks/useJobCardSync.ts
 // Keeps job cards in step with the server in the background: when the app opens, when the signal comes back,
 // when the app returns to the foreground, and every minute while it is open. Mount it once, for a signed-in user.
-import { requestSync, startJobCards } from "@/src/jobcards/controller";
+import {
+  requestSync,
+  requestSyncAfterSignalReturn,
+  startJobCards,
+} from "@/src/jobcards/controller";
 import NetInfo from "@react-native-community/netinfo";
 import { useEffect } from "react";
 import { AppState } from "react-native";
@@ -28,7 +32,7 @@ export function useJobCardSync(
     let wasOnline = true;
     const unsubNet = NetInfo.addEventListener((s) => {
       const online = !!s.isConnected && s.isInternetReachable !== false;
-      if (online && !wasOnline) void requestSync();
+      if (online && !wasOnline) void requestSyncAfterSignalReturn();
       wasOnline = online;
     });
     // back to the app

@@ -7,7 +7,15 @@ import { JobCardStore, type SqlDriver, type SqlValue } from "./store";
 
 const DB_NAME = "jobcards.db";
 const OPEN_ATTEMPTS = 3;
-const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+// Android does not fire JavaScript timers when the OS starts the app with no screen (a background wake), so a
+// `setTimeout` wait there never ends and the whole background sync hangs at its first step. The background task
+// switches the waits off while it runs; the foreground keeps them.
+let skipDelays = false;
+export function setSkipDelays(on: boolean): void {
+  skipDelays = on;
+}
+const sleep = (ms: number) =>
+  skipDelays ? Promise.resolve() : new Promise<void>((r) => setTimeout(r, ms));
 
 let opening: Promise<SQLite.SQLiteDatabase> | null = null;
 let hasOpenedThisSession = false;

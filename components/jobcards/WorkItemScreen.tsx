@@ -27,7 +27,6 @@ import { ArrowLeft, CheckCircle2, CloudOff } from "lucide-react-native";
 import { useEffect, useRef, useState } from "react";
 import {
   KeyboardAvoidingView,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -271,7 +270,7 @@ export default function WorkItemScreen({
   return frame(
     <KeyboardAvoidingView
       style={{ flex: 1 }}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      behavior="padding" // Android is edge-to-edge: the system no longer resizes the window for the keyboard
     >
       <ScrollView
         contentContainerStyle={styles.content}

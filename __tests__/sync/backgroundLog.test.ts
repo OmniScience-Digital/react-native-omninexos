@@ -16,10 +16,11 @@ jest.mock("@react-native-async-storage/async-storage", () => ({
 }));
 
 import {
-    beginBackgroundRun,
-    clearBackgroundRuns,
-    finishBackgroundRun,
-    getBackgroundRuns,
+  beginBackgroundRun,
+  clearBackgroundRuns,
+  finishBackgroundRun,
+  getBackgroundRuns,
+  markBackgroundStep,
 } from "@/src/sync/backgroundLog";
 
 beforeEach(async () => {
@@ -76,5 +77,16 @@ describe("background run log", () => {
     await expect(
       finishBackgroundRun("nope", { outcome: "error" }),
     ).resolves.toBeUndefined();
+  });
+});
+
+describe("run steps", () => {
+  test("an unfinished run keeps the last step it reached", async () => {
+    const id = await beginBackgroundRun("jobcards");
+    await markBackgroundStep(id, "opening-database");
+    await markBackgroundStep(id, "syncing");
+    const [run] = await getBackgroundRuns();
+    expect(run.step).toBe("syncing");
+    expect(run.finishedAt).toBeNull();
   });
 });

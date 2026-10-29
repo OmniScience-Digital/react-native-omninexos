@@ -5,6 +5,7 @@ import { router } from "expo-router";
 import { ArrowLeft } from "lucide-react-native";
 import {
   Animated,
+  KeyboardAvoidingView,
   Pressable,
   RefreshControl,
   StyleSheet,
@@ -82,20 +83,26 @@ export function NonTabScreen({
           {showBack && <View style={{ width: 40 }} />}
         </View>
 
-        {scrollable ? (
-          <Animated.ScrollView
-            refreshControl={refreshControl}
-            contentContainerStyle={{
-              padding: theme.spacing.sm,
-              paddingBottom: 140,
-            }}
-            style={{ flex: 1 }}
-          >
-            {children}
-          </Animated.ScrollView>
-        ) : (
-          <View style={{ flex: 1, padding: theme.spacing.sm }}>{children}</View>
-        )}
+        {/* Android is edge-to-edge, so the system no longer lifts content above the keyboard: do it here. */}
+        <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
+          {scrollable ? (
+            <Animated.ScrollView
+              refreshControl={refreshControl}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={{
+                padding: theme.spacing.sm,
+                paddingBottom: 140,
+              }}
+              style={{ flex: 1 }}
+            >
+              {children}
+            </Animated.ScrollView>
+          ) : (
+            <View style={{ flex: 1, padding: theme.spacing.sm }}>
+              {children}
+            </View>
+          )}
+        </KeyboardAvoidingView>
 
         {/* Footer */}
         <View style={[styles.footer, { borderTopColor: theme.colors.border }]}>

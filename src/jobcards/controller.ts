@@ -8,7 +8,7 @@ import { normEmail, type Me } from "./people";
 import { deletePhotoFiles } from "./photos";
 import { getJobCardStore } from "./sqliteDriver";
 import { prepareSubmission, type PrepareResult } from "./submission";
-import { runSync, type SyncSummary } from "./sync";
+import { abandonRunningSync, runSync, type SyncSummary } from "./sync";
 import { computeTimes, type JobCardTime } from "./time";
 import type {
   AnyForm,
@@ -71,6 +71,50 @@ export const isSyncing = () => syncDepth > 0;
 let lastSummary: SyncSummary | null = null;
 export const getLastSyncSummary = () => lastSummary;
 
+// ---------------------------------------------------------------------- tracing
+// Used only by the background task: it records the last network call or database operation the sync started, so a
+// background run that hangs or is killed shows where it stopped. Off (null) in the foreground, so it costs nothing.
+let trace: ((step: string) => void) | null = null;
+export function setSyncTrace(fn: ((step: string) => void) | null): void {
+  trace = fn;
+}
+let lastTraced = "";
+// Always on and in memory only: when did the running sync last start a call, and which one? Lets the background
+// task tell a sync that is working from one the OS froze, instead of waiting on it forever.
+let lastActivityAt = Date.now();
+let lastStepLive = "";
+export function getSyncActivity(): {
+  running: boolean;
+  idleMs: number;
+  lastStep: string;
+} {
+  return {
+    running: isSyncing(),
+    idleMs: Date.now() - lastActivityAt,
+    lastStep: lastStepLive,
+  };
+}
+function note(step: string): void {
+  lastActivityAt = Date.now();
+  lastStepLive = step;
+  if (!trace || step === lastTraced) return;
+  lastTraced = step;
+  trace(step);
+}
+/** Wraps every method of `target` so that starting a call is noted. Behaviour is otherwise unchanged. */
+function traced<T extends object>(target: T, prefix: string): T {
+  return new Proxy(target, {
+    get(obj, prop, receiver) {
+      const value = Reflect.get(obj, prop, receiver);
+      if (typeof value !== "function" || typeof prop !== "string") return value;
+      return (...args: unknown[]) => {
+        note(`${prefix}:${prop}`);
+        return value.apply(obj, args);
+      };
+    },
+  });
+}
+
 /** What a sync attempt did. `requestSync` hides this for the screens; the background task needs it to be honest. */
 export type SyncOutcome =
   | { status: "no-user" } // nobody signed in: nothing was attempted
@@ -78,18 +122,37 @@ export type SyncOutcome =
   | { status: "done"; summary: SyncSummary }; // ran (summary.offline says whether there was any signal)
 
 /** Send what is waiting and refresh the assigned work. Never throws, and says what happened. */
-export async function requestSyncDetailed(): Promise<SyncOutcome> {
+export async function requestSyncDetailed(opts?: {
+  /** If a sync is running but has started no call for this long, assume it is frozen and start a fresh one. */
+  takeOverIfIdleMs?: number;
+}): Promise<SyncOutcome> {
   if (!currentUser) return { status: "no-user" };
+  const frozen =
+    !!opts?.takeOverIfIdleMs &&
+    isSyncing() &&
+    Date.now() - lastActivityAt > opts.takeOverIfIdleMs;
+  if (frozen) abandonRunningSync();
+  // Only a run we start ourselves counts as fresh activity; joining a running one must not hide that it is frozen.
+  if (!isSyncing() || frozen) {
+    lastActivityAt = Date.now();
+    lastStepLive = "";
+  }
   syncDepth += 1;
   notify();
   try {
     const store = await getJobCardStore();
+    // The frozen run may have been halfway through sending a result, leaving it marked "sending". Put those back.
+    if (frozen) await store.recoverStuck(new Date().toISOString());
+    lastTraced = "";
     lastSummary = await runSync(
       {
-        store,
-        api: jobCardApi,
+        store: traced(store, "store"),
+        api: traced(jobCardApi, "api"),
         now: () => new Date(),
-        isOnline,
+        isOnline: () => {
+          note("isOnline");
+          return isOnline();
+        },
         cleanupFiles: deletePhotoFiles,
       },
       currentUser.sub,
@@ -114,6 +177,62 @@ export async function requestSync(): Promise<SyncSummary | null> {
   return outcome.status === "done" ? outcome.summary : null;
 }
 
+/**
+ * Send what was just saved. If a sync is already running it may have finished its sending step before this change
+ * was saved, and asking again only joins it; so once it ends, run once more. With no signal both are quick no-ops
+ * and the work simply stays saved on the phone.
+ */
+export async function requestSyncAfterChange(): Promise<void> {
+  const wasRunning = isSyncing();
+  await requestSync();
+  if (wasRunning) await requestSync();
+}
+
+/**
+ * The signal came back. Sends that failed on poor signal are resting until their retry time (up to an hour), which
+ * is wrong now that the network is good: release them, then sync.
+ */
+export async function requestSyncAfterSignalReturn(): Promise<void> {
+  try {
+    const store = await getJobCardStore();
+    await store.releaseBackoff(new Date().toISOString());
+  } catch {
+    /* the normal sync still runs */
+  }
+  await requestSync();
+}
+
+/** What the "Send now" button tells the technician. */
+export type SendNowResult =
+  | { status: "offline" } // no signal: nothing was attempted, the work is safe on the phone
+  | { status: "nothing" } // everything is already sent
+  | { status: "sent"; sent: number } // all that was waiting went
+  | { status: "waiting"; waiting: number } // still waiting: the try failed or something is still queued
+  | { status: "error" }; // could not even start
+
+export function describeSendNow(
+  outcome: SyncOutcome,
+  waitingAfter: number,
+): SendNowResult {
+  if (outcome.status !== "done") return { status: "error" };
+  const s = outcome.summary;
+  if (s.offline) return { status: "offline" };
+  const sent = s.push?.sent ?? 0;
+  if (waitingAfter > 0) return { status: "waiting", waiting: waitingAfter };
+  return sent > 0 ? { status: "sent", sent } : { status: "nothing" };
+}
+
+/** "Send now": check the signal first, skip any retry wait, send, and report honestly what happened. */
+export async function sendNow(): Promise<SendNowResult> {
+  if (!currentUser) return { status: "error" };
+  if (!(await isOnline())) return { status: "offline" };
+  const store = await getJobCardStore();
+  await store.releaseBackoff(new Date().toISOString()).catch(() => 0);
+  const outcome = await requestSyncDetailed();
+  const waiting = await store.unsentResultCount(currentUser.sub).catch(() => 0);
+  return describeSendNow(outcome, waiting);
+}
+
 /** True while a sync is running, so the screen can say so. */
 export function useJobCardSyncing(): boolean {
   const [s, setS] = useState(isSyncing());
@@ -131,6 +250,7 @@ export async function startJobCards(user: JobCardUser): Promise<void> {
   // One-shot cleanup: any row stuck with next_attempt_at = NULL is a PermanentError the server has already
   // rejected as "no longer exists". Mark it done so the "N need attention" badge clears on open.
   await store.autoDismissStuckPermanent(nowIso);
+  await store.closeObsoleteResults(nowIso).catch(() => 0);
   // A session the app never got to close (crash, phone off): it ended when the app was last seen working
   for (const s of await store.openSessions(user.sub))
     await store.endSession(s.id, s.beatAt, nowIso);
@@ -172,7 +292,7 @@ const endActive = async () => {
   const now = new Date().toISOString();
   await store.endSession(s.id, now, now);
   notify();
-  void requestSync();
+  void requestSyncAfterChange();
 };
 
 export const startJobCardSession = (jobCardId: string): Promise<void> =>
@@ -207,7 +327,7 @@ export const startJobCardSession = (jobCardId: string): Promise<void> =>
           .catch(() => {});
     }, BEAT_MS);
     notify();
-    void requestSync();
+    void requestSyncAfterChange();
   });
 
 export const pauseJobCardSession = (): Promise<void> => inOrder(endActive);
@@ -280,7 +400,7 @@ export async function addScale(args: {
     },
   });
   notify();
-  void requestSync();
+  void requestSyncAfterChange();
 }
 
 export async function submitWorkItem(
@@ -318,7 +438,7 @@ export async function submitWorkItem(
   });
   if (opts?.edit) await store.saveDraft(item.id, form, nowIso);
   notify();
-  void requestSync();
+  void requestSyncAfterChange();
   return prepared;
 }
 
@@ -358,7 +478,7 @@ export function useJobCardData(
       const store = await getJobCardStore();
       const [items, unsent, blocked, lastPullAt] = await Promise.all([
         store.listMyWork(userSub),
-        store.unsentResultCount(),
+        store.unsentResultCount(userSub),
         store.blockedCount(),
         store.getMeta("lastPullAt"),
       ]);

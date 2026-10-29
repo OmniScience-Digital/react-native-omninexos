@@ -8,7 +8,6 @@ import { useState } from "react";
 import {
   KeyboardAvoidingView,
   Modal,
-  Platform,
   Pressable,
   ScrollView,
   View,
@@ -107,7 +106,7 @@ export default function AddScaleSheet({
       onRequestClose={close}
     >
       <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        behavior="padding" // Android is edge-to-edge: the system no longer resizes the window for the keyboard
         style={{
           flex: 1,
           justifyContent: "flex-end",

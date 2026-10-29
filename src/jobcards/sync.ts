@@ -85,26 +85,18 @@ export interface OpenWork {
 
 /** The calls the sync engine needs. The real ones are in api.ts; tests use a fake. */
 export interface JobCardApi {
-  /**
-   * Every open job card, its scales, the work still pending on it (not just work assigned to this user), and all
-   * of its finished work regardless of age. Finished work on an open job card is never time-filtered: it must stay
-   * on the phone so it can be corrected and re-sent as a revision.
-   */
   listOpenWork(): Promise<OpenWork>;
   getJobCard(id: string): Promise<ServerJobCard | null>;
   getScale(id: string): Promise<ServerScale | null>;
-  /** The newest saved result of this type for the scale, if any. */
   latestSubmission(
     scaleId: string,
     type: WorkItemType,
   ): Promise<ServerSubmission | null>;
-  /** Mark the work item SUBMITTED. Must throw if the work item no longer exists. Repeating it is harmless. */
   markModuleSubmitted(a: {
     id: string;
     submittedAt: string;
     submittedBy: string;
   }): Promise<void>;
-  /** Save the result. If a result with this id already exists it must succeed quietly (a repeat of an earlier send). */
   createSubmission(input: {
     id: string;
     moduleId: string;
@@ -116,18 +108,12 @@ export interface JobCardApi {
     payload: Record<string, unknown>;
   }): Promise<void>;
   listTimeEntries(jobCardId: string): Promise<ServerTimeEntry[]>;
-  /**
-   * End a session. The server may already have closed it; the implementation decides whose end wins (see resolveEnd in
-   * time.ts) and works out the minutes.
-   */
   closeTimeEntry(a: {
     id: string;
     startedAt: string;
     endedAt: string;
   }): Promise<void>;
-  /** The phone is still working on this session. Best effort: it never throws. */
   touchTimeEntry(a: { id: string; at: string }): Promise<void>;
-  /** Start a time entry. If this id already exists it must succeed quietly. */
   createTimeEntry(input: {
     id: string;
     jobCardId: string;
@@ -136,14 +122,12 @@ export interface JobCardApi {
     userEmail?: string;
     startedAt: string;
   }): Promise<void>;
-  /** Create a scale on a job card. If this id already exists it must succeed quietly (a repeat of an earlier send). */
   createScale(input: {
     id: string;
     jobCardId: string;
     scaleName: string;
     createdBy: string;
   }): Promise<void>;
-  /** Create one work item on a scale. It is not assigned to anyone. If this id already exists it must succeed quietly. */
   createModule(input: {
     id: string;
     scaleId: string;
@@ -156,7 +140,6 @@ export interface JobCardApi {
   uploadPhoto(storageKey: string, localUri: string): Promise<void>;
 }
 
-/** A problem that retrying will not fix: the row is set aside (blocked) and the technician is told. */
 export class PermanentError extends Error {
   constructor(message: string) {
     super(message);
@@ -208,11 +191,9 @@ export async function pullOpenWork(
   userSub: string,
   now: Date,
 ): Promise<PullSummary> {
-  // 1. If this fails nothing is changed: the phone keeps what it has.
   const open = await api.listOpenWork();
   const { items } = open;
 
-  // 2. The latest zero/span, only for scales that have a span calibration to do (the only form that needs them).
   let failed = open.incompleteJobCardIds.length;
   const baselines: {
     scaleId: string;
@@ -242,11 +223,10 @@ export async function pullOpenWork(
         }),
       });
     } catch {
-      failed += 1; // keep whatever baseline the phone already has for this scale
+      failed += 1;
     }
   });
 
-  // 3. Save it all at once
   await store.applyPull({
     userSub,
     nowIso: now.toISOString(),
@@ -315,7 +295,6 @@ export interface PushSummary {
   blocked: number;
 }
 
-/** Where a photo goes in storage. The same photo always gets the same key, so re-uploading just overwrites it. */
 export const photoStorageKey = (
   jobCardId: string,
   workItemId: string,
@@ -333,7 +312,6 @@ async function sendResult(
 ): Promise<void> {
   const p = JSON.parse(row.payload) as SubmitResultPayload;
 
-  // 1. Photos (progress is saved after each one, so a dropped connection resumes where it stopped)
   const photoKeys: Record<string, string | string[]> = {};
   for (const [field, value] of Object.entries(p.photos)) {
     const uris = Array.isArray(value) ? value : [value];
@@ -341,7 +319,6 @@ async function sendResult(
     for (let i = 0; i < uris.length; i++) {
       const uri = uris[i];
       if (isRemotePhoto(uri)) {
-        // already saved on the server (finished work somebody else did): point at it, upload nothing
         keys.push(remoteKeyOf(uri));
         continue;
       }
@@ -368,8 +345,6 @@ async function sendResult(
     photoKeys[field] = Array.isArray(value) ? keys : keys[0];
   }
 
-  // 2. The work item becomes SUBMITTED. This comes BEFORE the result, so when the server handles the result it
-  //    already sees the work item as done (that is what lets it stop the timer on the last one).
   try {
     await api.markModuleSubmitted({
       id: p.workItemId,
@@ -377,9 +352,6 @@ async function sendResult(
       submittedBy: p.submittedBy,
     });
   } catch (e) {
-    // Only ConditionalCheckFailed is a genuine "the work item no longer exists on the server". A bare "Not found"
-    // (route warm-up, cold Lambda) is transient: retry it with backoff, do not classify as permanent. That was the
-    // cause of "1 need attention" that only cleared after many manual retries.
     if (/ConditionalCheckFailed/i.test(errorText(e))) {
       throw new PermanentError(
         "This work item was removed on the server, so the result could not be attached. It is kept on this phone.",
@@ -388,7 +360,6 @@ async function sendResult(
     throw e;
   }
 
-  // 3. The result
   await api.createSubmission({
     id: row.id,
     moduleId: p.workItemId,
@@ -412,11 +383,8 @@ async function sendEndTime(api: JobCardApi, row: OutboxRow): Promise<void> {
 
 async function sendStartTime(api: JobCardApi, row: OutboxRow): Promise<void> {
   const p = JSON.parse(row.payload) as StartTimePayload;
-  // The time entry carries this login's id AND the person's email. People are recognised by email, so one person who
-  // signs in two ways is never split, and nothing has to be looked up (it works offline too).
   const userEmail = normEmail(p.userEmail);
   if (p.sessionId) {
-    // a session: the time entry has the session's own id, so the end can find it and a retry cannot repeat it
     await api.createTimeEntry({
       id: p.sessionId,
       jobCardId: row.jobCardId,
@@ -427,7 +395,6 @@ async function sendStartTime(api: JobCardApi, row: OutboxRow): Promise<void> {
     });
     return;
   }
-  // An older queued start (no session id): do not start a second timer for the same person
   const entries = await api.listTimeEntries(row.jobCardId);
   const same = (e: { userId: string; userEmail?: string | null }) =>
     e.userId === p.userSub ||
@@ -444,11 +411,6 @@ async function sendStartTime(api: JobCardApi, row: OutboxRow): Promise<void> {
   });
 }
 
-/**
- * A scale added on the phone: create the scale, then each chosen work item.
- * The ids were made on the phone, so a retry after a dropped connection never creates duplicates.
- * Work items are not assigned to anyone: every open job card's pending work comes back in the next pull.
- */
 async function sendAddScale(api: JobCardApi, row: OutboxRow): Promise<void> {
   const p = JSON.parse(row.payload) as AddScalePayload;
   await api.createScale({
@@ -463,7 +425,7 @@ async function sendAddScale(api: JobCardApi, row: OutboxRow): Promise<void> {
       scaleId: p.scaleId,
       jobCardId: p.jobCardId,
       moduleType: m.moduleType,
-      sequence: 1, // first of its type on a brand-new scale
+      sequence: 1,
       addedBy: p.userSub,
       addedAt: p.addedAt,
     });
@@ -474,13 +436,9 @@ export async function pushOutbox(
   store: JobCardStore,
   api: JobCardApi,
   now: () => Date,
-  /** Called with the local photo files of a result once it has been sent, so they can be deleted from the phone. */
   cleanupFiles?: (uris: string[]) => Promise<void>,
 ): Promise<PushSummary> {
   const nowIso = now().toISOString();
-  // Rows that failed 12 times are put back in the queue after BLOCKED_RETRY_MS. Without this, "1 need attention"
-  // was a permanent state: a transient failure was retried only when the technician clicked "Try again", and every
-  // attempt incremented the counter, so the badge survived even after the work finally reached the server.
   await store.requeueDueBlocked(nowIso);
 
   const summary: PushSummary = { sent: 0, failed: 0, blocked: 0 };
@@ -504,9 +462,6 @@ export async function pushOutbox(
       const permanent = e instanceof PermanentError;
       const reachedMax = !permanent && failures >= MAX_ATTEMPTS_BEFORE_BLOCK;
       const blocked = permanent || reachedMax;
-      // A PermanentError stays blocked forever (until the technician clicks "Try again"): the work item is gone.
-      // Reaching MAX_ATTEMPTS means "stop trying every few minutes, retry once an hour" — the row keeps retrying
-      // automatically until it either succeeds or the user intervenes.
       const next = permanent
         ? null
         : reachedMax
@@ -520,7 +475,6 @@ export async function pushOutbox(
         now().toISOString(),
       );
       summary[blocked ? "blocked" : "failed"] += 1;
-      // keep going: one bad row must not hold up the others
     }
   }
   return summary;
@@ -541,7 +495,6 @@ export interface SyncSummary {
   pullError?: string;
 }
 
-/** A job card whose work is all done is not in the pull, so ask whether it has been closed since. */
 async function refreshFinishedJobCards(
   deps: SyncDeps,
   userSub: string,
@@ -561,7 +514,6 @@ async function refreshFinishedJobCards(
   }
 }
 
-/** Keep a copy of everyone's time on the open job cards, so the total on the phone includes other technicians. */
 async function refreshTimeCache(
   deps: SyncDeps,
   userSub: string,
@@ -599,8 +551,22 @@ let inFlight: Promise<SyncSummary> | null = null;
 /** Send what is waiting, then refresh the open work. Only one run at a time; asking again joins the running one. */
 export function runSync(deps: SyncDeps, userSub: string): Promise<SyncSummary> {
   if (inFlight) return inFlight;
-  inFlight = (async (): Promise<SyncSummary> => {
+  const run: Promise<SyncSummary> = (async (): Promise<SyncSummary> => {
     if (!(await deps.isOnline())) return { offline: true };
+
+    // Recover rows the OS killed mid-send. If a background wake was terminated after markSyncing() but before
+    // markDone() (the app is closed while a network call is in flight), the row stays at 'syncing' forever:
+    // dueOutbox only returns 'pending', so pushOutbox never sees it, and it never retries. Before this call
+    // recoverStuck only ran once per launch, in startJobCards. Now it runs on every fresh sync — background
+    // wake, foreground return, network-up, interval — and covers every outbox kind (result, start-time,
+    // end-time, add-scale). Wrapped in try/catch: if SQLite is momentarily unusable, the sync should still
+    // try to push and pull, not abort on the recovery step.
+    try {
+      await deps.store.recoverStuck(deps.now().toISOString());
+    } catch (e) {
+      console.warn("[jobcards] recoverStuck failed (continuing):", e);
+    }
+
     const summary: SyncSummary = { offline: false };
     const expiredPhotos = await deps.store
       .expiredPhotoPaths(deps.now().toISOString())
@@ -619,16 +585,30 @@ export function runSync(deps: SyncDeps, userSub: string): Promise<SyncSummary> {
         deps.now(),
       );
     } catch (e) {
-      summary.pullError = errorText(e); // the phone keeps what it has
+      summary.pullError = errorText(e);
     }
     if (summary.pull && expiredPhotos.length)
       await deps.cleanupFiles?.(expiredPhotos).catch(() => {});
     if (summary.pull) await refreshTimeCache(deps, userSub);
     if (summary.pull) await refreshFinishedJobCards(deps, userSub);
+    await deps.store
+      .closeObsoleteResults(deps.now().toISOString())
+      .catch(() => 0);
     await deps.store.pruneDone(deps.now().toISOString());
     return summary;
   })().finally(() => {
-    inFlight = null;
+    // Only clear our own marker: a run we abandoned may finish much later, after a newer run has started.
+    if (inFlight === run) inFlight = null;
   });
-  return inFlight;
+  inFlight = run;
+  return run;
+}
+
+/**
+ * Forget a sync that has stopped making progress, so the next `runSync` starts a fresh one instead of waiting on it
+ * forever. The old run is not cancelled (it cannot be); if it ever wakes up it carries on harmlessly, because every
+ * send has a client-made id the server de-duplicates on.
+ */
+export function abandonRunningSync(): void {
+  inFlight = null;
 }

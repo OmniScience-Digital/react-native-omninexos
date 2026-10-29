@@ -901,6 +901,25 @@ export class JobCardStore {
     return stuck.length;
   }
 
+  /**
+   * Make everything that is only waiting for a retry time due now: rows resting after a failed try, and rows set
+   * aside after too many tries that were going to retry by themselves. Used when the signal comes back and when the
+   * technician taps "Send now". Rows blocked for a permanent reason (no retry time) are left alone: they have their
+   * own "Try again".
+   */
+  async releaseBackoff(nowIso: string): Promise<number> {
+    const waiting = await this.db.all(
+      `SELECT id FROM jc_outbox WHERE next_attempt_at IS NOT NULL AND status IN ('pending','blocked')`,
+    );
+    if (waiting.length)
+      await this.db.run(
+        `UPDATE jc_outbox SET status = 'pending', next_attempt_at = NULL, updated_at = ?
+           WHERE next_attempt_at IS NOT NULL AND status IN ('pending','blocked')`,
+        [nowIso],
+      );
+    return waiting.length;
+  }
+
   async retryBlocked(nowIso: string): Promise<number> {
     const blocked = await this.db.all(
       "SELECT id FROM jc_outbox WHERE status = 'blocked'",
@@ -914,11 +933,49 @@ export class JobCardStore {
     return blocked.length;
   }
 
-  async unsentResultCount(): Promise<number> {
+  /**
+   * How many results THIS technician has still to send: the work items that read "Waiting to send" on the job card.
+   * It reads the work item's own state (the same thing the label reads), not the outbox, so the number on the home
+   * card can never disagree with the labels inside the job cards.
+   */
+  async unsentResultCount(userSub: string): Promise<number> {
     const r = await this.db.first<{ n: number }>(
-      "SELECT COUNT(*) AS n FROM jc_outbox WHERE kind = 'submit-result' AND status IN ('pending','syncing','blocked')",
+      "SELECT COUNT(*) AS n FROM jc_workitems WHERE user_sub = ? AND local_state = 'QUEUED'",
+      [userSub],
     );
     return r?.n ?? 0;
+  }
+
+  /**
+   * Close outbox rows that can never matter again: the work item is already SUBMITTED and the server (or a newer
+   * row that already went through) has a result at least as new as this row. Without this they sit in the outbox
+   * as "pending" forever and get retried for nothing. They are marked done, not deleted, so pruneDone removes them
+   * after 7 days. A newer edit that has NOT been sent is never touched: nothing newer than it exists yet.
+   */
+  async closeObsoleteResults(nowIso: string): Promise<number> {
+    const stale = await this.db.all(
+      `SELECT o.id FROM jc_outbox o
+         JOIN jc_workitems w ON w.id = o.work_item_id
+        WHERE o.kind = 'submit-result'
+          AND o.status IN ('pending','syncing','blocked')
+          AND w.local_state = 'SUBMITTED'
+          AND (
+            EXISTS (SELECT 1 FROM jc_outbox d WHERE d.work_item_id = o.work_item_id AND d.kind = 'submit-result'
+                      AND d.status = 'done' AND d.id <> o.id AND d.created_at >= o.created_at)
+            OR EXISTS (SELECT 1 FROM jc_remote_results r WHERE r.work_item_id = o.work_item_id
+                         AND r.submitted_at >= o.created_at)
+          )`,
+    );
+    if (stale.length) {
+      await this.db.run(
+        `UPDATE jc_outbox
+            SET status = 'done', next_attempt_at = NULL,
+                last_error = COALESCE(last_error, 'Closed: this result was already sent'), updated_at = ?
+          WHERE id IN (${stale.map(() => "?").join(",")})`,
+        [nowIso, ...stale.map((r) => r.id as string)],
+      );
+    }
+    return stale.length;
   }
 
   /**
@@ -937,6 +994,29 @@ export class JobCardStore {
   async getOutbox(id: string): Promise<OutboxRow | null> {
     const r = await this.db.first("SELECT * FROM jc_outbox WHERE id = ?", [id]);
     return r ? toOutbox(r) : null;
+  }
+
+  /** Why sends are failing: the newest error messages of rows that are not done. Read-only; for the background log. */
+  async recentOutboxErrors(limit = 5): Promise<
+    {
+      kind: OutboxKind;
+      status: OutboxStatus;
+      attempts: number;
+      lastError: string;
+    }[]
+  > {
+    const rows = await this.db.all(
+      `SELECT kind, status, attempts, last_error FROM jc_outbox
+         WHERE status != 'done' AND last_error IS NOT NULL
+         ORDER BY updated_at DESC LIMIT ?`,
+      [limit],
+    );
+    return rows.map((r) => ({
+      kind: r.kind as OutboxKind,
+      status: r.status as OutboxStatus,
+      attempts: (r.attempts as number) ?? 0,
+      lastError: r.last_error as string,
+    }));
   }
 
   async outboxFor(workItemId: string): Promise<OutboxRow | null> {

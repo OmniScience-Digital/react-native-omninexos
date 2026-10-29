@@ -79,11 +79,14 @@ function LayoutInner() {
   // JOBCARDS: register the OS background task so results still go out when the app is backgrounded (not force-quit).
   // Android: WorkManager (minimum 15 min). iOS: BGTaskScheduler (OS decides when).
   useEffect(() => {
+    // While auth is still loading the user is briefly null; treating that as "signed out" removed the task on every
+    // cold start. Only act once we know who (if anyone) is signed in.
+    if (authLoading) return;
     if (jobCardUser) void registerJobCardBackgroundSync();
     else void unregisterJobCardBackgroundSync();
     // jobCardUser is recreated on every render; keying on sub is what actually matters.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jobCardUser?.sub]);
+  }, [jobCardUser?.sub, authLoading]);
 
   const segments = useSegments();
   const router = useRouter();

@@ -13,38 +13,39 @@ import { OfflineBanner } from "@/components/ui/OfflineBanner";
 import { CustomScrollView } from "@/components/ui/scrollView";
 import { useTheme } from "@/src/contexts/theme-context";
 import {
-    formatMinutes,
-    leaveJobCardSession,
-    requestSync,
-    retryBlocked,
-    startJobCardSession,
-    useJobCardData,
-    useJobCardSyncing,
-    useJobCardTimes,
+  formatMinutes,
+  leaveJobCardSession,
+  requestSync,
+  retryBlocked,
+  sendNow,
+  startJobCardSession,
+  useJobCardData,
+  useJobCardSyncing,
+  useJobCardTimes,
 } from "@/src/jobcards/controller";
 import { WORK_ITEM_LABEL, type WorkItemView } from "@/src/jobcards/types";
 import { useNetInfo } from "@react-native-community/netinfo";
 import {
-    Building2,
-    CalendarDays,
-    ChevronRight,
-    ClipboardList,
-    CloudOff,
-    ExternalLink,
-    Layers,
-    Package,
-    Plus,
-    RefreshCw,
-    Timer,
+  Building2,
+  CalendarDays,
+  ChevronRight,
+  ClipboardList,
+  CloudOff,
+  ExternalLink,
+  Layers,
+  Package,
+  Plus,
+  RefreshCw,
+  Timer,
 } from "lucide-react-native";
 import { useEffect, useMemo, useState } from "react";
 import {
-    ActivityIndicator,
-    Pressable,
-    RefreshControl,
-    StyleSheet,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Pressable,
+  RefreshControl,
+  StyleSheet,
+  TouchableOpacity,
+  View,
 } from "react-native";
 import AddScaleSheet from "./AddScaleSheet";
 import { MED } from "./ui";
@@ -226,6 +227,9 @@ export default function JobCardsHome({
   const { loaded, items, unsent, blocked, lastPullAt, reload } =
     useJobCardData(userSub);
   const syncing = useJobCardSyncing();
+  const onSendNow = async () => {
+    await sendNow();
+  };
   const times = useJobCardTimes(userSub);
   // back on the list: the technician has left the job card, so time stops
   useEffect(() => {
@@ -474,6 +478,22 @@ export default function JobCardsHome({
                     {unsent} {unsent === 1 ? "result" : "results"} waiting to
                     send
                   </ThemedText>
+                  <View style={{ flex: 1 }} />
+                  <Pressable
+                    testID="send-now"
+                    accessibilityRole="button"
+                    accessibilityLabel="Send now"
+                    onPress={() => void onSendNow()}
+                    style={styles.retry}
+                    hitSlop={8}
+                  >
+                    <IRefresh size={13} color={colors.primary} />
+                    <ThemedText
+                      style={[MED, { fontSize: 12, color: colors.primary }]}
+                    >
+                      Send now
+                    </ThemedText>
+                  </Pressable>
                 </>
               ) : (
                 <>

@@ -34,7 +34,14 @@ import {
   User,
 } from "lucide-react-native";
 import { useEffect, useState } from "react";
-import { Pressable, RefreshControl, StyleSheet, View } from "react-native";
+import {
+  Linking,
+  Platform,
+  Pressable,
+  RefreshControl,
+  StyleSheet,
+  View,
+} from "react-native";
 
 const IShieldAlert = ShieldAlert as any;
 
@@ -293,19 +300,64 @@ export default function Settings() {
         {/* About Section */}
         <View className="mb-4">
           <SectionHeader title="About" />
+
           <AppCard title="Version">
-            <ThemedText muted variant="small">
+            <ThemedText muted variant="small" style={{ flexShrink: 1 }}>
               {VERSION_LABEL}
               {UPDATE_ID ? ` · update ${UPDATE_ID}` : ""}
             </ThemedText>
           </AppCard>
-          <AppCard title="Background sync">
-            <Pressable onPress={() => router.push("../debug/background-runs")}>
+
+          {/* Sending in the background: plain column card (AppCard lays out
+              children in a row, which squeezed the paragraphs and overflowed) */}
+          <View
+            className="p-4 rounded-2xl border mb-3"
+            style={getCardStyle(theme)}
+          >
+            <ThemedText weight="600">Sending in the background</ThemedText>
+
+            <ThemedText muted variant="small" style={styles.bgText}>
+              {Platform.OS === "android"
+                ? "Set Omni-Nexos to Unrestricted battery use (Phone settings → Battery → Unrestricted). Otherwise some phones stop background sending to save power."
+                : "Keep Background App Refresh on for Omni-Nexos in your phone settings."}
+            </ThemedText>
+
+            <ThemedText muted variant="small" style={styles.bgText}>
+              Swiping the app away pauses sending until you reopen it. With no
+              signal, your work stays saved on this phone and sends once you're
+              back online.
+            </ThemedText>
+
+            <View
+              style={[
+                styles.bgDivider,
+                { backgroundColor: theme.colors.border },
+              ]}
+            />
+
+            <Pressable
+              onPress={() => void Linking.openSettings()}
+              style={styles.bgLink}
+              hitSlop={8}
+            >
+              <ThemedText weight="600" style={{ color: theme.colors.primary }}>
+                Open phone settings
+              </ThemedText>
+              <ChevronRight size={16} color={theme.colors.primary} />
+            </Pressable>
+
+            <Pressable
+              onPress={() => router.push("../debug/background-runs")}
+              style={styles.bgLink}
+              hitSlop={8}
+            >
               <ThemedText muted variant="small">
                 View background sync log
               </ThemedText>
+              <ChevronRight size={16} color={theme.colors.textMuted} />
             </Pressable>
-          </AppCard>
+          </View>
+
           <AppCard title="Environment">
             <View className="flex-row items-center gap-2">
               <View
@@ -400,5 +452,20 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 999,
     borderWidth: 1,
+  },
+  bgText: {
+    marginTop: 8,
+    lineHeight: 18,
+    flexShrink: 1,
+  },
+  bgDivider: {
+    height: StyleSheet.hairlineWidth,
+    marginTop: 12,
+  },
+  bgLink: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingTop: 12,
   },
 });
