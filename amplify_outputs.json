@@ -323,6 +323,34 @@
               "isRequired": false,
               "attributes": []
             },
+            "certificateSentAt": {
+              "name": "certificateSentAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": []
+            },
+            "certificateClickupAt": {
+              "name": "certificateClickupAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": []
+            },
+            "totalTimePostedClickupAt": {
+              "name": "totalTimePostedClickupAt",
+              "isArray": false,
+              "type": "AWSDateTime",
+              "isRequired": false,
+              "attributes": []
+            },
+            "wrapUpPending": {
+              "name": "wrapUpPending",
+              "isArray": false,
+              "type": "String",
+              "isRequired": false,
+              "attributes": []
+            },
             "telegramGroupId": {
               "name": "telegramGroupId",
               "isArray": false,
@@ -429,6 +457,17 @@
                 "fields": [
                   "status",
                   "openedAt"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "jobCardsByWrapUpPendingAndClosedAt",
+                "queryField": "jobCardsByWrapUpPending",
+                "fields": [
+                  "wrapUpPending",
+                  "closedAt"
                 ]
               }
             },
@@ -769,6 +808,17 @@
                 "queryField": "modulesByJobCard",
                 "fields": [
                   "jobCardId"
+                ]
+              }
+            },
+            {
+              "type": "key",
+              "properties": {
+                "name": "jobCardModulesByJobCardIdAndStatus",
+                "queryField": "modulesByJobCardAndStatus",
+                "fields": [
+                  "jobCardId",
+                  "status"
                 ]
               }
             },
@@ -6281,6 +6331,96 @@
             }
           }
         },
+        "InventoryCountsCategory": {
+          "name": "InventoryCountsCategory",
+          "fields": {
+            "categoryId": {
+              "name": "categoryId",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            },
+            "subcategoryCount": {
+              "name": "subcategoryCount",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "componentCount": {
+              "name": "componentCount",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "lowStockCount": {
+              "name": "lowStockCount",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            }
+          }
+        },
+        "InventoryCountsTotals": {
+          "name": "InventoryCountsTotals",
+          "fields": {
+            "subcategoryCount": {
+              "name": "subcategoryCount",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "componentCount": {
+              "name": "componentCount",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            },
+            "lowStockCount": {
+              "name": "lowStockCount",
+              "isArray": false,
+              "type": "Int",
+              "isRequired": true,
+              "attributes": []
+            }
+          }
+        },
+        "InventoryCounts": {
+          "name": "InventoryCounts",
+          "fields": {
+            "categories": {
+              "name": "categories",
+              "isArray": true,
+              "type": {
+                "nonModel": "InventoryCountsCategory"
+              },
+              "isRequired": false,
+              "attributes": [],
+              "isArrayNullable": false
+            },
+            "totals": {
+              "name": "totals",
+              "isArray": false,
+              "type": {
+                "nonModel": "InventoryCountsTotals"
+              },
+              "isRequired": true,
+              "attributes": []
+            },
+            "cachedAt": {
+              "name": "cachedAt",
+              "isArray": false,
+              "type": "String",
+              "isRequired": true,
+              "attributes": []
+            }
+          }
+        },
         "InviteUserAccountReturnType": {
           "name": "InviteUserAccountReturnType",
           "fields": {
@@ -6317,6 +6457,14 @@
           },
           "isRequired": false,
           "isArrayNullable": true
+        },
+        "inventoryCounts": {
+          "name": "inventoryCounts",
+          "isArray": false,
+          "type": {
+            "nonModel": "InventoryCounts"
+          },
+          "isRequired": false
         }
       },
       "mutations": {

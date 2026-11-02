@@ -58,10 +58,17 @@ import { getBackgroundRuns } from "@/src/sync/backgroundLog";
 const FAILED = 2;
 const SUCCESS = 1;
 
+// A failed or timed-out background sync is logged as a warning. Several tests fail it on purpose; silence it here and
+// assert on it where it is expected, so any other warning still shows.
+let warn: jest.SpyInstance;
 beforeEach(() => {
+  warn = jest.spyOn(console, "warn").mockImplementation(() => {});
   for (const k of Object.keys(mockStore)) delete mockStore[k];
   mockRequestSync.mockReset();
   backgroundDeadlines.syncMs = 300;
+});
+afterEach(() => {
+  warn.mockRestore();
 });
 
 const lastRun = async () => (await getBackgroundRuns())[0];
@@ -91,6 +98,10 @@ test("a sync that throws is an error and reported as Failed", async () => {
   mockRequestSync.mockRejectedValue(new Error("boom"));
   expect(await mockTask()).toBe(FAILED);
   expect(await lastRun()).toMatchObject({ outcome: "error", error: "boom" });
+  expect(warn).toHaveBeenCalledWith(
+    expect.stringContaining("background sync failed"),
+    expect.objectContaining({ message: "boom" }),
+  );
 });
 
 test("a wake with no signal is recorded as offline and is not a failure", async () => {

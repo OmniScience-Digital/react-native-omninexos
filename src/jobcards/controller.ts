@@ -8,7 +8,12 @@ import { normEmail, type Me } from "./people";
 import { deletePhotoFiles } from "./photos";
 import { getJobCardStore } from "./sqliteDriver";
 import { prepareSubmission, type PrepareResult } from "./submission";
-import { abandonRunningSync, runSync, type SyncSummary } from "./sync";
+import {
+  abandonRunningSync,
+  MAX_ATTEMPTS_BEFORE_BLOCK,
+  runSync,
+  type SyncSummary,
+} from "./sync";
 import { computeTimes, type JobCardTime } from "./time";
 import type {
   AnyForm,
@@ -154,6 +159,9 @@ export async function requestSyncDetailed(opts?: {
           return isOnline();
         },
         cleanupFiles: deletePhotoFiles,
+        // R2: only the foreground card refreshes its time cache. No UI means
+        // no activeSession, so background wakes skip it entirely.
+        foregroundJobCardId: () => activeSession?.jobCardId ?? null,
       },
       currentUser.sub,
     );
@@ -251,6 +259,9 @@ export async function startJobCards(user: JobCardUser): Promise<void> {
   // rejected as "no longer exists". Mark it done so the "N need attention" badge clears on open.
   await store.autoDismissStuckPermanent(nowIso);
   await store.closeObsoleteResults(nowIso).catch(() => 0);
+  await store
+    .closeOrphanedRows(nowIso, MAX_ATTEMPTS_BEFORE_BLOCK)
+    .catch(() => 0);
   // A session the app never got to close (crash, phone off): it ended when the app was last seen working
   for (const s of await store.openSessions(user.sub))
     await store.endSession(s.id, s.beatAt, nowIso);

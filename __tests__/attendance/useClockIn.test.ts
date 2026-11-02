@@ -8,19 +8,32 @@
 
 // ── Mocks (must be before imports) ───────────────────────────────────────────
 
-jest.mock("@react-native-async-storage/async-storage", () => ({
-  getItem: jest.fn().mockResolvedValue(null),
-  setItem: jest.fn().mockResolvedValue(undefined),
-  removeItem: jest.fn().mockResolvedValue(undefined),
-}));
+// Amplify loads these two with `require(...)?.default`, so each mock needs a `default` as well as the named members.
+jest.mock("@react-native-async-storage/async-storage", () => {
+  const storage = {
+    getItem: jest.fn().mockResolvedValue(null),
+    setItem: jest.fn().mockResolvedValue(undefined),
+    removeItem: jest.fn().mockResolvedValue(undefined),
+  };
+  return { __esModule: true, default: storage, ...storage };
+});
 
-jest.mock("@react-native-community/netinfo", () => ({
-  fetch: jest
-    .fn()
-    .mockResolvedValue({ isConnected: true, isInternetReachable: true }),
-}));
+jest.mock("@react-native-community/netinfo", () => {
+  const netinfo = {
+    fetch: jest
+      .fn()
+      .mockResolvedValue({ isConnected: true, isInternetReachable: true }),
+    addEventListener: jest.fn(() => () => {}),
+    refresh: jest.fn(),
+  };
+  return { __esModule: true, default: netinfo, ...netinfo };
+});
 
 jest.mock("expo-location", () => ({
+  getForegroundPermissionsAsync: jest
+    .fn()
+    .mockResolvedValue({ status: "granted" }),
+  getLastKnownPositionAsync: jest.fn().mockResolvedValue(null),
   requestForegroundPermissionsAsync: jest
     .fn()
     .mockResolvedValue({ status: "granted" }),
@@ -38,10 +51,21 @@ jest.mock("expo-location", () => ({
   Accuracy: { Balanced: 3 },
 }));
 
+// usePaginatedClockRecords (used by useClockIn) pages through history with the lazy query, so that is what the hook calls.
+// The trigger is created once so its identity is stable across renders, as the real one is.
+const mockLazyTrigger = jest.fn();
 jest.mock("@/src/state/api", () => ({
   useCreateClockRecordMutation: jest.fn(),
   useUpdateClockRecordMutation: jest.fn(),
   useListMyClockRecordsQuery: jest.fn(),
+  useLazyListMyClockRecordsQuery: jest.fn(() => [mockLazyTrigger]),
+}));
+
+// Clock-in now starts with a face check (camera + server call). It has its own tests; here it just passes.
+// Online it verifies; offline the real one cannot reach the server, so the clock-in is left PENDING_VERIFICATION.
+const mockVerify = jest.fn();
+jest.mock("@/hooks/useFaceVerification", () => ({
+  useFaceVerification: () => ({ verify: mockVerify, verifying: false }),
 }));
 
 jest.mock("@/services/submissionQueue", () => ({
@@ -52,14 +76,28 @@ jest.mock("@/services/submissionQueue", () => ({
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import NetInfo from "@react-native-community/netinfo";
-import { act, renderHook } from "@testing-library/react-hooks";
+import React from "react";
+import { act, create } from "react-test-renderer";
+
+// @testing-library/react-hooks does not support React 19, so this is the small part of it the tests use.
+function renderHook<T>(callback: () => T) {
+  const result = { current: undefined as unknown as T };
+  function Probe() {
+    result.current = callback();
+    return null;
+  }
+  act(() => {
+    create(React.createElement(Probe));
+  });
+  return { result };
+}
 
 import { useClockIn } from "@/hooks/useClockIn";
 import { enqueue } from "@/services/submissionQueue";
 import {
-    useCreateClockRecordMutation,
-    useListMyClockRecordsQuery,
-    useUpdateClockRecordMutation,
+  useCreateClockRecordMutation,
+  useListMyClockRecordsQuery,
+  useUpdateClockRecordMutation,
 } from "@/src/state/api";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -105,6 +143,20 @@ function setupMocks({
     isLoading: false,
     refetch: jest.fn(),
   });
+  mockLazyTrigger.mockResolvedValue({
+    data: { items: historyItems, nextToken: null },
+  });
+  mockVerify.mockResolvedValue(
+    online
+      ? { status: "VERIFIED", similarity: 0.95, reason: "", selfieKey: "k" }
+      : {
+          status: "PENDING_VERIFICATION",
+          similarity: 0,
+          reason: "offline",
+          selfieKey: null,
+          localSelfieUri: "file://selfie.jpg",
+        },
+  );
   (NetInfo.fetch as jest.Mock).mockResolvedValue({
     isConnected: online,
     isInternetReachable: online,
@@ -277,7 +329,22 @@ describe("useClockIn — hours calculation", () => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("useClockIn — error handling", () => {
-  beforeEach(() => jest.clearAllMocks());
+  // clockIn logs the failure with console.error; these tests fail it on purpose. Silence it and assert on it.
+  let consoleError: jest.SpyInstance;
+  beforeEach(() => {
+    consoleError = jest.spyOn(console, "error").mockImplementation(() => {});
+    jest.clearAllMocks();
+    mockLazyTrigger.mockResolvedValue({ data: { items: [], nextToken: null } });
+    mockVerify.mockResolvedValue({
+      status: "VERIFIED",
+      similarity: 0.95,
+      reason: "",
+      selfieKey: "k",
+    });
+  });
+  afterEach(() => {
+    consoleError.mockRestore();
+  });
 
   test("sets error state when API throws", async () => {
     (useCreateClockRecordMutation as jest.Mock).mockReturnValue([
@@ -308,6 +375,10 @@ describe("useClockIn — error handling", () => {
 
     expect(result.current.error).toBe("Network error");
     expect(result.current.isClockedIn).toBe(false);
+    expect(consoleError).toHaveBeenCalledWith(
+      "[clockIn] failed:",
+      expect.objectContaining({ message: "Network error" }),
+    );
   });
 
   test("clearError resets error state", async () => {

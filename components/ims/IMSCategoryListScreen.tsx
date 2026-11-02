@@ -4,12 +4,11 @@ import { CustomScrollView } from "@/components/ui/scrollView";
 import { ListSkeleton } from "@/components/ui/skeleton";
 import { useTheme } from "@/src/contexts/theme-context";
 import {
-  useLazyListComponentsBySubcategoryQuery,
-  useLazyListSubcategoriesByCategoryQuery,
+  useInventoryCountsQuery,
   useListCategoriesQuery,
 } from "@/src/state/api";
 import { ChevronRight, Package } from "lucide-react-native";
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import {
   RefreshControl,
   StatusBar,
@@ -19,12 +18,6 @@ import {
   View,
 } from "react-native";
 
-interface CategoryWithCounts extends Category {
-  subcategoryCount: number;
-  componentCount: number;
-  lowStockCount: number;
-}
-
 export default function IMSCategoryListScreen({
   onSelectCategory,
 }: {
@@ -32,122 +25,42 @@ export default function IMSCategoryListScreen({
 }) {
   const { theme } = useTheme();
   const C = theme.colors;
+
   const {
     data: categories = [],
     isLoading: categoriesLoading,
     refetch: refetchCategories,
   } = useListCategoriesQuery();
 
-  const [getSubcategories] = useLazyListSubcategoriesByCategoryQuery();
-  const [getComponents] = useLazyListComponentsBySubcategoryQuery();
+  const {
+    data: counts,
+    isLoading: countsLoading,
+    refetch: refetchCounts,
+  } = useInventoryCountsQuery();
 
-  const [categoriesWithCounts, setCategoriesWithCounts] = useState<
-    CategoryWithCounts[]
-  >([]);
-  const [loadingCounts, setLoadingCounts] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-
-  const fetchCounts = useCallback(
-    async (cats: Category[]) => {
-      if (!cats.length) {
-        setCategoriesWithCounts([]);
-        setLoadingCounts(false);
-        return;
-      }
-      setLoadingCounts(true);
-      const enriched: CategoryWithCounts[] = [];
-
-      // Fresh from the server when online; when the request fails (offline,
-      // timeout) fall back to the persisted cache so the screen still works.
-      const freshOrCached = async <T,>(
-        fresh: () => Promise<T[] | undefined>,
-        cached: () => Promise<T[] | undefined>,
-      ): Promise<T[]> => {
-        try {
-          return (await fresh()) || [];
-        } catch {
-          try {
-            return (await cached()) || [];
-          } catch {
-            return [];
-          }
-        }
-      };
-
-      try {
-        for (const cat of cats) {
-          const subcategories = await freshOrCached(
-            () => getSubcategories(cat.id).unwrap(),
-            () => getSubcategories(cat.id, true).unwrap(),
-          );
-          const subcategoryCount = subcategories.length;
-
-          let componentCount = 0;
-          let lowStockCount = 0;
-
-          for (const sub of subcategories) {
-            const components = await freshOrCached(
-              () => getComponents(sub.id).unwrap(),
-              () => getComponents(sub.id, true).unwrap(),
-            );
-            componentCount += components.length;
-            lowStockCount += components.filter(
-              (c) => (c.currentStock ?? 0) < (c.minimumStock ?? 0),
-            ).length;
-          }
-
-          enriched.push({
-            ...cat,
-            subcategoryCount,
-            componentCount,
-            lowStockCount,
-          });
-        }
-
-        setCategoriesWithCounts(enriched);
-      } finally {
-        setLoadingCounts(false);
-      }
-    },
-    [getSubcategories, getComponents],
-  );
-
-  // Initial load or when categories change
-  useEffect(() => {
-    fetchCounts(categories);
-  }, [categories, fetchCounts]);
 
   const onRefresh = async () => {
     setRefreshing(true);
     try {
-      const result = await refetchCategories();
-      // Categories usually come back identical (RTK keeps the same reference),
-      // so the effect above won't re-run. Recount explicitly so component and
-      // low-stock numbers reflect changes made on the web.
-      await fetchCounts(result.data ?? categories);
+      await Promise.all([refetchCategories(), refetchCounts()]);
     } finally {
       setRefreshing(false);
     }
   };
 
-  const isLoading = categoriesLoading || loadingCounts;
-  const totalCategories = categoriesWithCounts.length;
-  const totalComponents = categoriesWithCounts.reduce(
-    (sum, cat) => sum + cat.componentCount,
-    0,
-  );
-  const totalLowStock = categoriesWithCounts.reduce(
-    (sum, cat) => sum + cat.lowStockCount,
-    0,
+  const countsByCategory = new Map(
+    (counts?.categories ?? []).map((c) => [c.categoryId, c]),
   );
 
-  const summaryItems = [
-    { label: "CATEGORIES", val: totalCategories, warn: false },
-    { label: "COMPONENTS", val: totalComponents, warn: false },
-    { label: "LOW STOCK", val: totalLowStock, warn: totalLowStock > 0 },
-  ];
+  const totals = counts?.totals ?? {
+    subcategoryCount: 0,
+    componentCount: 0,
+    lowStockCount: 0,
+  };
+  const countsPending = countsLoading || !counts;
 
-  if (isLoading && !refreshing) {
+  if (categoriesLoading) {
     return (
       <NonTabScreen
         title="Inventory Management"
@@ -161,6 +74,27 @@ export default function IMSCategoryListScreen({
       </NonTabScreen>
     );
   }
+
+  const summaryItems = [
+    {
+      label: "CATEGORIES",
+      val: categories.length,
+      warn: false,
+      pending: false,
+    },
+    {
+      label: "COMPONENTS",
+      val: totals.componentCount,
+      warn: false,
+      pending: countsPending,
+    },
+    {
+      label: "LOW STOCK",
+      val: totals.lowStockCount,
+      warn: totals.lowStockCount > 0,
+      pending: countsPending,
+    },
+  ];
 
   return (
     <NonTabScreen
@@ -192,7 +126,7 @@ export default function IMSCategoryListScreen({
                   { color: item.warn ? C.warning : C.text },
                 ]}
               >
-                {item.val}
+                {item.pending ? "…" : item.val}
               </Text>
               <Text style={[styles.summaryLabel, { color: C.textMuted }]}>
                 {item.label}
@@ -200,6 +134,7 @@ export default function IMSCategoryListScreen({
             </View>
           ))}
         </View>
+
         <Text
           style={[
             styles.sectionLabel,
@@ -208,51 +143,59 @@ export default function IMSCategoryListScreen({
         >
           CATEGORY SELECTION
         </Text>
-        {categoriesWithCounts.map((cat) => (
-          <TouchableOpacity
-            key={cat.id}
-            style={[
-              styles.catRow,
-              {
-                backgroundColor: C.card,
-                borderColor:
-                  cat.lowStockCount > 0 ? C.warning + "40" : C.border,
-              },
-            ]}
-            onPress={() => onSelectCategory(cat)}
-            activeOpacity={0.7}
-          >
-            <View
+
+        {categories.map((cat) => {
+          const c = countsByCategory.get(cat.id);
+          const lowStock = c?.lowStockCount ?? 0;
+          return (
+            <TouchableOpacity
+              key={cat.id}
               style={[
-                styles.catIcon,
-                { backgroundColor: C.background, borderColor: C.border },
+                styles.catRow,
+                {
+                  backgroundColor: C.card,
+                  borderColor: lowStock > 0 ? C.warning + "40" : C.border,
+                },
               ]}
+              onPress={() => onSelectCategory(cat)}
+              activeOpacity={0.7}
             >
-              <Package size={18} color={C.accent} />
-            </View>
-            <View style={styles.catInfo}>
-              <Text style={[styles.catName, { color: C.text }]}>
-                {cat.categoryName}
-              </Text>
-              <Text style={[styles.catMeta, { color: C.textMuted }]}>
-                {cat.subcategoryCount} subcategories · {cat.componentCount}{" "}
-                components
-              </Text>
-            </View>
-            <View style={styles.catRight}>
-              {cat.lowStockCount > 0 && (
-                <View
-                  style={[styles.tagWarning, { borderColor: C.warning + "40" }]}
-                >
-                  <Text style={[styles.tagText, { color: C.warning }]}>
-                    {cat.lowStockCount} low
-                  </Text>
-                </View>
-              )}
-              <ChevronRight size={16} color={C.textMuted} />
-            </View>
-          </TouchableOpacity>
-        ))}
+              <View
+                style={[
+                  styles.catIcon,
+                  { backgroundColor: C.background, borderColor: C.border },
+                ]}
+              >
+                <Package size={18} color={C.accent} />
+              </View>
+              <View style={styles.catInfo}>
+                <Text style={[styles.catName, { color: C.text }]}>
+                  {cat.categoryName}
+                </Text>
+                <Text style={[styles.catMeta, { color: C.textMuted }]}>
+                  {c
+                    ? `${c.subcategoryCount} subcategories · ${c.componentCount} components`
+                    : "Loading counts…"}
+                </Text>
+              </View>
+              <View style={styles.catRight}>
+                {lowStock > 0 && (
+                  <View
+                    style={[
+                      styles.tagWarning,
+                      { borderColor: C.warning + "40" },
+                    ]}
+                  >
+                    <Text style={[styles.tagText, { color: C.warning }]}>
+                      {lowStock} low
+                    </Text>
+                  </View>
+                )}
+                <ChevronRight size={16} color={C.textMuted} />
+              </View>
+            </TouchableOpacity>
+          );
+        })}
         <View style={{ height: 40 }} />
       </CustomScrollView>
     </NonTabScreen>

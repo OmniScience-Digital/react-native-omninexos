@@ -1,10 +1,9 @@
 // src/jobcards/api.ts
-// The real server calls for the Job Cards module (GraphQL through Amplify, and photo uploads to storage).
-// Query names are the ones the web project's data model defines (amplify/data/jobcards.models.ts).
 import { client } from "@/src/amplify";
 import { fetchUserAttributes } from "aws-amplify/auth";
 import { uploadData } from "aws-amplify/storage";
 import { normEmail } from "./people";
+import { isAlreadyExistsText } from "./serverErrors";
 import type {
   JobCardApi,
   OpenWork,
@@ -26,7 +25,6 @@ async function gql<T>(
   query: string,
   variables: Record<string, unknown>,
 ): Promise<T> {
-  // Amplify rejects (throws) on GraphQL errors; unwrap them to a plain Error with the message
   try {
     const res = (await client.graphql({
       query,
@@ -43,13 +41,39 @@ async function gql<T>(
   }
 }
 
-const isAlreadyExists = (e: unknown) =>
-  /ConditionalCheckFailed|already exists/i.test((e as Error)?.message ?? "");
+// A page from an Amplify index query. `items` may contain nulls (Amplify
+// returns them for rows the index still points at after a delete).
+interface Page<T> {
+  items: (T | null)[];
+  nextToken: string | null;
+}
 
-// ---- one person, several logins -------------------------------------------------------------------------------
-// The same person can have more than one Cognito login (email/password and Google). Work is assigned to ONE of
-// their ids, so asking only for this login's id can miss it. The office's technician list knows every login that
-// shares an email, so look that up and ask for all of them.
+/**
+ * Follow nextToken to the end, skipping null slots.
+ *
+ * The reason this exists: a `do { const d = await gql<T>(..., { nextToken }) }
+ * while (nextToken = d.nextToken)` loop creates a circular type dependency
+ * between `d` and `nextToken`, which TypeScript rejects (TS7022 "implicitly
+ * has type any because it references itself in its own initializer"). Putting
+ * the loop in a helper, where `token` is a function parameter, breaks the
+ * cycle cleanly.
+ */
+async function fetchAllPages<T>(
+  fetchPage: (token: string | null) => Promise<Page<T>>,
+): Promise<T[]> {
+  const out: T[] = [];
+  let token: string | null = null;
+  do {
+    const page = await fetchPage(token);
+    for (const item of page.items) if (item) out.push(item);
+    token = page.nextToken;
+  } while (token);
+  return out;
+}
+
+const isAlreadyExists = (e: unknown) =>
+  isAlreadyExistsText((e as Error)?.message ?? "");
+
 const TECHNICIANS = /* GraphQL */ `
   query Technicians {
     techniciansList {
@@ -60,7 +84,6 @@ const TECHNICIANS = /* GraphQL */ `
 `;
 const idCache = new Map<string, string[]>();
 
-/** This login's id plus the ids of any other login with the same email. Falls back to just this login offline. */
 export async function resolveMyIds(userSub: string): Promise<string[]> {
   const cached = idCache.get(userSub);
   if (cached) return cached;
@@ -74,7 +97,7 @@ export async function resolveMyIds(userSub: string): Promise<string[]> {
     for (const t of data.techniciansList ?? [])
       if (t && t.email?.trim().toLowerCase() === email) ids.add(t.id);
     const result = [...ids];
-    idCache.set(userSub, result); // only remembered after a successful lookup
+    idCache.set(userSub, result);
     return result;
   } catch (e) {
     console.warn(
@@ -95,7 +118,6 @@ const GET_MODULE = /* GraphQL */ `
   }
 `;
 
-/** What the server says about one piece of work: null = it no longer exists. Throws if the server cannot be reached. */
 export async function getWorkItemState(
   id: string,
 ): Promise<{ status: string; assignedTo: string | null } | null> {
@@ -106,8 +128,9 @@ export async function getWorkItemState(
   return m ? { status: m.status, assignedTo: m.assignedTo ?? null } : null;
 }
 
-// Every open job card, and every piece of work on it (pending AND finished). Anyone can open and complete any of it:
-// assigning a job card only decides who is notified, so the phone no longer asks for "my" work items.
+const sameInstant = (a?: string | null, b?: string | null): boolean =>
+  !!a && !!b && Date.parse(a) === Date.parse(b);
+
 const LIST_OPEN_JOB_CARDS = /* GraphQL */ `
   query OpenJobCards($nextToken: String) {
     jobCardsByStatus(status: OPEN, limit: 200, nextToken: $nextToken) {
@@ -127,11 +150,12 @@ const LIST_OPEN_JOB_CARDS = /* GraphQL */ `
     }
   }
 `;
-const LIST_PENDING_WORK = /* GraphQL */ `
-  query PendingWork($jobCardId: ID!, $nextToken: String) {
-    modulesByJobCard(
+
+const LIST_PENDING_MODULES = /* GraphQL */ `
+  query PendingModules($jobCardId: ID!, $nextToken: String) {
+    jobCardModulesByJobCardIdAndStatus(
       jobCardId: $jobCardId
-      filter: { status: { eq: PENDING } }
+      status: PENDING
       limit: 200
       nextToken: $nextToken
     ) {
@@ -147,38 +171,28 @@ const LIST_PENDING_WORK = /* GraphQL */ `
     }
   }
 `;
-const LIST_SUBMITTED_WORK = /* GraphQL */ `
-  query SubmittedWork($jobCardId: ID!, $nextToken: String) {
-    modulesByJobCard(
+
+const LIST_SUBMISSIONS_BY_JOB_CARD = /* GraphQL */ `
+  query SubmissionsByJobCard($jobCardId: ID!, $nextToken: String) {
+    jobCardSubmissionsByJobCardIdAndSubmittedAt(
       jobCardId: $jobCardId
-      filter: { status: { eq: SUBMITTED } }
+      sortDirection: DESC
       limit: 200
       nextToken: $nextToken
     ) {
       items {
         id
-        jobCardId
+        moduleId
         scaleId
         moduleType
-        sequence
-        addedAt
-        submittedAt
-      }
-      nextToken
-    }
-  }
-`;
-const LATEST_MODULE_RESULT = /* GraphQL */ `
-  query LatestModuleResult($moduleId: ID!) {
-    submissionsByModule(moduleId: $moduleId, sortDirection: DESC, limit: 1) {
-      items {
-        id
         submittedAt
         payload
       }
+      nextToken
     }
   }
 `;
+
 const LIST_SCALES = /* GraphQL */ `
   query ScalesOfJobCard($jobCardId: ID!, $nextToken: String) {
     scalesByJobCard(jobCardId: $jobCardId, limit: 200, nextToken: $nextToken) {
@@ -191,6 +205,7 @@ const LIST_SCALES = /* GraphQL */ `
     }
   }
 `;
+
 const GET_JOB_CARD = /* GraphQL */ `
   query GetJobCard($id: ID!) {
     getJobCard(id: $id) {
@@ -207,6 +222,7 @@ const GET_JOB_CARD = /* GraphQL */ `
     }
   }
 `;
+
 const GET_SCALE = /* GraphQL */ `
   query GetScale($id: ID!) {
     getJobCardScale(id: $id) {
@@ -216,6 +232,7 @@ const GET_SCALE = /* GraphQL */ `
     }
   }
 `;
+
 const LATEST_SUBMISSION = /* GraphQL */ `
   query LatestSubmission($key: String!) {
     submissionsByScaleType(scaleTypeKey: $key, sortDirection: DESC, limit: 1) {
@@ -228,6 +245,7 @@ const LATEST_SUBMISSION = /* GraphQL */ `
     }
   }
 `;
+
 const UPDATE_MODULE = /* GraphQL */ `
   mutation UpdateModule($input: UpdateJobCardModuleInput!) {
     updateJobCardModule(input: $input) {
@@ -313,143 +331,143 @@ const parseJson = (v: unknown): Record<string, unknown> => {
   }
 };
 
+// Row shapes returned by the paginated queries. Kept here so the lambdas that
+// call gql<T> never need to reference the outer nextToken — that's what TS7022
+// was flagging.
+type JobCardRow = OpenWork["jobCards"][number];
+type ScaleRow = OpenWork["scales"][number];
+type PendingModuleRow = {
+  id: string;
+  jobCardId: string;
+  scaleId: string;
+  moduleType: WorkItemType;
+  sequence: number;
+  addedAt?: string | null;
+};
+type SubmissionRow = {
+  id: string;
+  moduleId: string;
+  scaleId: string;
+  moduleType: WorkItemType;
+  submittedAt: string;
+  payload: unknown;
+};
+type TimeEntryRow = {
+  id: string;
+  userId: string;
+  userName?: string | null;
+  userEmail?: string | null;
+  startedAt?: string | null;
+  minutes?: number | null;
+  endedAt?: string | null;
+  lastActiveAt?: string | null;
+  startReason?: string | null;
+};
+
 export const jobCardApi: JobCardApi = {
-  /**
-   * Every open job card, its scales, the work still pending on it, and ALL its finished work (regardless of age:
-   * finished work on an open job card stays editable as a revision). A job card whose work could not be read in full
-   * is reported in incompleteJobCardIds, so the phone keeps what it already has for it.
-   */
-  async listOpenWork(): Promise<OpenWork> {
-    const jobCards: OpenWork["jobCards"] = [];
-    let nextToken: string | null = null;
-    do {
-      const data: {
-        jobCardsByStatus: {
-          items: (OpenWork["jobCards"][number] | null)[];
-          nextToken: string | null;
-        };
-      } = await gql(LIST_OPEN_JOB_CARDS, { nextToken });
-      for (const j of data.jobCardsByStatus.items) if (j) jobCards.push(j);
-      nextToken = data.jobCardsByStatus.nextToken;
-    } while (nextToken);
+  async listOpenWork(known?: Record<string, string>): Promise<OpenWork> {
+    const jobCards = await fetchAllPages<JobCardRow>(async (token) => {
+      const d = await gql<{ jobCardsByStatus: Page<JobCardRow> }>(
+        LIST_OPEN_JOB_CARDS,
+        { nextToken: token },
+      );
+      return d.jobCardsByStatus;
+    });
 
     const scales: OpenWork["scales"] = [];
     const items: ServerWorkItem[] = [];
     const doneItems: ServerDoneItem[] = [];
     const incompleteJobCardIds: string[] = [];
+
     for (let i = 0; i < jobCards.length; i += 4) {
       await Promise.all(
         jobCards.slice(i, i + 4).map(async (j) => {
           try {
-            const myScales: OpenWork["scales"] = [];
-            const myItems: ServerWorkItem[] = [];
-            let t: string | null = null;
-            do {
-              const d: {
-                scalesByJobCard: {
-                  items: (OpenWork["scales"][number] | null)[];
-                  nextToken: string | null;
-                };
-              } = await gql(LIST_SCALES, { jobCardId: j.id, nextToken: t });
-              for (const sc of d.scalesByJobCard.items)
-                if (sc) myScales.push(sc);
-              t = d.scalesByJobCard.nextToken;
-            } while (t);
-            do {
-              const d: {
-                modulesByJobCard: {
-                  items: (
-                    | (ServerWorkItem & { addedAt?: string | null })
-                    | null
-                  )[];
-                  nextToken: string | null;
-                };
-              } = await gql(LIST_PENDING_WORK, {
-                jobCardId: j.id,
-                nextToken: t,
-              });
-              for (const m of d.modulesByJobCard.items)
-                if (m)
-                  myItems.push({
-                    id: m.id,
-                    jobCardId: m.jobCardId,
-                    scaleId: m.scaleId,
-                    moduleType: m.moduleType,
-                    sequence: m.sequence ?? 0,
-                    assignedAt: m.addedAt ?? null,
-                  });
-              t = d.modulesByJobCard.nextToken;
-            } while (t);
+            // ---- scales ----
+            const myScales = await fetchAllPages<ScaleRow>(async (token) => {
+              const d = await gql<{ scalesByJobCard: Page<ScaleRow> }>(
+                LIST_SCALES,
+                { jobCardId: j.id, nextToken: token },
+              );
+              return d.scalesByJobCard;
+            });
 
-            // Finished work is read separately. If it fails, the pending work above still comes through, AND the
-            // job card is reported incomplete: applyPull then leaves every local copy of its work alone (so a
-            // submitted item the phone already had is never deleted just because this one request failed).
+            // ---- pending modules (new GSI) ----
+            const pendingRows = await fetchAllPages<PendingModuleRow>(
+              async (token) => {
+                const d = await gql<{
+                  jobCardModulesByJobCardIdAndStatus: Page<PendingModuleRow>;
+                }>(LIST_PENDING_MODULES, {
+                  jobCardId: j.id,
+                  nextToken: token,
+                });
+                return d.jobCardModulesByJobCardIdAndStatus;
+              },
+            );
+            const myItems: ServerWorkItem[] = pendingRows.map((m) => ({
+              id: m.id,
+              jobCardId: m.jobCardId,
+              scaleId: m.scaleId,
+              moduleType: m.moduleType,
+              sequence: m.sequence ?? 0,
+              assignedAt: m.addedAt ?? null,
+            }));
+
+            // ---- finished work (bulk, one chain) ----
             const myDone: ServerDoneItem[] = [];
             let doneFailed = false;
             try {
-              const submitted: (ServerWorkItem & {
-                submittedAt?: string | null;
-              })[] = [];
-              t = null;
-              do {
-                const d: {
-                  modulesByJobCard: {
-                    items: (
-                      | (ServerWorkItem & {
-                          addedAt?: string | null;
-                          submittedAt?: string | null;
-                        })
-                      | null
-                    )[];
-                    nextToken: string | null;
-                  };
-                } = await gql(LIST_SUBMITTED_WORK, {
-                  jobCardId: j.id,
-                  nextToken: t,
+              const submissionRows = await fetchAllPages<SubmissionRow>(
+                async (token) => {
+                  const d = await gql<{
+                    jobCardSubmissionsByJobCardIdAndSubmittedAt: Page<SubmissionRow>;
+                  }>(LIST_SUBMISSIONS_BY_JOB_CARD, {
+                    jobCardId: j.id,
+                    nextToken: token,
+                  });
+                  return d.jobCardSubmissionsByJobCardIdAndSubmittedAt;
+                },
+              );
+              // Latest submission per moduleId — submissions come DESC.
+              const latestByModule = new Map<
+                string,
+                {
+                  submissionId: string;
+                  scaleId: string;
+                  moduleType: WorkItemType;
+                  submittedAt: string;
+                  payload: Record<string, unknown>;
+                }
+              >();
+              for (const s of submissionRows) {
+                if (latestByModule.has(s.moduleId)) continue;
+                latestByModule.set(s.moduleId, {
+                  submissionId: s.id,
+                  scaleId: s.scaleId,
+                  moduleType: s.moduleType,
+                  submittedAt: s.submittedAt,
+                  payload: parseJson(s.payload),
                 });
-                for (const m of d.modulesByJobCard.items)
-                  if (m)
-                    submitted.push({
-                      id: m.id,
-                      jobCardId: m.jobCardId,
-                      scaleId: m.scaleId,
-                      moduleType: m.moduleType,
-                      sequence: m.sequence ?? 0,
-                      assignedAt: m.addedAt ?? null,
-                      submittedAt: m.submittedAt ?? null,
-                    });
-                t = d.modulesByJobCard.nextToken;
-              } while (t);
-              // the latest saved result of each piece, a few at a time
-              for (let k = 0; k < submitted.length; k += 5) {
-                await Promise.all(
-                  submitted.slice(k, k + 5).map(async (s) => {
-                    const r: {
-                      submissionsByModule: {
-                        items: ({
-                          id: string;
-                          submittedAt: string;
-                          payload: unknown;
-                        } | null)[];
-                      };
-                    } = await gql(LATEST_MODULE_RESULT, { moduleId: s.id });
-                    const latest = r.submissionsByModule.items[0];
-                    const payload = latest ? parseJson(latest.payload) : null;
-                    if (latest && payload)
-                      myDone.push({
-                        ...s,
-                        submittedAt: latest.submittedAt,
-                        submissionId: latest.id,
-                        payload,
-                      });
-                  }),
-                );
+              }
+              for (const [moduleId, latest] of latestByModule) {
+                if (sameInstant(known?.[moduleId], latest.submittedAt))
+                  continue;
+                myDone.push({
+                  id: moduleId,
+                  jobCardId: j.id,
+                  scaleId: latest.scaleId,
+                  moduleType: latest.moduleType,
+                  sequence: Number(latest.payload.sequence ?? 0),
+                  assignedAt: null,
+                  submittedAt: latest.submittedAt,
+                  submissionId: latest.submissionId,
+                  payload: latest.payload,
+                });
               }
             } catch (e) {
-              myDone.length = 0;
               doneFailed = true;
               console.warn(
-                "[jobcards] could not read the finished work of job card",
+                "[jobcards] could not read submissions of job card",
                 j.id,
                 e,
               );
@@ -458,9 +476,6 @@ export const jobCardApi: JobCardApi = {
             scales.push(...myScales);
             items.push(...myItems);
             doneItems.push(...myDone);
-            // If any finished work could not be read, mark the job card incomplete so applyPull keeps every local
-            // row for it untouched. This is the difference between "keep what the phone already had" and "silently
-            // delete a submitted result because one request failed".
             if (doneFailed) incompleteJobCardIds.push(j.id);
           } catch {
             incompleteJobCardIds.push(j.id);
@@ -472,31 +487,16 @@ export const jobCardApi: JobCardApi = {
   },
 
   async getJobCard(id) {
-    const d = await gql<{
-      getJobCard: {
-        id: string;
-        jcNumber: string;
-        customerName?: string;
-        title?: string;
-        status: string;
-        closedAt?: string | null;
-        assignedTo?: string | null;
-        assignedToName?: string | null;
-        assignedToEmail?: string | null;
-        assignedAt?: string | null;
-      } | null;
-    }>(GET_JOB_CARD, { id });
+    const d = await gql<{ getJobCard: JobCardRow | null }>(GET_JOB_CARD, {
+      id,
+    });
     return d.getJobCard;
   },
 
   async getScale(id) {
-    const d = await gql<{
-      getJobCardScale: {
-        id: string;
-        jobCardId: string;
-        scaleName: string;
-      } | null;
-    }>(GET_SCALE, { id });
+    const d = await gql<{ getJobCardScale: ScaleRow | null }>(GET_SCALE, {
+      id,
+    });
     return d.getJobCardScale;
   },
 
@@ -545,54 +545,26 @@ export const jobCardApi: JobCardApi = {
           submittedAt: a.submittedAt,
           schemaVersion: 1,
           payload: JSON.stringify(a.payload),
-          // The backend worker finds new results through this field, then sends them to ClickUp and Telegram.
           deliveryState: "PENDING",
         },
       });
     } catch (e) {
-      if (!isAlreadyExists(e)) throw e; // the same result was already saved by an earlier try
+      if (!isAlreadyExists(e)) throw e;
     }
   },
 
   async listTimeEntries(jobCardId) {
-    const out: {
-      id: string;
-      userId: string;
-      userName?: string | null;
-      userEmail?: string | null;
-      startedAt?: string | null;
-      minutes?: number | null;
-      endedAt?: string | null;
-      lastActiveAt?: string | null;
-      startReason?: string | null;
-    }[] = [];
-    let nextToken: string | null = null;
-    do {
-      const data: {
-        timeEntriesByJobCard: {
-          items: {
-            id: string;
-            userId: string;
-            userName?: string | null;
-            userEmail?: string | null;
-            startedAt?: string | null;
-            minutes?: number | null;
-            endedAt?: string | null;
-            lastActiveAt?: string | null;
-            startReason?: string | null;
-          }[];
-          nextToken: string | null;
-        };
-      } = await gql(LIST_TIME_ENTRIES, { jobCardId, nextToken });
-      out.push(...data.timeEntriesByJobCard.items.filter(Boolean));
-      nextToken = data.timeEntriesByJobCard.nextToken;
-    } while (nextToken);
-    return out;
+    return fetchAllPages<TimeEntryRow>(async (token) => {
+      const data = await gql<{ timeEntriesByJobCard: Page<TimeEntryRow> }>(
+        LIST_TIME_ENTRIES,
+        { jobCardId, nextToken: token },
+      );
+      return data.timeEntriesByJobCard;
+    });
   },
 
   async closeTimeEntry(a) {
     try {
-      // The web may already have closed this entry: the server's stop wins only when it is the real finish of the work
       const cur = (
         await gql<{
           getJobCardTimeEntry: {
@@ -601,7 +573,7 @@ export const jobCardApi: JobCardApi = {
           } | null;
         }>(GET_TIME_ENTRY, { id: a.id })
       ).getJobCardTimeEntry;
-      if (!cur) return; // the entry is gone: nothing left to do
+      if (!cur) return;
       const endedAt = resolveEnd({
         startedAt: a.startedAt,
         phoneEnd: a.endedAt,
@@ -623,12 +595,10 @@ export const jobCardApi: JobCardApi = {
               (Date.parse(endedAt) - Date.parse(a.startedAt)) / 60_000,
             ),
           ),
-          // keep the reason the work finished for; otherwise the person simply left
           ...(finishedByWork ? {} : { endReason: "SESSION_ENDED" }),
         },
       });
     } catch (e) {
-      // the entry is gone, or the server already closed it: nothing left to do
       if (
         !/ConditionalCheckFailed|does not exist|not found/i.test(
           String((e as Error)?.message ?? e),
@@ -642,7 +612,7 @@ export const jobCardApi: JobCardApi = {
     try {
       await gql(CLOSE_TIME_ENTRY, { input: { id: a.id, lastActiveAt: a.at } });
     } catch {
-      /* not sent yet, or already closed: the heartbeat is best effort */
+      /* best effort */
     }
   },
 
@@ -657,7 +627,6 @@ export const jobCardApi: JobCardApi = {
           userEmail: normEmail(a.userEmail),
           startedAt: a.startedAt,
           lastActiveAt: a.startedAt,
-          // a technician entering the job card (the same reason the web app uses, so the web can close it if it goes quiet)
           startReason: "JOB_CARD_OPENED",
         },
       });
@@ -677,7 +646,7 @@ export const jobCardApi: JobCardApi = {
         },
       });
     } catch (e) {
-      if (!isAlreadyExists(e)) throw e; // the scale was already created by an earlier try
+      if (!isAlreadyExists(e)) throw e;
     }
   },
 
@@ -693,11 +662,10 @@ export const jobCardApi: JobCardApi = {
           sequence: a.sequence,
           addedBy: a.addedBy,
           addedAt: a.addedAt,
-          // not assigned to anyone: the job card is what gets assigned, and everyone can work on every item
         },
       });
     } catch (e) {
-      if (!isAlreadyExists(e)) throw e; // the work item was already created by an earlier try
+      if (!isAlreadyExists(e)) throw e;
     }
   },
 

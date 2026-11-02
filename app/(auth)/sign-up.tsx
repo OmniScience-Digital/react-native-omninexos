@@ -1,3 +1,9 @@
+// react-native-omninexos/app/(auth)/sign-up.tsx  (MODIFIED - AUTH-FIX)
+//
+// Account creation + email verification code screen (company emails only).
+// Changes (search "AUTH-FIX"): email is trimmed + lowercased once (normalizedEmail) and
+// used for the domain check, signUp() username/attribute, and the pending-verification
+// email, so the stored username is always lowercase and matches sign-in/forgot-password.
 import { ThemedText } from "@/components/screens/screen";
 import { useAuthInputStyle } from "@/hooks/useAuthInputStyle";
 import { useTheme } from "@/src/contexts/theme-context";
@@ -33,12 +39,15 @@ const SignUp = () => {
   const [verificationError, setVerificationError] = useState("");
   const [pendingEmail, setPendingEmail] = useState("");
 
+  // AUTH-FIX: clean the email once; used for validation, signUp() and verification
+  const normalizedEmail = emailAddress.trim().toLowerCase();
+
   // Domain validation (company emails only)
   const emailValid = (() => {
     if (!emailAddress) return true;
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(emailAddress)) return false;
-    const domain = emailAddress.split("@")[1];
+    if (!emailRegex.test(normalizedEmail)) return false;
+    const domain = normalizedEmail.split("@")[1];
     return (
       domain?.includes("omniscience") ||
       domain?.includes("mass") ||
@@ -69,11 +78,11 @@ const SignUp = () => {
 
     try {
       const { isSignUpComplete, nextStep } = await signUp({
-        username: emailAddress,
+        username: normalizedEmail, // AUTH-FIX
         password,
         options: {
           userAttributes: {
-            email: emailAddress,
+            email: normalizedEmail, // AUTH-FIX
             preferred_username: fullName,
           },
           autoSignIn: true,
@@ -84,7 +93,7 @@ const SignUp = () => {
         // Already confirmed? shouldn't happen with email verification enabled
         router.replace("/(auth)/sign-in");
       } else {
-        setPendingEmail(emailAddress);
+        setPendingEmail(normalizedEmail); // AUTH-FIX
         setShowVerification(true);
       }
     } catch (error: any) {
@@ -190,7 +199,7 @@ const SignUp = () => {
           >
             {!emailAddress
               ? "Email is required"
-              : !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailAddress)
+              : !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)
                 ? "Please enter a valid email address"
                 : "Only company emails (omniscience, mass, sb-plant.com) are accepted"}
           </ThemedText>

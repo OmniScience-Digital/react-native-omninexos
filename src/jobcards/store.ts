@@ -934,6 +934,48 @@ export class JobCardStore {
   }
 
   /**
+   * Close outbox rows nobody can see or fix any more: their job card is no longer on this phone (the office closed
+   * it, so closeJobCard removed the card and its work) AND they have already failed at least `minAttempts` times.
+   * Without this they sit in the outbox and retry every hour for ever. A row that is still within its first tries
+   * is left alone, so a send that is merely slow is not cut short. Rows are marked done with a reason, not deleted;
+   * pruneDone removes them after 7 days.
+   */
+  async closeOrphanedRows(
+    nowIso: string,
+    minAttempts: number,
+  ): Promise<number> {
+    const stale = await this.db.all<{ id: string }>(
+      `SELECT o.id FROM jc_outbox o
+        WHERE o.status IN ('pending','syncing','blocked')
+          AND o.attempts >= ?
+          AND NOT EXISTS (SELECT 1 FROM jc_jobcards j WHERE j.id = o.job_card_id)`,
+      [minAttempts],
+    );
+    if (stale.length) {
+      await this.db.run(
+        `UPDATE jc_outbox
+            SET status = 'done', next_attempt_at = NULL,
+                last_error = 'Closed: its job card is no longer on this phone (' || COALESCE(last_error, 'no error recorded') || ')',
+                updated_at = ?
+          WHERE id IN (${stale.map(() => "?").join(",")})`,
+        [nowIso, ...stale.map((r) => r.id)],
+      );
+    }
+    return stale.length;
+  }
+
+  /** work item id -> submittedAt of the server result this phone already holds for it. */
+  async knownRemoteResults(): Promise<Record<string, string>> {
+    const rows = await this.db.all<{
+      work_item_id: string;
+      submitted_at: string;
+    }>("SELECT work_item_id, submitted_at FROM jc_remote_results");
+    const out: Record<string, string> = {};
+    for (const r of rows) out[r.work_item_id] = r.submitted_at;
+    return out;
+  }
+
+  /**
    * How many results THIS technician has still to send: the work items that read "Waiting to send" on the job card.
    * It reads the work item's own state (the same thing the label reads), not the outbox, so the number on the home
    * card can never disagree with the labels inside the job cards.

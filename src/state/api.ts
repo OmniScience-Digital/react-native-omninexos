@@ -9,7 +9,6 @@ import {
   UPDATE_CLOCK_RECORD,
 } from "./graphql/clockRecordQueries";
 import {
-  COUNT_INSPECTIONS,
   CREATE_FLEET,
   CREATE_HISTORY,
   CREATE_INSPECTION,
@@ -18,6 +17,7 @@ import {
   DELETE_FLEET,
   GetInspectionsByFleetArgs,
   INSPECTIONS_BY_FLEET_AND_NUMBER,
+  INVENTORY_COUNTS,
   LIST_CATEGORIES,
   LIST_COMPONENTS_BY_SUBCATEGORY,
   LIST_COMPONENTS_BY_SUBCATEGORY_PAGINATED,
@@ -87,6 +87,21 @@ export interface ListClockRecordsResult {
   nextToken: string | null;
 }
 
+export interface InventoryCountsCategory {
+  categoryId: string;
+  subcategoryCount: number;
+  componentCount: number;
+  lowStockCount: number;
+}
+export interface InventoryCounts {
+  categories: InventoryCountsCategory[];
+  totals: {
+    subcategoryCount: number;
+    componentCount: number;
+    lowStockCount: number;
+  };
+  cachedAt: string;
+}
 // ── Network error helper ──────────────────────────────────────────────────────
 // Returns FETCH_ERROR for connectivity failures so:
 //   1. The error middleware skips the modal
@@ -171,7 +186,6 @@ export const api = createApi({
   tagTypes: [
     "Fleet",
     "Inspection",
-    "InspectionCount",
     "Categories",
     "Subcategories",
     "Components",
@@ -303,38 +317,6 @@ export const api = createApi({
       },
     ),
 
-    // The actual total number of inspections across the whole fleet, ever —
-    // NOT the same thing as the highest per-vehicle inspection number, which
-    // is what Home used to (wrongly) display as "Total Inspections". Each
-    // vehicle numbers its own inspections 1, 2, 3... independently, so the
-    // highest number seen says nothing about how many inspections actually
-    // exist. This counts real rows, paginating through all of them (minimal
-    // `id`-only payload per page — see COUNT_INSPECTIONS) so a fleet with
-    // more inspections than one page doesn't undercount.
-    getTotalInspectionCount: build.query<number, void>({
-      queryFn: async () => {
-        try {
-          let count = 0;
-          let nextToken: string | null | undefined;
-          let pages = 0;
-          do {
-            const { data, errors } = (await gql({
-              query: COUNT_INSPECTIONS,
-              variables: { nextToken },
-              authMode: "userPool",
-            })) as any;
-            if (errors) return { error: errors[0].message };
-            count += data.listInspections.items.length;
-            nextToken = data.listInspections.nextToken;
-          } while (nextToken && ++pages < 200); // 200 * 1000 = plenty of headroom
-          return { data: count };
-        } catch (e: any) {
-          return netAwareError(e);
-        }
-      },
-      providesTags: ["InspectionCount"],
-    }),
-
     createInspection: build.mutation<
       Pick<Inspection, "id" | "fleetid" | "inspectionNo">,
       CreateInspectionArgs
@@ -354,7 +336,6 @@ export const api = createApi({
       },
       invalidatesTags: (_result, _error, arg) => [
         { type: "Inspection", id: arg.input.fleetid },
-        "InspectionCount",
       ],
     }),
 
@@ -519,6 +500,22 @@ export const api = createApi({
         { type: "Components", id: subcategoryId },
       ],
     }),
+    inventoryCounts: build.query<InventoryCounts, void>({
+      queryFn: async () => {
+        try {
+          const { data, errors } = (await gql({
+            query: INVENTORY_COUNTS,
+            authMode: "userPool",
+          })) as any;
+          if (errors) return { error: errors[0].message };
+          return { data: data.inventoryCounts as InventoryCounts };
+        } catch (e: any) {
+          return netAwareError(e);
+        }
+      },
+      // Any component/subcategory/category change invalidates the cached counts.
+      providesTags: ["Categories", "Subcategories", "Components"],
+    }),
 
     deleteComponent: build.mutation<{ id: string }, string>({
       queryFn: async (id) => {
@@ -616,8 +613,8 @@ export const api = createApi({
           if (errors) throw new Error(errors[0].message);
           return {
             data: {
-              items: data.listClockRecords.items as ClockRecord[],
-              nextToken: data.listClockRecords.nextToken ?? null,
+              items: data.clockRecordsByUserAndTime.items as ClockRecord[],
+              nextToken: data.clockRecordsByUserAndTime.nextToken ?? null,
             },
           };
         } catch (e: any) {
@@ -652,7 +649,6 @@ export const {
   useListFleetsQuery,
   useGetInspectionsByFleetQuery,
   useLazyGetInspectionsByFleetQuery,
-  useGetTotalInspectionCountQuery,
   useCreateInspectionMutation,
   useUpdateFleetKmMutation,
   useCreateFleetMutation,
@@ -677,4 +673,6 @@ export const {
   useLazyListMyClockRecordsQuery,
   useGetClockRecordQuery,
   useLazyGetClockRecordQuery,
+  useInventoryCountsQuery,
+  useLazyInventoryCountsQuery,
 } = api;

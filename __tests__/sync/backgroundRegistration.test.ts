@@ -47,14 +47,21 @@ jest.mock("@/src/jobcards/sqliteDriver", () => ({
 jest.mock("@/src/jobcards/people", () => ({ normEmail: (s: any) => s }));
 
 import {
-    registerJobCardBackgroundSync,
-    unregisterJobCardBackgroundSync,
+  registerJobCardBackgroundSync,
+  unregisterJobCardBackgroundSync,
 } from "@/src/jobcards/background";
 import { getRegistration } from "@/src/sync/backgroundLog";
 
+// The code under test logs a warning when a registration fails; one test fails it on purpose. Silence it here and
+// assert on it where it is expected, so any other warning still shows.
+let warn: jest.SpyInstance;
 beforeEach(() => {
+  warn = jest.spyOn(console, "warn").mockImplementation(() => {});
   mockRegistered.value = true; // registered from a previous launch
   for (const k of Object.keys(mockStore)) delete mockStore[k];
+});
+afterEach(() => {
+  warn.mockRestore();
 });
 
 test("unregister then register back to back ends registered", async () => {
@@ -78,4 +85,8 @@ test("a register that throws is recorded with its error", async () => {
     registered: false,
     error: "no worker",
   });
+  expect(warn).toHaveBeenCalledWith(
+    expect.stringContaining("could not register background sync"),
+    expect.objectContaining({ message: "no worker" }),
+  );
 });

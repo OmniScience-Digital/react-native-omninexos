@@ -18,6 +18,7 @@ jest.mock("lucide-react-native", () => ({
   Settings: "SettingsIcon",
   Menu: "MenuIcon",
   ChevronRight: "ChevronRightIcon",
+  LogOut: "LogOutIcon", // the menu's logout row uses this icon; without it the component renders undefined
 }));
 jest.mock("@/src/contexts/auth-context", () => ({
   useAuth: () => ({

@@ -16,11 +16,28 @@ jest.mock("../../src/amplify", () => ({
 }));
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-const makeStore = () =>
+// RTK Query schedules timers per store (a 500ms subscription sync, cache expiry) that resetApiState does not cancel,
+// so they used to fire after the suite was torn down and keep Jest from exiting. These tests only await promises, which
+// fake timers leave alone, so the timers are faked and cleared after every test. Every store is also reset.
+jest.useFakeTimers();
+const stores: ReturnType<typeof createStore>[] = [];
+const createStore = () =>
   configureStore({
     reducer: { [api.reducerPath]: api.reducer },
     middleware: (gDM) => gDM().concat(api.middleware),
   });
+const makeStore = () => {
+  const store = createStore();
+  stores.push(store);
+  return store;
+};
+afterEach(() => {
+  while (stores.length) stores.pop()!.dispatch(api.util.resetApiState());
+  jest.clearAllTimers();
+});
+afterAll(() => {
+  jest.useRealTimers();
+});
 
 const MOCK_RECORD = {
   id: "cr_test_001",
@@ -102,7 +119,9 @@ describe("Attendance API — createClockRecord", () => {
     );
 
     expect(result.error).toBeDefined();
-    expect((result as any).error).toMatch(/Unauthorized/);
+    // RTK Query wraps a returned error as { status: "CUSTOM_ERROR", error: "<message>" }
+    const err = (result as any).error;
+    expect(typeof err === "string" ? err : err?.error).toMatch(/Unauthorized/);
   });
 
   test("marks syncedOffline true when flagged", async () => {
@@ -185,7 +204,7 @@ describe("Attendance API — listMyClockRecords", () => {
   test("returns paginated list for the user", async () => {
     mockGraphql.mockResolvedValueOnce({
       data: {
-        listClockRecords: {
+        clockRecordsByUserAndTime: {
           items: [MOCK_UPDATED, MOCK_RECORD],
           nextToken: null,
         },
@@ -207,7 +226,7 @@ describe("Attendance API — listMyClockRecords", () => {
 
   test("returns empty array when user has no records", async () => {
     mockGraphql.mockResolvedValueOnce({
-      data: { listClockRecords: { items: [], nextToken: null } },
+      data: { clockRecordsByUserAndTime: { items: [], nextToken: null } },
     });
 
     const store = makeStore();

@@ -22,7 +22,14 @@ export type PrepareResult =
   | { ok: true; id: string; payload: SubmitResultPayload; submittedAt: string };
 
 export function prepareSubmission(args: {
-  item: { id: string; scaleId: string; moduleType: WorkItemType };
+  // sequence included so the result payload carries it — the server writes it
+  // on the submission, and the pull side reads it back to render "Zero #2".
+  item: {
+    id: string;
+    scaleId: string;
+    moduleType: WorkItemType;
+    sequence: number;
+  };
   form: InspectionForm | ZeroForm | SpanForm;
   baseline:
     | { latestZero: string | null; latestSpan: string | null }
@@ -55,6 +62,7 @@ export function prepareSubmission(args: {
       submittedAt: args.nowIso,
       submittedBy: args.userSub,
       result: {
+        sequence: item.sequence,
         ...buildResult(item.moduleType, form, baseline),
         ...(args.userName ? { submittedByName: args.userName } : {}),
         ...(args.edit

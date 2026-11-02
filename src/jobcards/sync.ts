@@ -1,14 +1,12 @@
 // src/jobcards/sync.ts
 // Moves work between the phone and the server.
-//   PULL: download every OPEN job card and its full work set (pending AND finished) into the phone's store.
-//         Anyone can open and complete any of it; assigning a job card only decides who is notified.
-//         Finished work on an open job card is stored with its saved form so it can be corrected (and re-sent as
-//         a revision), regardless of how old it is: an open job card's done work is never dropped.
+//   PULL: download every OPEN job card and its work set into the phone's store.
 //   PUSH: send what was finished offline: photos first, then the work item's status, then the result.
 // Every step is safe to repeat, so a lost connection or a closed app at any moment just means "try again later".
 import { normEmail } from "./people";
 import { formFromResult, isRemotePhoto, remoteKeyOf } from "./remote";
 import { computeBaseline } from "./rules";
+import { isConditionalFailure } from "./serverErrors";
 import type { JobCardStore, PullData } from "./store";
 import type {
   AddScalePayload,
@@ -63,29 +61,22 @@ export interface ServerTimeEntry {
   startReason?: string | null;
 }
 
-/** Finished work on an open job card, with the result it was saved with. Kept on the phone so it can be edited. */
 export interface ServerDoneItem extends ServerWorkItem {
   submittedAt: string;
-  /** The latest saved result of this work item */
   submissionId: string;
   payload: Record<string, unknown>;
 }
 
-/** Everything the phone needs to show the open job cards. */
 export interface OpenWork {
   jobCards: ServerJobCard[];
   scales: ServerScale[];
-  /** Work still to do, on every open job card */
   items: ServerWorkItem[];
-  /** Finished work of every open job card (never time-filtered: it stays editable as a revision) */
   doneItems: ServerDoneItem[];
-  /** Job cards whose work could not be read this time: the phone keeps what it has for them */
   incompleteJobCardIds: string[];
 }
 
-/** The calls the sync engine needs. The real ones are in api.ts; tests use a fake. */
 export interface JobCardApi {
-  listOpenWork(): Promise<OpenWork>;
+  listOpenWork(known?: Record<string, string>): Promise<OpenWork>;
   getJobCard(id: string): Promise<ServerJobCard | null>;
   getScale(id: string): Promise<ServerScale | null>;
   latestSubmission(
@@ -148,16 +139,13 @@ export class PermanentError extends Error {
 }
 
 // ------------------------------------------------------------------------ retry
-/** After the Nth failure wait: 15s, 1m, 4m, 10m, 30m, then an hour between tries. */
 export function retryDelayMs(failures: number): number {
   const steps = [15_000, 60_000, 240_000, 600_000, 1_800_000];
   return failures >= 1 && failures <= steps.length
     ? steps[failures - 1]
     : 3_600_000;
 }
-/** After this many failed tries a row is set aside for attention instead of being retried forever. */
 export const MAX_ATTEMPTS_BEFORE_BLOCK = 12;
-/** A row blocked because it reached MAX_ATTEMPTS is retried again after this long. */
 export const BLOCKED_RETRY_MS = 3_600_000;
 
 const errorText = (e: unknown): string => {
@@ -185,13 +173,17 @@ const inChunks = async <T>(
     await Promise.all(list.slice(i, i + size).map(fn));
 };
 
+/** How long a stored baseline is trusted before the 3 latestSubmission lookups are made again. */
+const BASELINE_FRESH_MS = 60 * 60_000;
+
 export async function pullOpenWork(
   store: JobCardStore,
   api: JobCardApi,
   userSub: string,
   now: Date,
 ): Promise<PullSummary> {
-  const open = await api.listOpenWork();
+  const known = await store.knownRemoteResults().catch(() => ({}));
+  const open = await api.listOpenWork(known);
   const { items } = open;
 
   let failed = open.incompleteJobCardIds.length;
@@ -207,8 +199,25 @@ export async function pullOpenWork(
         .map((i) => i.scaleId),
     ),
   ];
+  const nowMs = now.getTime();
   await inChunks(spanScales, 3, async (scaleId) => {
     try {
+      // R1: reuse a stored baseline when it is still fresh — the 3 lookups
+      // (zero / span / inspection) only change when a new submission lands on
+      // the scale, so refetching them on every sync is wasted bandwidth.
+      //
+      // When we DO reuse, we do NOT push the entry into `baselines`. If we
+      // did, applyPull would bump `updated_at` to nowIso on every sync — the
+      // window would reset forever and the baseline would never refetch even
+      // when a new submission changed it. Leaving it out keeps updated_at at
+      // the real fetch time, so the 1h window closes correctly.
+      const existing = await store.getBaseline(scaleId);
+      if (
+        existing?.updatedAt &&
+        nowMs - Date.parse(existing.updatedAt) < BASELINE_FRESH_MS
+      ) {
+        return;
+      }
       const [zero, span, inspection] = await Promise.all([
         api.latestSubmission(scaleId, "ZERO_CALIBRATION"),
         api.latestSubmission(scaleId, "SPAN_CALIBRATION"),
@@ -352,7 +361,7 @@ async function sendResult(
       submittedBy: p.submittedBy,
     });
   } catch (e) {
-    if (/ConditionalCheckFailed/i.test(errorText(e))) {
+    if (isConditionalFailure(errorText(e))) {
       throw new PermanentError(
         "This work item was removed on the server, so the result could not be attached. It is kept on this phone.",
       );
@@ -487,6 +496,18 @@ export interface SyncDeps {
   now: () => Date;
   isOnline: () => Promise<boolean>;
   cleanupFiles?: (uris: string[]) => Promise<void>;
+  /**
+   * The job card the technician is currently viewing, if any.
+   *
+   * R2: refreshTimeCache only runs for this one card. Time entries from other
+   * people only matter while the technician is looking at a card; on the list
+   * screen (or during a background wake, when there is no UI) the totals stay
+   * as they were last refreshed.
+   *
+   * Returning null means "not on a card": skip the cache refresh entirely.
+   * That is the common case in a background wake and on the home screen.
+   */
+  foregroundJobCardId?: () => string | null;
 }
 export interface SyncSummary {
   offline: boolean;
@@ -495,72 +516,47 @@ export interface SyncSummary {
   pullError?: string;
 }
 
-async function refreshFinishedJobCards(
-  deps: SyncDeps,
-  userSub: string,
-): Promise<void> {
-  try {
-    const nowIso = deps.now().toISOString();
-    for (const id of await deps.store.jobCardIdsToRefresh(userSub)) {
-      try {
-        const j = await deps.api.getJobCard(id);
-        if (j) await deps.store.upsertJobCard(j, nowIso);
-      } catch {
-        /* no signal for this one: try again next time */
-      }
-    }
-  } catch {
-    /* never fail a sync over this */
-  }
-}
+// R3: refreshFinishedJobCards is gone.
+// applyPull already marks any locally-cached card that is not in the fresh
+// OPEN list as CLOSED (see store.applyPull -> closeJobCard). Calling
+// getJobCard(id) per card was confirming what the pull had already told us.
 
-async function refreshTimeCache(
-  deps: SyncDeps,
-  userSub: string,
-): Promise<void> {
+async function refreshTimeCache(deps: SyncDeps): Promise<void> {
+  // R2: only the foreground card. On the home screen or a background wake the
+  // technician is not looking at a card, so refreshing every card's time cache
+  // is bandwidth spent on numbers nobody is watching.
+  const jobCardId = deps.foregroundJobCardId?.() ?? null;
+  if (!jobCardId) return;
+
   try {
-    for (const id of await deps.store.jobCardIdsFor(userSub)) {
-      try {
-        const rows = await deps.api.listTimeEntries(id);
-        await deps.store.replaceTimeCache(
-          id,
-          rows
-            .filter((r) => !!r.startedAt)
-            .map((r) => ({
-              id: r.id,
-              userId: r.userId,
-              userName: r.userName ?? null,
-              userEmail: normEmail(r.userEmail) ?? null,
-              startedAt: r.startedAt as string,
-              endedAt: r.endedAt ?? null,
-              lastActiveAt: r.lastActiveAt ?? null,
-              startReason: r.startReason ?? null,
-            })),
-        );
-      } catch {
-        /* no signal for this one: the phone keeps what it had */
-      }
-    }
+    const rows = await deps.api.listTimeEntries(jobCardId);
+    await deps.store.replaceTimeCache(
+      jobCardId,
+      rows
+        .filter((r) => !!r.startedAt)
+        .map((r) => ({
+          id: r.id,
+          userId: r.userId,
+          userName: r.userName ?? null,
+          userEmail: normEmail(r.userEmail) ?? null,
+          startedAt: r.startedAt as string,
+          endedAt: r.endedAt ?? null,
+          lastActiveAt: r.lastActiveAt ?? null,
+          startReason: r.startReason ?? null,
+        })),
+    );
   } catch {
-    /* the total is a convenience; never fail a sync over it */
+    /* no signal for this one: the phone keeps what it had */
   }
 }
 
 let inFlight: Promise<SyncSummary> | null = null;
 
-/** Send what is waiting, then refresh the open work. Only one run at a time; asking again joins the running one. */
 export function runSync(deps: SyncDeps, userSub: string): Promise<SyncSummary> {
   if (inFlight) return inFlight;
   const run: Promise<SyncSummary> = (async (): Promise<SyncSummary> => {
     if (!(await deps.isOnline())) return { offline: true };
 
-    // Recover rows the OS killed mid-send. If a background wake was terminated after markSyncing() but before
-    // markDone() (the app is closed while a network call is in flight), the row stays at 'syncing' forever:
-    // dueOutbox only returns 'pending', so pushOutbox never sees it, and it never retries. Before this call
-    // recoverStuck only ran once per launch, in startJobCards. Now it runs on every fresh sync — background
-    // wake, foreground return, network-up, interval — and covers every outbox kind (result, start-time,
-    // end-time, add-scale). Wrapped in try/catch: if SQLite is momentarily unusable, the sync should still
-    // try to push and pull, not abort on the recovery step.
     try {
       await deps.store.recoverStuck(deps.now().toISOString());
     } catch (e) {
@@ -589,26 +585,22 @@ export function runSync(deps: SyncDeps, userSub: string): Promise<SyncSummary> {
     }
     if (summary.pull && expiredPhotos.length)
       await deps.cleanupFiles?.(expiredPhotos).catch(() => {});
-    if (summary.pull) await refreshTimeCache(deps, userSub);
-    if (summary.pull) await refreshFinishedJobCards(deps, userSub);
+    if (summary.pull) await refreshTimeCache(deps);
     await deps.store
       .closeObsoleteResults(deps.now().toISOString())
+      .catch(() => 0);
+    await deps.store
+      .closeOrphanedRows(deps.now().toISOString(), MAX_ATTEMPTS_BEFORE_BLOCK)
       .catch(() => 0);
     await deps.store.pruneDone(deps.now().toISOString());
     return summary;
   })().finally(() => {
-    // Only clear our own marker: a run we abandoned may finish much later, after a newer run has started.
     if (inFlight === run) inFlight = null;
   });
   inFlight = run;
   return run;
 }
 
-/**
- * Forget a sync that has stopped making progress, so the next `runSync` starts a fresh one instead of waiting on it
- * forever. The old run is not cancelled (it cannot be); if it ever wakes up it carries on harmlessly, because every
- * send has a client-made id the server de-duplicates on.
- */
 export function abandonRunningSync(): void {
   inFlight = null;
 }

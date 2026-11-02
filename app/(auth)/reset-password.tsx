@@ -1,16 +1,36 @@
+// react-native-omninexos/app/(auth)/reset-password.tsx  (MODIFIED - AUTH-FIX)
+//
+// Step 2 of the password reset flow: user enters the emailed code and a new password.
+// Changes (search "AUTH-FIX"):
+//   - NEW "Resend code" button with a 30s cooldown (there was no way to resend before)
+//   - subtitle shows the masked address the code was sent to (`destination` route param
+//     from forgot-password.tsx), falling back to the typed email
+//   - email param is cleaned (it can arrive as string | string[]); code is digits-only
+//   - friendly error messages via src/services/auth-errors.ts
 import { ThemedText } from "@/components/screens/screen";
 import { useAuthInputStyle } from "@/hooks/useAuthInputStyle";
 import { useTheme } from "@/src/contexts/theme-context";
-import { confirmResetPassword } from "aws-amplify/auth";
+import {
+  getConfirmResetErrorMessage,
+  getRequestResetErrorMessage,
+} from "@/src/services/auth-errors";
+import { confirmResetPassword, resetPassword } from "aws-amplify/auth";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useState } from "react";
-import { TextInput, View } from "react-native";
+import { useEffect, useState } from "react";
+import { Pressable, TextInput, View } from "react-native";
 import { AuthFormLayout } from "../../components/auth/AuthFormLayout";
 
 const ResetPassword = () => {
   const router = useRouter();
   const { theme } = useTheme();
-  const { email } = useLocalSearchParams<{ email: string }>();
+  const params = useLocalSearchParams<{
+    email: string | string[];
+    destination?: string | string[];
+  }>();
+  // AUTH-FIX: route params can be string | string[]
+  const first = (v?: string | string[]) => (Array.isArray(v) ? v[0] : v) ?? "";
+  const email = first(params.email).trim().toLowerCase();
+  const destination = first(params.destination);
 
   const [code, setCode] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -18,6 +38,18 @@ const ResetPassword = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
+
+  // AUTH-FIX: resend code with a cooldown so users can't spam Cognito (rate limits)
+  const RESEND_COOLDOWN = 30;
+  const [cooldown, setCooldown] = useState(RESEND_COOLDOWN); // code was just sent
+  const [resendMessage, setResendMessage] = useState("");
+  const [isResending, setIsResending] = useState(false);
+
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const t = setTimeout(() => setCooldown((c) => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [cooldown]);
 
   const codeValid = code.length === 6;
   const passwordValid = newPassword.length >= 8;
@@ -37,9 +69,27 @@ const ResetPassword = () => {
       });
       setSuccess(true);
     } catch (err: any) {
-      setError(err.message || "Failed to reset password");
+      setError(getConfirmResetErrorMessage(err)); // AUTH-FIX
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // AUTH-FIX: request a fresh code for the same email
+  const handleResend = async () => {
+    if (cooldown > 0 || isResending || !email) return;
+    setIsResending(true);
+    setError("");
+    setResendMessage("");
+    try {
+      await resetPassword({ username: email });
+      setCode("");
+      setResendMessage("A new code has been sent.");
+      setCooldown(RESEND_COOLDOWN);
+    } catch (err: any) {
+      setError(getRequestResetErrorMessage(err));
+    } finally {
+      setIsResending(false);
     }
   };
 
@@ -65,7 +115,7 @@ const ResetPassword = () => {
   return (
     <AuthFormLayout
       title="Set New Password"
-      subtitle={`Enter the code sent to ${email} and your new password`}
+      subtitle={`Enter the code sent to ${destination || email} and your new password`}
       buttonText="Update Password"
       isLoading={isLoading}
       onSubmit={handleSubmit}
@@ -87,10 +137,41 @@ const ResetPassword = () => {
           value={code}
           placeholder="6-digit code"
           placeholderTextColor={theme.colors.textMuted}
-          onChangeText={setCode}
+          onChangeText={(v) => setCode(v.replace(/\D/g, ""))} // AUTH-FIX: digits only
           keyboardType="number-pad"
           maxLength={6}
         />
+        {/* AUTH-FIX: resend code */}
+        <Pressable
+          onPress={handleResend}
+          disabled={cooldown > 0 || isResending}
+          hitSlop={8}
+        >
+          <ThemedText
+            weight="600"
+            style={{
+              fontSize: 13,
+              color:
+                cooldown > 0 || isResending
+                  ? theme.colors.textMuted
+                  : theme.colors.primary,
+            }}
+          >
+            {isResending
+              ? "Sending..."
+              : cooldown > 0
+                ? `Resend code in ${cooldown}s`
+                : "Resend code"}
+          </ThemedText>
+        </Pressable>
+        {resendMessage !== "" && (
+          <ThemedText
+            weight="400"
+            style={{ fontSize: 12, color: theme.colors.textMuted }}
+          >
+            {resendMessage} Check your spam folder if you don't see it.
+          </ThemedText>
+        )}
       </View>
 
       <View className="gap-2">

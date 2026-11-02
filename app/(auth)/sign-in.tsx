@@ -1,4 +1,8 @@
-// app/(auth)/sign-in.tsx
+// react-native-omninexos/app/(auth)/sign-in.tsx  (MODIFIED - AUTH-FIX)
+//
+// Email/password and Google sign-in screen.
+// Changes (search "AUTH-FIX"): email is trimmed + lowercased before validation and before
+// signIn(), so it always matches the username stored at sign-up (no change to Google flow).
 import { ThemedText } from "@/components/screens/screen";
 import { GoogleIcon } from "@/components/ui/googleicon";
 import { useAuthInputStyle } from "@/hooks/useAuthInputStyle";
@@ -26,7 +30,9 @@ const SignIn = () => {
   const [emailTouched, setEmailTouched] = useState(false);
   const [passwordTouched, setPasswordTouched] = useState(false);
 
-  const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailAddress);
+  // AUTH-FIX: clean the email once; use it for validation and for signIn()
+  const normalizedEmail = emailAddress.trim().toLowerCase();
+  const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail);
   const passwordValid = password.length > 0;
   const formValid =
     emailAddress.length > 0 && password.length > 0 && emailValid;
@@ -72,7 +78,7 @@ const SignIn = () => {
     setSignInError("");
 
     try {
-      const result = await signIn({ username: emailAddress, password });
+      const result = await signIn({ username: normalizedEmail, password }); // AUTH-FIX;
 
       if (result.isSignedIn) {
         await checkAuth(); // 👈 FORCE context refresh

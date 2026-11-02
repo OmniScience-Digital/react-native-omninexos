@@ -1,6 +1,17 @@
+// react-native-omninexos/app/(auth)/forgot-password.tsx  (MODIFIED - AUTH-FIX)
+//
+// Step 1 of the password reset flow: user enters their email and Cognito emails a code.
+// Changes (search "AUTH-FIX"):
+//   - email is trimmed + lowercased before use (keyboards add trailing spaces; casing
+//     must match the stored username), and validation runs on the cleaned value
+//   - passes the masked delivery destination (e.g. "t***@o***.digital") to the next screen
+//     so the user can see where the code was sent
+//   - friendly error messages via src/services/auth-errors.ts (incl. Google-only accounts)
+//   - router.push now passes `destination`, read by reset-password.tsx
 import { ThemedText } from "@/components/screens/screen";
 import { useAuthInputStyle } from "@/hooks/useAuthInputStyle";
 import { useTheme } from "@/src/contexts/theme-context";
+import { getRequestResetErrorMessage } from "@/src/services/auth-errors";
 import { resetPassword } from "aws-amplify/auth";
 import { useRouter } from "expo-router";
 import { useState } from "react";
@@ -15,8 +26,10 @@ const ForgotPassword = () => {
   const [error, setError] = useState("");
   const [emailTouched, setEmailTouched] = useState(false);
 
-  const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-  const formValid = email.length > 0 && emailValid;
+  // AUTH-FIX: clean the email once and use it everywhere below
+  const normalizedEmail = email.trim().toLowerCase();
+  const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail);
+  const formValid = normalizedEmail.length > 0 && emailValid;
 
   const handleSubmit = async () => {
     if (!formValid) return;
@@ -24,11 +37,18 @@ const ForgotPassword = () => {
     setError("");
 
     try {
-      await resetPassword({ username: email });
-      // Store email temporarily (could use route params or context)
-      router.push({ pathname: "/(auth)/reset-password", params: { email } });
+      const { nextStep } = await resetPassword({ username: normalizedEmail });
+      // AUTH-FIX: Cognito tells us where it sent the code (masked), e.g. "t***@o***.digital"
+      const destination =
+        nextStep?.resetPasswordStep === "CONFIRM_RESET_PASSWORD_WITH_CODE"
+          ? (nextStep.codeDeliveryDetails?.destination ?? "")
+          : "";
+      router.push({
+        pathname: "/(auth)/reset-password",
+        params: { email: normalizedEmail, destination },
+      });
     } catch (err: any) {
-      setError(err.message || "Failed to send reset code");
+      setError(getRequestResetErrorMessage(err)); // AUTH-FIX
     } finally {
       setIsLoading(false);
     }

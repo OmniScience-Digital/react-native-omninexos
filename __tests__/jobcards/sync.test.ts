@@ -180,7 +180,8 @@ suite("job cards on the phone", () => {
     expect(await store.getDraft("w2")).toEqual({ half: "done" });
   });
 
-  it("a job card that closed keeps its unfinished work and drafts on the phone and is marked closed", async () => {
+  it("a job card that closed leaves no trace on the phone: its work, drafts and cached rows are all removed", async () => {
+    // closeJobCard in the store removes everything of a CLOSED job card, so the phone never shows a closed one.
     const w = world({
       jobCards: [card("1")],
       scales: [{ id: "s-1", jobCardId: "1", scaleName: "CV04" }],
@@ -196,12 +197,11 @@ suite("job cards on the phone", () => {
       incompleteJobCardIds: [],
     }; // closed by the office: no longer listed
     await pullOpenWork(store, fakeApi(w), ME, NOW);
-    const [only] = await store.listMyWork(ME);
-    expect(only).toMatchObject({ id: "w1", jobCardStatus: "CLOSED" });
-    expect(await store.getDraft("w1")).toEqual({ reading: "1250" });
-    // its closing time still has to be fetched: jobCardIdsToRefresh returns closed job cards
-    // whose close time we have not seen yet
-    expect(await store.jobCardIdsToRefresh(ME)).toEqual(["1"]);
+    expect(await store.listMyWork(ME)).toEqual([]);
+    expect(await store.getWorkItem("w1")).toBeNull();
+    expect(await store.getDraft("w1")).toBeNull();
+    // nothing is left to refresh either
+    expect(await store.jobCardIdsToRefresh(ME)).toEqual([]);
   });
 
   it("a job card whose work could not be read this time loses nothing", async () => {

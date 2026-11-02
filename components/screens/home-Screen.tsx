@@ -422,7 +422,9 @@ export default function HomeScreen() {
   const lastVehicleIds = useRef<string>("");
   const lastRecountAt = useRef(0);
   const forceRecount = useRef(false);
-  const RECOUNT_MIN_INTERVAL_MS = 60_000;
+  // Recent activity costs one small query per vehicle, so it is recounted at most every 5 minutes.
+  // Your own new inspections still show at once (creating one refreshes that vehicle), and pull-to-refresh forces a recount.
+  const RECOUNT_MIN_INTERVAL_MS = 5 * 60_000;
 
   const calculateInspectionsSummary = useCallback(
     async (fleets: typeof vehicles) => {
@@ -442,8 +444,7 @@ export default function HomeScreen() {
       setInspectionsCalculating(true);
       try {
         // Run all fleet queries in parallel — this is only for the "recent
-        // activity" list below; the total count comes from
-        // useGetTotalInspectionCountQuery above, not from these.
+        // activity" list below.
         await new Promise<void>((resolve) =>
           InteractionManager.runAfterInteractions(() => resolve()),
         );
